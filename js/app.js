@@ -35,7 +35,8 @@ const App = (() => {
 
     /* Repaint on entry: a view hidden while its data arrived may be stale. */
     try{
-      if(name === 'calendar')  CalendarView.render();
+      if(name === 'calendar'){ CalendarView.render(); CalendarView.renderFocus(); }
+      if(name === 'sports')    SportsView.render();
       if(name === 'portfolio') Stocks.load();
       if(name === 'notes')     StickyNotes.renderArchive();
       if(name === 'fantasy')   Fantasy.load();
@@ -94,10 +95,12 @@ const App = (() => {
   async function refreshAll(){
     await run('Weather', () => Weather.load());
     recheckTheme();
-    run('Movies',  () => Movies.load());
-    run('Stocks',  () => Stocks.load());
-    run('Teams',   () => Teams.load());
-    run('Ticker',  () => Ticker.render());
+    run('Movies',   () => Movies.load());
+    run('Stocks',   () => Stocks.load());
+    run('Teams',    () => Teams.load());
+    run('Schedules',() => CalendarView.loadGames());
+    run('Sports',   () => SportsView.render());
+    run('Ticker',   () => Ticker.render());
     if(Google.ready){
       run('Calendar', () => Calendar.load());
       run('Mail',     () => Mail.load());
@@ -132,9 +135,11 @@ const App = (() => {
     on('calToday','click', () => CalendarView.today());
     on('dayClose','click', () => CalendarView.close());
 
-    on('btnWxRefresh','click', () => Weather.refresh().then(recheckTheme));
+    on('headSub','click',      () => Weather.refresh().then(recheckTheme));
     on('btnPfRefresh','click', () => Stocks.refresh());
     on('mvClose','click',      () => Movies.close());
+    on('standClose','click',   () => StandingsView.close());
+    on('playerClose','click',  () => PlayerLog.close());
 
     on('btnAddNote','click',  () => StickyNotes.add());
     on('btnAddNote2','click', () => StickyNotes.add());
@@ -154,10 +159,11 @@ const App = (() => {
       e.target.value = '';
     });
 
-    on('btnAddTeam','click', () => Teams.openPicker());
-    on('tmCancel','click',   () => Teams.closePicker());
-    on('tmSave','click',     () => Teams.saveTeam());
-    on('tmLeague','change',  () => Teams.fillTeams());
+    on('btnAddTeam','click',  () => Teams.openPicker());
+    on('btnAddTeam2','click', () => Teams.openPicker());
+    on('tmCancel','click',    () => Teams.closePicker());
+    on('tmSave','click',      () => Teams.saveTeam());
+    on('tmLeague','change',   () => Teams.fillTeams());
 
     on('btnExport','click', () => Store.export());
     on('btnWipe','click', () => {
@@ -169,7 +175,7 @@ const App = (() => {
     addEventListener('keydown', e => {
       if(e.key === 'Escape'){
         if(!drawer.hidden) closeDrawer();
-        for(const id of ['teamModal','movieModal','dayModal']){
+        for(const id of ['teamModal','movieModal','dayModal','standModal','playerModal']){
           const el = document.getElementById(id);
           if(el) el.hidden = true;
         }
@@ -185,7 +191,12 @@ const App = (() => {
     setInterval(() => { Stocks.load(); }, 60*60*1000);
     setInterval(() => { Teams.load(); }, 15*60*1000);
     setInterval(() => { if(Google.ready){ Calendar.load(); Mail.load(); } }, 5*60*1000);
-    setInterval(() => { CalendarView.render(); }, 10*60*1000);  // roll "today" over
+
+    /* Live games move; re-pull schedules and repaint the focus strip. */
+    setInterval(() => {
+      Sports.clearCache();
+      CalendarView.loadGames();
+    }, 5*60*1000);
   }
 
   return { boot, recheckTheme, refreshAll, showTab };

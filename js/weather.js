@@ -263,8 +263,13 @@ const Weather = (() => {
         : 'Not loaded yet';
     }
 
-    document.getElementById('headSub').textContent =
-      `${current.temp}°F · ${current.desc}`;
+    /* The header carries a compact glyph + temperature pill. */
+    const icon = document.getElementById('wxIcon');
+    const temp = document.getElementById('wxTemp');
+    if(icon) icon.textContent = glyph(current.main);
+    if(temp) temp.textContent = `${current.temp}°`;
+    const pill = document.getElementById('headSub');
+    if(pill) pill.title = `${current.desc} · feels ${current.feels}° · wind ${current.wind} mph — click to refresh`;
 
     if(window.CalendarView) CalendarView.render();
   }

@@ -238,7 +238,54 @@ const Fantasy = (() => {
     }
   }
 
-  return { load };
+
+  /* ---- weekly matchup ----
+     The calendar strip wants the live score on Sundays and Mondays, which
+     needs a different view set than the roster page: mMatchupScore carries
+     the totals, mBoxscore the per-player applied points. */
+  async function matchup(){
+    const league = Store.get('fantasy.league','');
+    const season = Store.get('fantasy.season', String(new Date().getFullYear()));
+    const myTeam = Number(Store.get('fantasy.team',''));
+    if(!league) return null;
+
+    const lg = await getJSON(
+      `${base()}/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${league}` +
+      '?view=mMatchupScore&view=mBoxscore&view=mTeam', {credentials:'omit'});
+
+    const week = lg.status?.currentMatchupPeriod ?? lg.scoringPeriodId ?? 1;
+    const names = Object.fromEntries((lg.teams || []).map(t =>
+      [t.id, t.name || `${t.location || ''} ${t.nickname || ''}`.trim() || `Team ${t.id}`]));
+
+    const bouts = (lg.schedule || []).filter(m => m.matchupPeriodId === week);
+    const mine = bouts.find(m => m.home?.teamId === myTeam || m.away?.teamId === myTeam)
+              || bouts[0];
+    if(!mine) return null;
+
+    /* Only starters count toward the score; the bench sits on slot 20/21. */
+    const BENCH = new Set([20, 21]);
+    const scorers = entry => (entry?.rosterForCurrentScoringPeriod?.entries || [])
+      .filter(e => !BENCH.has(e.lineupSlotId))
+      .map(e => ({
+        name: e.playerPoolEntry?.player?.fullName || '—',
+        pos: POS[e.playerPoolEntry?.player?.defaultPositionId] || '?',
+        points: e.playerPoolEntry?.player?.stats?.find(x => x.scoringPeriodId === week
+                  && x.statSourceId === 0)?.appliedTotal ?? 0
+      }))
+      .sort((a,b) => b.points - a.points)
+      .slice(0,3);
+
+    const side = (e, which) => ({
+      name: names[e?.teamId] || which,
+      score: e?.totalPoints ?? 0,
+      mine: e?.teamId === myTeam,
+      top: scorers(e)
+    });
+
+    return {week, home: side(mine.home,'Home'), away: side(mine.away,'Away')};
+  }
+
+  return { load, matchup };
 })();
 
 /* module export: a top-level const does not become a window property in a

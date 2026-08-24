@@ -132,17 +132,23 @@ const Stocks = (() => {
   }
 
   /* One position per symbol: the same holding in two accounts is one
-     quote lookup, not two. */
+     quote lookup, not two. byAccount keeps the split so the view can be
+     filtered to a single account without re-importing. */
   function merge(rows){
     const by = new Map();
     for(const r of rows){
-      if(!by.has(r.symbol)) by.set(r.symbol, {...r, accounts:[r.account]});
-      else{
+      if(!by.has(r.symbol)){
+        by.set(r.symbol, {...r, accounts:[r.account],
+                          byAccount:{[r.account]:{shares:r.shares, cost:r.cost}}});
+      }else{
         const m = by.get(r.symbol);
         m.shares += r.shares;
         m.cost   += r.cost;
         if(m.csvValue != null && r.csvValue != null) m.csvValue += r.csvValue;
         if(!m.accounts.includes(r.account)) m.accounts.push(r.account);
+        const a = m.byAccount[r.account] || (m.byAccount[r.account] = {shares:0, cost:0});
+        a.shares += r.shares;
+        a.cost   += r.cost;
       }
     }
     return [...by.values()].map(({account, ...keep}) => keep);
@@ -331,26 +337,27 @@ const Stocks = (() => {
     return `${dir} six figures`;
   }
 
-  function quip(pct){
-    if(pct >=  10) return 'Absolute heater. Do not touch anything.';
-    if(pct >=   5) return 'Feeling smug about this one.';
-    if(pct >=   2) return 'Quietly pleased.';
-    if(pct >= 0.5) return 'Nudging the right way.';
-    if(pct >  -0.5) return 'Basically flat. Riveting.';
-    if(pct >    -2) return 'A light flesh wound.';
-    if(pct >    -5) return "Some red. Don't zoom in.";
-    if(pct >   -10) return 'Ouch. Rude.';
-    return 'Maybe check back tomorrow.';
+  /* ---- account filter ----
+     null means every account combined. */
+  let account = null;
+
+  function accountNames(){
+    const set = new Set();
+    for(const h of Store.get('holdings',[]))
+      for(const a of (h.accounts || [])) set.add(a);
+    return [...set];
   }
 
-  const BUCKETS = [
-    {min:20,  name:'Big Dog',            note:'carries the whole thing'},
-    {min:10,  name:'Heavy Hitter',       note:'seriously invested here'},
-    {min:5,   name:'A Good Chunk',       note:'meaningful money'},
-    {min:2,   name:'Pulling Its Weight', note:'earns its spot'},
-    {min:0.5, name:'A Light Sprinkle',   note:'seasoning, mostly'},
-    {min:0,   name:'Rounding Error',     note:'why do you even own this'}
-  ];
+  /* Share count and cost for the active account, or the combined total. */
+  function sharesOf(h){
+    if(!account) return h.shares;
+    return h.byAccount?.[account]?.shares ?? 0;
+  }
+  function costOf(h){
+    if(!account) return h.cost || 0;
+    return h.byAccount?.[account]?.cost ?? 0;
+  }
+  const inView = h => sharesOf(h) > 0;
 
   /* ---- maths ---- */
   function priceNow(h){
@@ -359,7 +366,7 @@ const Stocks = (() => {
   }
 
   function windowStats(win){
-    const hold = Store.get('holdings',[]);
+    const hold = Store.get('holdings',[]).filter(inView);
     let nowVal = 0, thenVal = 0;
     const movers = [];
 
@@ -371,8 +378,9 @@ const Stocks = (() => {
         : (a ? a[win.id] : null);
       if(now == null || then == null || !then) continue;
 
-      nowVal  += now * h.shares;
-      thenVal += then * h.shares;
+      const sh = sharesOf(h);
+      nowVal  += now * sh;
+      thenVal += then * sh;
       movers.push({symbol:h.symbol, pct:(now/then - 1) * 100});
     }
 
@@ -391,11 +399,22 @@ const Stocks = (() => {
     };
   }
 
-  function weights(){
-    const hold = Store.get('holdings',[]);
+  /* Weight of each holding plus its return over the chosen window, which
+     is exactly the pair the scatter plots. */
+  function weights(winId){
+    const hold = Store.get('holdings',[]).filter(inView);
     const vals = hold.map(h => {
       const p = priceNow(h);
-      return {symbol:h.symbol, val: p != null ? p * h.shares : (h.csvValue || 0)};
+      const sh = sharesOf(h);
+      const a = anchors[h.symbol];
+      const then = winId === 'd1' && quotes[h.symbol]
+        ? quotes[h.symbol].c - quotes[h.symbol].d
+        : (a ? a[winId] : null);
+      return {
+        symbol: h.symbol,
+        val: p != null ? p * sh : 0,
+        ret: (p != null && then) ? (p/then - 1) * 100 : null
+      };
     });
     const total = vals.reduce((s,v) => s + v.val, 0);
     if(!total) return [];
@@ -422,63 +441,151 @@ const Stocks = (() => {
     </div>`;
   }
 
+  /* Which window the scatter is plotting. */
+  let plotWin = 'd1';
+
+  /* ---- scatter: weight against return ----
+     Weight on the vertical, return on the horizontal, bubble area by
+     weight. Drawn as inline SVG rather than a chart library so the page
+     stays dependency-free and themable through CSS variables. */
+  function scatter(winId){
+    const pts = weights(winId).filter(p => p.ret != null && p.val > 0);
+    const W = 720, H = 260, PADL = 44, PADR = 16, PADT = 16, PADB = 30;
+
+    if(!pts.length){
+      return `<div class="plot-empty"><p class="empty">No priced history for this window yet.</p></div>`;
+    }
+
+    const rets = pts.map(p => p.ret);
+    let lo = Math.min(...rets, 0), hi = Math.max(...rets, 0);
+    const pad = Math.max(1, (hi - lo) * 0.12);
+    lo -= pad; hi += pad;
+
+    const maxW = Math.max(...pts.map(p => p.pct));
+    const x = v => PADL + (v - lo) / (hi - lo) * (W - PADL - PADR);
+    const y = v => H - PADB - (v / maxW) * (H - PADT - PADB);
+    const r = v => Math.max(4, Math.sqrt(v / maxW) * 22);
+
+    /* Gridlines at round-ish return values. */
+    const step = niceStep(hi - lo);
+    const ticks = [];
+    for(let t = Math.ceil(lo / step) * step; t <= hi; t += step) ticks.push(t);
+
+    return `<svg class="plot" viewBox="0 0 ${W} ${H}" role="img"
+                 aria-label="Portfolio weight against return">
+      ${ticks.map(t => `
+        <line class="plot-grid${Math.abs(t) < 1e-9 ? ' is-zero' : ''}"
+              x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${PADT}" y2="${H - PADB}"></line>
+        <text class="plot-tick" x="${x(t).toFixed(1)}" y="${H - PADB + 15}"
+              text-anchor="middle">${t >= 0 ? '+' : ''}${t.toFixed(step < 1 ? 1 : 0)}%</text>`).join('')}
+      <line class="plot-axis" x1="${PADL}" x2="${PADL}" y1="${PADT}" y2="${H - PADB}"></line>
+      <text class="plot-tick" x="6" y="${PADT + 8}">${maxW.toFixed(0)}%</text>
+      <text class="plot-tick" x="6" y="${H - PADB}">0%</text>
+      <text class="plot-axlab" x="6" y="${H - 4}">weight ↑ / return →</text>
+      ${pts.map(p => `
+        <g class="plot-pt ${p.ret >= 0 ? 'up' : 'down'}">
+          <title>${esc(p.symbol)} · ${p.pct.toFixed(1)}% of portfolio · ${p.ret >= 0 ? '+' : ''}${p.ret.toFixed(2)}%</title>
+          <circle cx="${x(p.ret).toFixed(1)}" cy="${y(p.pct).toFixed(1)}" r="${r(p.pct).toFixed(1)}"></circle>
+          ${p.pct >= maxW * 0.28 ? `<text class="plot-lab" x="${x(p.ret).toFixed(1)}"
+                y="${(y(p.pct) + 3.5).toFixed(1)}" text-anchor="middle">${esc(p.symbol)}</text>` : ''}
+        </g>`).join('')}
+    </svg>`;
+  }
+
+  function niceStep(span){
+    const raw = span / 6;
+    const mag = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-6))));
+    const n = raw / mag;
+    return (n >= 5 ? 5 : n >= 2 ? 2 : 1) * mag;
+  }
+
   function render(){
-    const hold = Store.get('holdings',[]);
-    if(!hold.length) return;
+    const all = Store.get('holdings',[]);
+    const hold = all.filter(inView);
+    if(!all.length) return;
+
+    renderAccountTabs();
+
+    if(!hold.length){
+      body.innerHTML = `<p class="empty">Nothing held in ${esc(account)}.</p>`;
+      return;
+    }
 
     const hasHistory = Object.keys(anchors).length > 0;
     const needKey = !Store.get('keys.twelve','');
 
     const cards = WINDOWS.map(w => {
-      const s = windowStats(w);
-      if(!s){
-        return `<div class="pf-card is-empty">
+      const st = windowStats(w);
+      const on = w.id === plotWin;
+      if(!st){
+        return `<button class="pf-card is-empty${on ? ' is-on' : ''}" data-win="${w.id}">
           <span class="pf-when">${w.label}</span>
           <span class="pf-none">${w.id === 'd1'
             ? 'Needs a Finnhub key.'
             : needKey ? 'Add a Twelve Data key in Settings.'
-                      : 'No history for this window yet.'}</span>
-        </div>`;
+                      : 'No history yet.'}</span>
+        </button>`;
       }
-      const cls = s.pct >= 0 ? 'up' : 'down';
-      return `<div class="pf-card">
+      return `<button class="pf-card${on ? ' is-on' : ''}" data-win="${w.id}">
         <span class="pf-when">${w.label}</span>
-        <span class="pf-pct ${cls}">${pctText(s.pct)}</span>
-        <span class="pf-vague">${esc(vague(s.dollars))}</span>
-        <span class="pf-quip">${esc(quip(s.pct))}</span>
+        <span class="pf-pct ${st.pct >= 0 ? 'up' : 'down'}">${pctText(st.pct)}</span>
+        <span class="pf-vague">${esc(vague(st.dollars))}</span>
         <div class="pf-movers">
-          ${moverList(s.top,'Best')}
-          ${moverList(s.bottom,'Worst')}
+          ${moverList(st.top,'Best')}
+          ${moverList(st.bottom,'Worst')}
         </div>
-        <span class="pf-count">${s.counted} of ${hold.length} counted</span>
-      </div>`;
+        <span class="pf-count">${st.counted} of ${hold.length} counted</span>
+      </button>`;
     }).join('');
 
-    const w = weights();
-    const grouped = BUCKETS.map(b => ({
-      ...b, items: w.filter(x => x.pct >= b.min &&
-        !BUCKETS.some(o => o.min > b.min && x.pct >= o.min))
-    })).filter(g => g.items.length);
-
-    const bucketHtml = grouped.map(g => `
-      <div class="bk">
-        <div class="bk-head"><b>${g.name}</b><span>${esc(g.note)}</span></div>
-        <div class="bk-items">${g.items.map(i =>
-          `<span class="bk-chip">${esc(i.symbol)}<i>${(i.pct < 0.1 ? i.pct.toFixed(2) : i.pct.toFixed(1))}%</i></span>`).join('')}</div>
-      </div>`).join('');
+    const label = WINDOWS.find(w => w.id === plotWin)?.label || '';
 
     body.innerHTML = `
       <div class="pf-grid">${cards}</div>
-      <h3 class="pf-h3">How much of the pie</h3>
-      <div class="bk-wrap">${bucketHtml || '<p class="empty">Nothing priced yet.</p>'}</div>
-      <p class="pf-foot">${hold.length} holdings · quotes ${stampText()}${
-        hasHistory ? ' · history current' : ''} · exact percentages, deliberately fuzzy dollars</p>`;
+      <div class="plot-head">
+        <h3 class="pf-h3">Weight against return — ${esc(label.toLowerCase())}</h3>
+        <span class="plot-key">bubble size = share of portfolio</span>
+      </div>
+      <div class="plot-wrap">${scatter(plotWin)}</div>
+      <p class="pf-foot">${hold.length} holdings${account ? ` in ${esc(account)}` : ' across all accounts'}
+        · quotes ${stampText()}${hasHistory ? ' · history current' : ''}
+        · exact percentages, deliberately fuzzy dollars</p>`;
+
+    body.querySelectorAll('[data-win]').forEach(b => b.onclick = () => {
+      plotWin = b.dataset.win;
+      render();
+    });
 
     if(stamp){
       stamp.textContent = stampText();
       stamp.title = quotedAt ? `Quotes last refreshed ${quotedAt.toLocaleString()}`
                              : 'Add a Finnhub key in Settings to price these daily';
     }
+  }
+
+  /* ---- account sub-tabs ---- */
+  function renderAccountTabs(){
+    const el = document.getElementById('pfAccounts');
+    if(!el) return;
+    const names = accountNames();
+    if(names.length < 2){ el.innerHTML = ''; return; }
+
+    const tab = (val, text) =>
+      `<button class="subtab sm${account === val ? ' is-on' : ''}" data-acct="${val === null ? '' : esc(val)}">${esc(text)}</button>`;
+
+    el.innerHTML = tab(null,'All') + names.map(n => tab(n, shortName(n))).join('');
+    el.querySelectorAll('[data-acct]').forEach(b => b.onclick = () => {
+      account = b.dataset.acct || null;
+      render();
+    });
+  }
+
+  /* "Roth_Contributory_IRA ...640" reads better as "Roth IRA 640". */
+  function shortName(n){
+    return n.replace(/_/g,' ')
+            .replace(/\.\.\.(\d+)/, '$1')
+            .replace(/Contributory /i,'')
+            .trim();
   }
 
   /* ---- earnings ---- */

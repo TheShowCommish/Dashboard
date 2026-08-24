@@ -99,7 +99,9 @@ const Movies = (() => {
   return {
     load, close, open,
     /* [{id, title, date}] for the calendar. */
-    get releases(){ return films.map(f => ({id:f.id, title:f.title, date:f.date})); }
+    get releases(){ return films.map(f => ({id:f.id, title:f.title, date:f.date})); },
+    /* Full record for the poster carousel, which wants art and credits. */
+    byId(id){ return films.find(f => String(f.id) === String(id)) || null; }
   };
 })();
 

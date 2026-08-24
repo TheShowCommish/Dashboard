@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
 
@@ -20,24 +20,29 @@
 </aside>
 
 <header id="deck-head">
-  <div class="head-left">
-    <h1>Control Deck</h1>
-    <p id="headSub">Loading systems…</p>
-  </div>
-
   <nav id="tabs" role="tablist" aria-label="Views">
     <button class="tab-btn is-on" data-tab="calendar"  role="tab" aria-selected="true">Calendar</button>
+    <button class="tab-btn"       data-tab="sports"    role="tab" aria-selected="false">Sports</button>
     <button class="tab-btn"       data-tab="portfolio" role="tab" aria-selected="false">Portfolio</button>
     <button class="tab-btn"       data-tab="notes"     role="tab" aria-selected="false">Notes</button>
     <button class="tab-btn"       data-tab="fantasy"   role="tab" aria-selected="false">Fantasy</button>
   </nav>
 
   <div class="head-right">
+    <button id="headSub" class="wx-pill" title="Refresh weather">
+      <span id="wxIcon">·</span><span id="wxTemp">—</span>
+    </button>
     <div class="clock">
       <span id="clockTime">--:--</span>
       <span id="clockDate">—</span>
     </div>
-    <button id="btnSettings" class="ghost-btn" aria-label="Open settings">Settings</button>
+    <button id="btnSettings" class="icon-btn" aria-label="Open settings" title="Settings">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.1"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
   </div>
 </header>
 
@@ -45,7 +50,7 @@
 
   <!-- ===================== Calendar ===================== -->
   <section class="view is-on" id="view-calendar" role="tabpanel">
-    <div class="view-head">
+    <div class="view-head slim">
       <div class="view-title">
         <h2 id="calRange">—</h2>
         <span class="chip" id="wxUpdated" title="Weather last updated">—</span>
@@ -54,7 +59,6 @@
         <button id="calPrev"  class="ghost-btn sm" aria-label="Previous two weeks">‹</button>
         <button id="calToday" class="ghost-btn sm">Today</button>
         <button id="calNext"  class="ghost-btn sm" aria-label="Next two weeks">›</button>
-        <button id="btnWxRefresh" class="ghost-btn sm">Refresh</button>
       </div>
     </div>
 
@@ -62,6 +66,18 @@
       <div class="cal-dow" id="calDow"></div>
       <div class="cal-grid" id="calGrid"></div>
     </div>
+
+    <!-- everything for the selected day lives below the grid -->
+    <section id="dayFocus" class="focus">
+      <div class="focus-head">
+        <h3 id="focusTitle">Today</h3>
+        <span class="focus-hint">Click any day above</span>
+      </div>
+      <div id="focusFantasy" hidden></div>
+      <div id="focusGames"></div>
+      <div id="focusMovies"></div>
+      <p id="focusEmpty" class="empty" hidden>Nothing else on this day.</p>
+    </section>
 
     <aside class="tray">
       <div class="tray-head">
@@ -73,14 +89,26 @@
     </aside>
   </section>
 
+  <!-- ===================== Sports ===================== -->
+  <section class="view" id="view-sports" role="tabpanel" hidden>
+    <div class="view-head slim">
+      <nav id="teamTabs" class="subtabs" aria-label="Followed teams"></nav>
+      <div class="view-tools">
+        <button id="btnAddTeam2" class="ghost-btn sm">Add team</button>
+      </div>
+    </div>
+    <div id="sportsBody"><p class="empty">Loading…</p></div>
+  </section>
+
   <!-- ===================== Portfolio ===================== -->
   <section class="view" id="view-portfolio" role="tabpanel" hidden>
-    <div class="view-head">
+    <div class="view-head slim">
       <div class="view-title">
         <h2>How's it going</h2>
         <span class="chip" id="pfUpdated" title="Quotes last refreshed">—</span>
       </div>
       <div class="view-tools">
+        <nav id="pfAccounts" class="subtabs sm"></nav>
         <button id="btnPfRefresh" class="ghost-btn sm">Refresh</button>
         <label class="ghost-btn sm file-btn">Import CSV<input id="csvInput" type="file" accept=".csv,.txt" hidden></label>
       </div>
@@ -90,7 +118,7 @@
 
   <!-- ===================== Notes ===================== -->
   <section class="view" id="view-notes" role="tabpanel" hidden>
-    <div class="view-head">
+    <div class="view-head slim">
       <div class="view-title">
         <h2>Every note</h2>
         <span class="chip" id="notesCount">0</span>
@@ -105,7 +133,7 @@
 
   <!-- ===================== Fantasy ===================== -->
   <section class="view" id="view-fantasy" role="tabpanel" hidden>
-    <div class="view-head">
+    <div class="view-head slim">
       <div class="view-title">
         <h2>Fantasy</h2>
         <span class="chip" id="ffWeek">—</span>
@@ -116,10 +144,16 @@
 
 </main>
 
-<!-- ===================== Bottom ticker ===================== -->
-<div id="ticker" aria-label="Inbox and market ticker">
-  <span class="ticker-tag" id="tickerTag">DECK</span>
-  <div class="ticker-view"><div class="ticker-track" id="tickerTrack"></div></div>
+<!-- ===================== Bottom tickers ===================== -->
+<div id="tickers">
+  <div class="ticker" id="tickerMarket" aria-label="Market ticker">
+    <span class="ticker-tag">MARKETS</span>
+    <div class="ticker-view"><div class="ticker-track" id="trackMarket"></div></div>
+  </div>
+  <div class="ticker" id="tickerMail" aria-label="Inbox ticker">
+    <span class="ticker-tag alt">INBOX</span>
+    <div class="ticker-view"><div class="ticker-track" id="trackMail"></div></div>
+  </div>
 </div>
 
 <!-- ===== Settings drawer ===== -->
@@ -139,14 +173,14 @@
       <label>Twelve Data <span class="hint">price history</span><input id="k_twelve" type="password" autocomplete="off"></label>
       <label>TMDB <span class="hint">movies</span><input id="k_tmdb" type="password" autocomplete="off"></label>
       <label>Google OAuth Client ID<input id="k_gclient" type="text" autocomplete="off"></label>
-      <p class="note-line">A free Twelve Data key powers the weekly, monthly, 6-month and 1-year returns — Finnhub's free tier only gives today's move. Grab one at <a href="https://twelvedata.com/pricing" target="_blank" rel="noopener">twelvedata.com</a>.</p>
+      <p class="note-line">A free Twelve Data key powers the weekly, monthly, 6-month and 1-year returns — Finnhub's free tier only gives today's move. Grab one at <a href="https://twelvedata.com/pricing" target="_blank" rel="noopener">twelvedata.com</a>. Sports data needs no key.</p>
       <button id="btnGoogle" class="ghost-btn sm">Connect Google</button>
     </fieldset>
 
     <fieldset>
       <legend>Weather</legend>
       <label>Open-Meteo request URL<input id="k_wxUrl" type="text" autocomplete="off" placeholder="https://api.open-meteo.com/v1/forecast?..."></label>
-      <p class="note-line">Open-Meteo needs no API key — the free endpoint is unauthenticated. Change the location by editing <code>latitude</code> and <code>longitude</code>, or build a new URL at <a href="https://open-meteo.com/en/docs?hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,visibility,wind_speed_10m&amp;forecast_days=14&amp;timezone=America%2FNew_York&amp;bounding_box=-90,-180,90,180&amp;latitude=39.97282&amp;longitude=-75.14446&amp;current=temperature_2m,relative_humidity_2m,precipitation,rain,showers,snowfall,weather_code&amp;temperature_unit=fahrenheit&amp;wind_speed_unit=mph&amp;precipitation_unit=inch" target="_blank" rel="noopener">open-meteo.com/en/docs</a>. Refreshes at 6am, noon, 3pm, 6pm and 10pm.</p>
+      <p class="note-line">Open-Meteo needs no API key — the free endpoint is unauthenticated. Change the location by editing <code>latitude</code> and <code>longitude</code>, or build a new URL at <a href="https://open-meteo.com/en/docs" target="_blank" rel="noopener">open-meteo.com/en/docs</a>. Refreshes at 6am, noon, 3pm, 6pm and 10pm.</p>
     </fieldset>
 
     <fieldset>
@@ -188,9 +222,23 @@
 <div id="dayModal" hidden>
   <div class="modal-card wide">
     <div id="dayModalBody"></div>
-    <div class="modal-actions">
-      <button id="dayClose" class="ghost-btn sm">Close</button>
-    </div>
+    <div class="modal-actions"><button id="dayClose" class="ghost-btn sm">Close</button></div>
+  </div>
+</div>
+
+<!-- standings -->
+<div id="standModal" hidden>
+  <div class="modal-card xwide">
+    <div id="standModalBody"></div>
+    <div class="modal-actions"><button id="standClose" class="ghost-btn sm">Close</button></div>
+  </div>
+</div>
+
+<!-- player game log -->
+<div id="playerModal" hidden>
+  <div class="modal-card xwide">
+    <div id="playerModalBody"></div>
+    <div class="modal-actions"><button id="playerClose" class="ghost-btn sm">Close</button></div>
   </div>
 </div>
 
@@ -198,9 +246,7 @@
 <div id="movieModal" hidden>
   <div class="modal-card wide">
     <div id="movieModalBody"></div>
-    <div class="modal-actions">
-      <button id="mvClose" class="ghost-btn sm">Close</button>
-    </div>
+    <div class="modal-actions"><button id="mvClose" class="ghost-btn sm">Close</button></div>
   </div>
 </div>
 
@@ -222,18 +268,21 @@
   </div>
 </div>
 
-<script src="js/store.js?v=9"></script>
-<script src="js/themes.js?v=9"></script>
-<script src="js/sky.js?v=9"></script>
-<script src="js/weather.js?v=9"></script>
-<script src="js/google.js?v=9"></script>
-<script src="js/stocks.js?v=9"></script>
-<script src="js/fantasy.js?v=9"></script>
-<script src="js/teams.js?v=9"></script>
-<script src="js/movies.js?v=9"></script>
-<script src="js/notes.js?v=9"></script>
-<script src="js/calendarview.js?v=9"></script>
-<script src="js/ticker.js?v=9"></script>
-<script src="js/app.js?v=9"></script>
+<script src="js/store.js?v=13"></script>
+<script src="js/themes.js?v=13"></script>
+<script src="js/sky.js?v=13"></script>
+<script src="js/weather.js?v=13"></script>
+<script src="js/google.js?v=13"></script>
+<script src="js/stocks.js?v=13"></script>
+<script src="js/fantasy.js?v=13"></script>
+<script src="js/sports.js?v=13"></script>
+<script src="js/teams.js?v=13"></script>
+<script src="js/movies.js?v=13"></script>
+<script src="js/notes.js?v=13"></script>
+<script src="js/gamecard.js?v=13"></script>
+<script src="js/sportsview.js?v=13"></script>
+<script src="js/calendarview.js?v=13"></script>
+<script src="js/ticker.js?v=13"></script>
+<script src="js/app.js?v=13"></script>
 </body>
 </html>

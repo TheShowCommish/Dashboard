@@ -88,11 +88,52 @@ const Teams = (() => {
   const asTeams = rows =>
     rows.map(([id,abbr,name]) => ({id:String(id), abbreviation:abbr, displayName:name}));
 
+  /* ESPN's /teams list endpoint sends no CORS header for any league, and
+     the college lists are far too large to bundle in full. These are the
+     ACC plus the usual suspects, which covers the common case; Georgia
+     Tech is followed out of the box. */
+  const CFB_FALLBACK = [
+    [59,'GT','Georgia Tech Yellow Jackets'],[52,'FSU','Florida State Seminoles'],
+    [228,'CLEM','Clemson Tigers'],[152,'NCST','NC State Wolfpack'],
+    [153,'DUKE','Duke Blue Devils'],[97,'LOU','Louisville Cardinals'],
+    [154,'WAKE','Wake Forest Demon Deacons'],[103,'BC','Boston College Eagles'],
+    [259,'VT','Virginia Tech Hokies'],[258,'UVA','Virginia Cavaliers'],
+    [221,'PITT','Pittsburgh Panthers'],[150,'MIA','Miami Hurricanes'],
+    [153,'UNC','North Carolina Tar Heels'],[2567,'SMU','SMU Mustangs'],
+    [25,'CAL','California Golden Bears'],[24,'STAN','Stanford Cardinal'],
+    [61,'UGA','Georgia Bulldogs'],[333,'ALA','Alabama Crimson Tide'],
+    [2,'AUB','Auburn Tigers'],[57,'FLA','Florida Gators'],
+    [99,'LSU','LSU Tigers'],[245,'TAMU','Texas A&M Aggies'],
+    [251,'TEX','Texas Longhorns'],[201,'OU','Oklahoma Sooners'],
+    [194,'OSU','Ohio State Buckeyes'],[130,'MICH','Michigan Wolverines'],
+    [213,'PSU','Penn State Nittany Lions'],[275,'WIS','Wisconsin Badgers'],
+    [2294,'IOWA','Iowa Hawkeyes'],[135,'ND','Notre Dame Fighting Irish'],
+    [38,'COLO','Colorado Buffaloes'],[264,'WASH','Washington Huskies'],
+    [30,'USC','USC Trojans'],[26,'UCLA','UCLA Bruins'],
+    [12,'ARIZ','Arizona Wildcats'],[9,'ASU','Arizona State Sun Devils'],
+    [2633,'TENN','Tennessee Volunteers'],[142,'MIZZ','Missouri Tigers'],
+    [8,'ARK','Arkansas Razorbacks'],[344,'MSST','Mississippi State Bulldogs'],
+    [145,'MISS','Ole Miss Rebels'],[2579,'SCAR','South Carolina Gamecocks'],
+    [96,'UK','Kentucky Wildcats'],[238,'VAN','Vanderbilt Commodores'],
+    [2306,'KU','Kansas Jayhawks'],[2305,'KSU','Kansas State Wildcats'],
+    [239,'BAY','Baylor Bears'],[2628,'TCU','TCU Horned Frogs'],
+    [197,'OKST','Oklahoma State Cowboys'],[2641,'TTU','Texas Tech Red Raiders'],
+    [66,'ISU','Iowa State Cyclones'],[2226,'BYU','BYU Cougars'],
+    [254,'UTAH','Utah Utes'],[21,'SDSU','San Diego State Aztecs'],
+    [68,'NEB','Nebraska Cornhuskers'],[356,'ILL','Illinois Fighting Illini'],
+    [2509,'PUR','Purdue Boilermakers'],[84,'IND','Indiana Hoosiers'],
+    [127,'MSU','Michigan State Spartans'],[164,'RUTG','Rutgers Scarlet Knights'],
+    [120,'MD','Maryland Terrapins'],[77,'NW','Northwestern Wildcats'],
+    [135,'MINN','Minnesota Golden Gophers'],[2483,'ORE','Oregon Ducks'],
+    [204,'ORST','Oregon State Beavers'],[265,'WSU','Washington State Cougars']
+  ];
+
   const FALLBACK = {
     'nfl': asTeams(NFL_FALLBACK),
     'nba': asTeams(NBA_FALLBACK),
     'mlb': asTeams(MLB_FALLBACK),
-    'nhl': asTeams(NHL_FALLBACK)
+    'nhl': asTeams(NHL_FALLBACK),
+    'college-football': asTeams(CFB_FALLBACK)
   };
 
   let games = [];
@@ -158,7 +199,7 @@ const Teams = (() => {
     const opt = selTm.selectedOptions[0];
     if(!opt || !opt.value) return Store.toast('Pick a team first.');
 
-    const teams = Store.get('teams',[]);
+    const teams = Sports.teams();
     if(teams.some(t => t.league === selLg.value && t.id === opt.value)){
       closePicker();
       return Store.toast('Already following that team.');
@@ -166,17 +207,25 @@ const Teams = (() => {
     teams.push({league:selLg.value, id:opt.value, name:opt.textContent, abbr:opt.dataset.abbr||''});
     Store.set('teams', teams);
     closePicker();
-    load();
+    changed();
   }
 
   function remove(league, id){
-    Store.set('teams', Store.get('teams',[]).filter(t => !(t.league===league && t.id===id)));
+    Store.set('teams', Sports.teams().filter(t => !(t.league===league && t.id===id)));
+    changed();
+  }
+
+  /* The followed set feeds three views; repaint all of them. */
+  function changed(){
+    Sports.clearCache();
     load();
+    if(window.SportsView)   SportsView.render();
+    if(window.CalendarView) CalendarView.loadGames();
   }
 
   /* ---- schedules ---- */
   async function load(){
-    const teams = Store.get('teams',[]);
+    const teams = Sports.teams();
     games = [];
     if(!teams.length){
       tileError(body,'No teams followed yet.');
@@ -239,7 +288,7 @@ const Teams = (() => {
   const isToday = d => d.toDateString() === new Date().toDateString();
 
   function render(){
-    const teams = Store.get('teams',[]);
+    const teams = Sports.teams();
     body.innerHTML = teams.map(t => {
       /* Match on league too: ESPN numbers each league from 1, so NFL 16
          (Vikings) and NBA 16 (Timberwolves) would otherwise collide. */

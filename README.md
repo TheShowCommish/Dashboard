@@ -76,30 +76,45 @@ The tile refreshes at **6am, noon, 3pm, 6pm and 10pm** local time, and shows whe
 
 ## The layout
 
-The **calendar is the dashboard.** A rolling two-week grid carries everything with a date on it:
+A slim header holds the tab bar, a weather pill (glyph + temperature, click to refresh) and a settings cog. Five tabs:
 
-| on the grid | source |
-|---|---|
-| daily high/low and a condition glyph | Open-Meteo |
-| your events | Google Calendar |
-| followed-team games | ESPN |
-| earnings dates for stocks you own | Finnhub |
-| theatrical releases | TMDB |
+### Calendar
 
-Click any day for the full detail; click a film pill for its poster, synopsis, director and cast. Each source is wrapped independently — one that fails costs its own pills, not the grid.
+A rolling two-week grid, deliberately sparse so it can stay large: a weather glyph with the day's high/low, event pills (Google events, team games, earnings dates), and any sticky notes pinned to that day. A 🎬 marks days with a film release.
 
-**Sticky notes** live in a tray under the calendar. Drag one onto a day to pin it, drag it between days, or drag it back to the tray to un-pin. Completing a note never deletes it.
+Everything that needs room renders in the **focus strip below the grid** for whichever day is selected:
 
-Four tabs across the top:
+- **Game preview** — both teams' logos and records, kickoff or live score, who's broadcasting, venue, the betting line, and the game leaders. Click a leader for their season game log; click **Standings** for the full league table. When a day holds several games, only one preview shows at a time with dots down the side to page through them.
+- **Movie carousel** — posters for that day's releases with director and top-3 cast; click one for the synopsis.
+- **Fantasy scoreboard** — on Sundays and Mondays only, showing the week's matchup score and each side's top three scorers.
 
-- **Calendar** — the two-week grid and the note tray.
-- **Portfolio** — returns over five windows (see below).
-- **Notes** — every note ever written, with the day it was pinned to, when it was created, and whether it is done. Filter by all / open / done.
-- **Fantasy** — its own tab, intentionally a shell for now.
+Click any day to focus it; double-click for a summary dialog.
 
-A **ticker** runs along the bottom with unread mail and the day's biggest movers, by percentage. It pauses on hover.
+**Sticky notes** live in a tray under the calendar. Drag one onto a day to pin it, between days, or back to the tray to un-pin. Completing a note never deletes it.
 
-Teams are managed in Settings rather than on the main view, since following a team is a rare action and its games belong on the calendar.
+### Sports
+
+One sub-tab per followed team. Each shows the team's record and conference standing, previews of the next five games, recent results, and the latest team news from ESPN. **Georgia Tech football is followed out of the box.**
+
+Sports data needs no API key. It is fetched straight from ESPN's public site API — never through the fantasy proxy, because ESPN answers `403` to datacenter IPs and routing it through a Worker breaks calls that work fine from the browser.
+
+### Portfolio
+
+Returns over five windows, plus a scatter of weight against return. See below.
+
+### Notes
+
+Every note ever written, with the day it was pinned to, when it was created, and whether it is done. Filter by all / open / done.
+
+### Fantasy
+
+Its own tab, intentionally a shell for now.
+
+### Tickers
+
+Two separate crawls along the bottom — **markets** (the day's biggest movers, by percentage) and **inbox** (unread mail). Each pauses on hover.
+
+Teams are managed in Settings, since following a team is a rare action and its games belong on the calendar.
 
 ## Step 4 — Google (Gmail + Calendar)
 
@@ -149,7 +164,11 @@ Twelve Data's free tier allows 800 credits a day and 8 requests a minute. Symbol
 
 The Portfolio tab **never shows a total value.** Percentages are exact; dollar amounts are described only by order of magnitude — "up a few hundred", "down a couple grand", "up tens of thousands". Everything money-shaped goes through one `vague()` function, so there is a single place to change the scale.
 
-Each of the five windows shows the return, a size description, a comment, and the best and worst five holdings by percentage. Below that, holdings are bucketed by share of the portfolio: **Big Dog**, **Heavy Hitter**, **A Good Chunk**, **Pulling Its Weight**, **A Light Sprinkle**, **Rounding Error**.
+Five window cards — today, this week, this month, six months, one year — each showing the return, a size description, and the best and worst five holdings by percentage.
+
+Clicking a card re-plots the **scatter below it**: each holding is a bubble positioned by its return for that window (horizontal) against its share of the portfolio (vertical), with bubble area also tracking weight. That is the whole "how much of it is this, and how is it doing" question in one picture. It is inline SVG — no chart library, and it themes off the same CSS variables as everything else.
+
+**Accounts** split with the sub-tabs beside the Refresh button: all combined, or one at a time. A holding you own in two accounts contributes only its shares from the selected account, so the percentages are genuinely per-account rather than a filtered view of the whole.
 
 This reads public market prices only. It never touches Schwab, Vanguard, or your bank — no login, no credentials, nothing to leak.
 
