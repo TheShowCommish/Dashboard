@@ -29,6 +29,35 @@ const CalendarView = (() => {
   let allGames = [];            // every followed team's schedule
   let gameIdx  = 0;             // which game of the focus day is showing
 
+  /* The focus strip runs unattended on a wall screen: the game previews
+     advance themselves and the poster rail drifts back and forth. Both
+     handles live here so a repaint always clears the old timer. */
+  let gameTimer  = null;
+  let filmTimer  = null;
+  const GAME_MS  = 12000;
+  const FILM_MS  = 4500;
+
+  /* Scrolling a rail smoothly, without relying on scroll-behavior or
+     scrollBy({behavior:'smooth'}) — both are silently dropped when the
+     window is not compositing, which is exactly the unattended case this
+     deck is built for. A plain interval tween always runs. */
+  function glide(rail, to, ms = 600){
+    clearInterval(rail._glide);
+    const from = rail.scrollLeft, delta = to - from, t0 = Date.now();
+    if(!delta) return;
+    rail._glide = setInterval(() => {
+      const k = Math.min(1, (Date.now() - t0) / ms);
+      rail.scrollLeft = from + delta * (0.5 - Math.cos(Math.PI * k) / 2);
+      if(k >= 1) clearInterval(rail._glide);
+    }, 16);
+  }
+
+  /* Nothing animates while the calendar is not the visible tab. */
+  const calVisible = () => {
+    const v = document.getElementById('view-calendar');
+    return !!v && !v.hidden;
+  };
+
   function startOfDay(d){ const x = new Date(d); x.setHours(0,0,0,0); return x; }
   function startOfWeek(d){
     const x = startOfDay(d);
@@ -247,6 +276,7 @@ const CalendarView = (() => {
 
   /* One preview at a time, with dots when a day holds several. */
   function renderGames(){
+    if(gameTimer){ clearInterval(gameTimer); gameTimer = null; }
     const games = gamesOn(focus);
     fGames.innerHTML = '';
     if(!games.length) return;
@@ -269,9 +299,21 @@ const CalendarView = (() => {
                 aria-label="${esc(g.abbr || g.teamName)} game" title="${esc(g.teamName)} ${g.home?'vs':'@'} ${esc(g.opponent)}"></button>`).join('');
       dots.querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
         gameIdx = +b.dataset.i;
-        renderGames();
+        renderGames();        // also restarts the rotation from this game
       });
       wrap.appendChild(dots);
+
+      /* Hold on the one being read: a pointer anywhere over the card
+         pauses the carousel until it leaves. */
+      let held = false;
+      wrap.addEventListener('pointerenter', () => { held = true; });
+      wrap.addEventListener('pointerleave', () => { held = false; });
+
+      gameTimer = setInterval(() => {
+        if(held || !calVisible() || !wrap.isConnected) return;
+        gameIdx = (gameIdx + 1) % games.length;
+        renderGames();
+      }, GAME_MS);
     }
 
     fGames.appendChild(wrap);
@@ -279,6 +321,7 @@ const CalendarView = (() => {
 
   /* Poster carousel for the focus day. */
   function renderMovies(){
+    if(filmTimer){ clearInterval(filmTimer); filmTimer = null; }
     const films = moviesOn(focus);
     fMovies.innerHTML = '';
     if(!films.length) return;
@@ -309,9 +352,27 @@ const CalendarView = (() => {
       b.onclick = () => Movies.open(b.dataset.film));
     const rail = wrap.querySelector('.car-rail');
     wrap.querySelectorAll('[data-car]').forEach(b =>
-      b.onclick = () => rail.scrollBy({left: +b.dataset.car * 320, behavior:'smooth'}));
+      b.onclick = () => glide(rail, rail.scrollLeft + (+b.dataset.car * 320)));
 
     fMovies.appendChild(wrap);
+
+    /* Drift the rail one poster at a time and turn around at each end,
+       so a day with more releases than fit still shows all of them
+       without anyone touching the screen. The scrollbar itself is hidden
+       in CSS — this is the only way to move it, so it must not stall. */
+    let held = false;
+    rail.addEventListener('pointerenter', () => { held = true; });
+    rail.addEventListener('pointerleave', () => { held = false; });
+
+    let dir = 1;
+    filmTimer = setInterval(() => {
+      if(held || !calVisible() || !rail.isConnected) return;
+      const max = rail.scrollWidth - rail.clientWidth;
+      if(max <= 4) return;                       // everything already fits
+      if(rail.scrollLeft >= max - 4) dir = -1;
+      else if(rail.scrollLeft <= 4) dir = 1;
+      glide(rail, Math.max(0, Math.min(max, rail.scrollLeft + dir * 150)));
+    }, FILM_MS);
   }
 
   /* ---- day modal (double-click) ---- */

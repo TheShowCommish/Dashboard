@@ -224,7 +224,12 @@ const Letterboxd = (() => {
     if(!key) return;
 
     const cache = artCache();
-    const need = watchlist.filter(f => !cache[f.slug]);
+    /* Entries cached before genres were stored are refreshed once, so the
+       tab is not permanently missing the genre line for old rows. */
+    const need = watchlist.filter(f => {
+      const a = cache[f.slug];
+      return !a || (!a.miss && !a.genreIds);
+    });
 
     for(let i = 0; i < need.length; i += 5){
       await Promise.all(need.slice(i, i+5).map(async f => {
@@ -240,7 +245,8 @@ const Letterboxd = (() => {
             title: hit.title || f.title,
             year: (hit.release_date || '').slice(0,4),
             overview: hit.overview || '',
-            score: hit.vote_count > 40 ? hit.vote_average : null
+            score: hit.vote_count > 40 ? hit.vote_average : null,
+            genreIds: hit.genre_ids || []
           };
         }catch(e){
           console.error('Poster lookup failed for', f.title, e.message);
@@ -317,6 +323,7 @@ const Letterboxd = (() => {
         tmdbId: a.tmdbId || null,
         overview: a.overview || '',
         score: a.score ?? null,
+        genres: (window.Movies ? Movies.genreNames(a.genreIds) : []),
         url: `https://letterboxd.com/film/${f.slug}/`
       };
     });

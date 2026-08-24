@@ -227,6 +227,9 @@ const Kiosk = (() => {
     const el = overlay();
     if(!el) return;
     el.className = 'ad';
+    /* Team colours are set inline by the sports AD — clear them or the
+       next AD inherits them. */
+    el.removeAttribute('style');
     el.innerHTML = '';
   }
 
@@ -344,10 +347,11 @@ const Kiosk = (() => {
       }).join('')}</ul>`;
   }
 
+  /* Both teams, both sets of season leaders, where to watch — and for
+     baseball the two probable starters, given the room they deserve.
+     The schedule payload alone cannot fill a screen this size, so the
+     summary is fetched and the AD upgrades itself when it lands. */
   function adSports(host){
-    /* Teams.games already carries "next upcoming or most recent today" per
-       team — perfect scope for one glance. Nearest in time to now wins;
-       fall back to the most recent past game if none upcoming. */
     const games = (window.Teams ? Teams.games : []) || [];
     if(!games.length){
       host.innerHTML = `<p class="ad-empty ad-big">No games scheduled for followed teams.</p>`;
@@ -364,27 +368,117 @@ const Kiosk = (() => {
     const g = upcoming[0] || past[0];
     if(!g){ host.innerHTML = `<p class="ad-empty ad-big">No games right now.</p>`; return; }
 
+    /* Schedule-only first paint, so the screen is never empty while the
+       summary is in flight. */
+    host.innerHTML = adSportsHtml(g, null);
+
+    Sports.summary(g.league, g.eventId, g.state === 'in')
+      .then(sum => {
+        /* The AD may have been closed or replaced while this was away. */
+        if(!host.isConnected) return;
+        host.innerHTML = adSportsHtml(g, sum);
+        tint(sum);
+      })
+      .catch(e => console.error('Sports AD summary failed:', e.message));
+  }
+
+  /* Paint the overlay with the two teams' own colours. Cleared by closeAd
+     so the next AD does not inherit them. */
+  function tint(sum){
+    const el = overlay();
+    if(!el) return;
+    const away = sum.sides?.find(s => !s.home);
+    const home = sum.sides?.find(s =>  s.home);
+    if(!away?.color && !home?.color) return;
+    el.style.setProperty('--ad-a', away?.color || home?.color);
+    el.style.setProperty('--ad-h', home?.color || away?.color);
+    el.classList.add('is-tinted');
+  }
+
+  function adSportsHtml(g, sum){
+    const away = sum?.sides?.find(s => !s.home) || (g.me?.home ? g.opp : g.me) || {};
+    const home = sum?.sides?.find(s =>  s.home) || (g.me?.home ? g.me : g.opp) || {};
+
     const kick = new Date(g.kickoff);
-    const when = g.state === 'in'   ? `LIVE ${g.score}`
-              : g.state === 'post' ? `Final ${g.score} · ${g.result === 'win' ? 'W' : 'L'}`
-              : kick.toLocaleString(undefined,{weekday:'long',hour:'numeric',minute:'2-digit'});
+    const live = (sum?.state || g.state) === 'in';
+    const done = (sum?.state || g.state) === 'post';
+    const when = live ? `LIVE · ${sum?.status || g.status || ''}`
+               : done ? `Final ${g.score || ''}`
+               : kick.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
     const day = sameDay(kick, new Date()) ? 'Today'
               : kick.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
 
-    const logo = Sports.logoFor({league:g.league, id:g.id});
+    const logoOf = s => s.logo || Sports.logoFor({league:g.league, id:s.id});
+    const score = (live || done)
+      ? `<span class="ad-sc">${esc(String(away.score ?? ''))}<i>–</i>${esc(String(home.score ?? ''))}</span>`
+      : `<span class="ad-vs">${g.home ? 'vs' : '@'}</span>`;
 
-    host.innerHTML = `
-      <div class="ad-hero">
-        <h1 class="ad-h1">${esc(g.abbr || g.name)} ${g.home ? 'vs' : '@'} ${esc(g.opponent)}</h1>
-        <p class="ad-sub">${esc(Sports.leagueName(g.league))} · ${esc(day)}</p>
-      </div>
-      <div class="ad-game">
-        <img class="ad-game-logo" src="${esc(logo)}" alt="">
-        <div class="ad-game-meta">
-          <p class="ad-big ${g.state === 'in' ? 'ad-live' : ''}">${esc(when)}</p>
-          ${g.venue ? `<p class="ad-sub">${esc(g.venue)}</p>` : ''}
+    const side = (s, cls) => `
+      <div class="ad-team ${cls}">
+        <img class="ad-team-logo" src="${esc(logoOf(s))}" alt="">
+        <span class="ad-team-name">${esc(s.abbr || s.name || '')}</span>
+        <span class="ad-team-rec">${esc(s.record || '')}</span>
+      </div>`;
+
+    const tv = (sum?.broadcast?.length ? sum.broadcast : g.broadcast) || [];
+    const meta = [
+      esc(Sports.leagueName(g.league)),
+      esc(day),
+      sum?.venue || g.venue ? esc(sum?.venue || g.venue) : '',
+      tv.length ? `📺 ${esc(tv.join(', '))}` : ''
+    ].filter(Boolean).join(' · ');
+
+    /* Leaders come back flat with a team abbreviation on each row. */
+    const forTeam = s => (sum?.leaders || []).filter(l =>
+      l.team && s.abbr && l.team.toUpperCase() === s.abbr.toUpperCase());
+
+    const column = s => {
+      const rows = forTeam(s);
+      return `<div class="ad-lead-col">
+        <h3 class="ad-h3">${esc(s.abbr || s.name || '')}</h3>
+        ${!rows.length ? '<p class="ad-empty">No season leaders published.</p>' : ''}
+        <ul class="ad-lead">${rows.map(l => `
+          <li>
+            <span class="ad-lead-cat">${esc(l.category)}</span>
+            <span class="ad-lead-name">${esc(l.athlete)}${l.position ? ` <i>${esc(l.position)}</i>` : ''}</span>
+            <span class="ad-lead-val">${esc(l.value)}</span>
+          </li>`).join('')}</ul>
+      </div>`;
+    };
+
+    const pitcher = (s, cls) => {
+      const p = s.probable;
+      if(!p) return `<div class="ad-sp ${cls}"><p class="ad-sp-tbd">${esc(s.abbr || '')} starter TBD</p></div>`;
+      return `<div class="ad-sp ${cls}">
+        ${p.headshot ? `<img class="ad-sp-shot" src="${esc(p.headshot)}" alt="">` : ''}
+        <div class="ad-sp-txt">
+          <span class="ad-sp-lab">${esc(s.abbr || '')} · ${esc(p.label || 'Starter')}</span>
+          <span class="ad-sp-name">${esc(p.name)}${p.throws ? ` <i>${esc(p.throws)}HP</i>` : ''}</span>
+          <span class="ad-sp-line">${esc(p.line || '')}</span>
         </div>
       </div>`;
+    };
+
+    const probables = (!done && (away.probable || home.probable))
+      ? `<div class="ad-sps">
+           <span class="ad-sp-head">Probable starters</span>
+           <div class="ad-sp-row">${pitcher(away,'is-away')}${pitcher(home,'is-home')}</div>
+         </div>`
+      : '';
+
+    return `
+      <div class="ad-matchup">
+        ${side(away,'is-away')}
+        <div class="ad-mid">
+          ${score}
+          <span class="ad-when${live ? ' ad-live' : ''}">${esc(when)}</span>
+        </div>
+        ${side(home,'is-home')}
+      </div>
+      <p class="ad-sub ad-gmeta">${meta}</p>
+      ${probables}
+      ${(sum?.leaders || []).length
+        ? `<div class="ad-leads">${column(away)}${column(home)}</div>` : ''}`;
   }
 
   function adPortfolio(host){
@@ -406,21 +500,26 @@ const Kiosk = (() => {
     const sign = avg >= 0 ? '+' : '−';
 
     const gainers = [...movers].filter(m => m.dp > 0).sort((a,b) => b.dp - a.dp).slice(0, 5);
+    const losers  = [...movers].filter(m => m.dp < 0).sort((a,b) => a.dp - b.dp).slice(0, 5);
+
+    const col = (label, list, cls, empty) => `
+      <div class="ad-col">
+        <h3 class="ad-h3">${label}</h3>
+        <ul class="ad-list">${list.length ? list.map(m => `
+          <li class="ad-row">
+            <span class="ad-title">${esc(m.symbol)}</span>
+            <span class="${cls} ad-big-sm">${m.dp >= 0 ? '+' : '−'}${Math.abs(m.dp).toFixed(2)}%</span>
+          </li>`).join('') : `<li class="ad-empty">${empty}</li>`}</ul>
+      </div>`;
 
     host.innerHTML = `
       <div class="ad-hero">
         <h1 class="ad-h1 ${avg >= 0 ? 'ad-up' : 'ad-down'}">${sign}${Math.abs(avg).toFixed(2)}%</h1>
         <p class="ad-sub">Today across ${dps.length} holdings</p>
       </div>
-      <div class="ad-cols">
-        <div class="ad-col">
-          <h3 class="ad-h3">Top gainers</h3>
-          <ul class="ad-list">${gainers.length ? gainers.map(m => `
-            <li class="ad-row">
-              <span class="ad-title">${esc(m.symbol)}</span>
-              <span class="ad-up ad-big-sm">+${m.dp.toFixed(2)}%</span>
-            </li>`).join('') : '<li class="ad-empty">Nothing green today.</li>'}</ul>
-        </div>
+      <div class="ad-cols is-two">
+        ${col('Top gainers', gainers, 'ad-up', 'Nothing green today.')}
+        ${col('Top losers',  losers,  'ad-down', 'Nothing red today.')}
       </div>`;
   }
 

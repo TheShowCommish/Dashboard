@@ -13,6 +13,48 @@ const Movies = (() => {
   const IMG = 'https://image.tmdb.org/t/p/w342';
   let films  = [];        // enriched: credits, genres, runtime — the calendar detail
   let listed = [];        // every upcoming release, list payload only
+  let playing = [];       // in cinemas now, most popular first
+  let genres = {};        // { id: name } — one request, cached for the session
+
+  /* The list payloads carry genre ids, not names, so every poster can show
+     its genre without paying for a detail lookup per film. */
+  function genreNames(ids){
+    return (ids || []).map(id => genres[id]).filter(Boolean).slice(0, 2);
+  }
+
+  async function loadGenres(){
+    if(Object.keys(genres).length) return;
+    try{
+      const d = guard(await getJSON(
+        `https://api.themoviedb.org/3/genre/movie/list?language=en-US&api_key=${key()}`));
+      genres = Object.fromEntries((d.genres || []).map(g => [g.id, g.name]));
+    }catch(e){ console.error('Genre list unavailable:', e.message); }
+  }
+
+  /* What is actually in cinemas this week, ranked by TMDB popularity —
+     the "worth going out for" shelf, as opposed to the release calendar. */
+  async function loadPlaying(){
+    try{
+      const pages = await Promise.all([1,2].map(n =>
+        getJSON('https://api.themoviedb.org/3/movie/now_playing' +
+          `?language=en-US&page=${n}&region=US&api_key=${key()}`)
+          .then(guard)
+          .catch(e => { console.error('Now playing page', n, 'failed:', e.message); return null; })));
+
+      const byId = new Map();
+      for(const m of pages.filter(Boolean).flatMap(d => d.results || []))
+        if(m.id != null && !byId.has(m.id)) byId.set(m.id, m);
+
+      playing = [...byId.values()]
+        .sort((a,b) => (b.popularity || 0) - (a.popularity || 0))
+        .map(m => ({
+          id: m.id, title: m.title, date: m.release_date || '',
+          poster: m.poster_path || '',
+          score: m.vote_count > 40 ? m.vote_average : null,
+          genres: genreNames(m.genre_ids)
+        }));
+    }catch(e){ console.error('Now playing failed:', e.message); }
+  }
 
   const key = () => Store.get('keys.tmdb','');
 
@@ -35,6 +77,8 @@ const Movies = (() => {
 
   async function load(){
     if(!key()) return;                      // no key: the calendar simply carries no films
+
+    await loadGenres();
 
     try{
       const first = guard(await getJSON(
@@ -65,8 +109,12 @@ const Movies = (() => {
       listed = soon.map(m => ({
         id: m.id, title: m.title, date: m.release_date,
         poster: m.poster_path || '',
-        score: m.vote_count > 40 ? m.vote_average : null
+        score: m.vote_count > 40 ? m.vote_average : null,
+        genres: genreNames(m.genre_ids)
       }));
+
+      /* Independent of the upcoming list, and cheap — two pages. */
+      await loadPlaying();
 
       /* One detail call per film, in parallel. A film whose details fail
          still renders from the list payload it already has. */
@@ -164,8 +212,11 @@ const Movies = (() => {
     /* [{id, title, date}] for the calendar — every release in range, not
        just the enriched ones, so a pill appears for the full window. */
     get releases(){ return listed.map(f => ({id:f.id, title:f.title, date:f.date})); },
-    /* The whole forward window, list payload, for the Movies tab rails. */
+    /* The whole forward window, list payload, for the Movies tab grids. */
     get upcoming(){ return listed; },
+    /* In cinemas now, most popular first. */
+    get playing(){ return playing; },
+    genreNames,
     /* Full record for the poster carousel, which wants art and credits.
        Falls back to the list payload for films past the detail cap — the
        carousel's credit lines are all optional, the poster is not. */

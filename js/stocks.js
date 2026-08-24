@@ -270,6 +270,27 @@ const Stocks = (() => {
     }
   }
 
+  /* ---- Twelve Data credit budget ----
+     The free tier is metered in CREDITS, not requests: a batch of eight
+     symbols spends eight of the eight allowed in a minute. Counting
+     requests instead of credits is why a 41-holding portfolio only ever
+     got history for the first batch — everything after it came back
+     rate-limited and was silently dropped. */
+  const TD_PER_MIN = 8;
+  let tdSpent = [];        // timestamps of credits spent in the last minute
+
+  async function tdBudget(cost){
+    for(;;){
+      const cutoff = Date.now() - 61000;
+      tdSpent = tdSpent.filter(t => t > cutoff);
+      if(tdSpent.length + cost <= TD_PER_MIN) break;
+      const wait = (tdSpent[0] + 61000) - Date.now();
+      await new Promise(r => setTimeout(r, Math.max(1000, wait)));
+    }
+    const now = Date.now();
+    for(let i = 0; i < cost; i++) tdSpent.push(now);
+  }
+
   /* ---- quote gaps (Twelve Data) ----
      Finnhub's free tier has no quote for mutual funds, money-market funds
      and a fair few ETFs — it answers 200 with c:0. Twelve Data prices most
@@ -289,6 +310,7 @@ const Stocks = (() => {
 
     for(let i = 0; i < tickers.length; i += 8){
       const batch = tickers.slice(i, i+8);
+      await tdBudget(batch.length);
       try{
         const d = await getJSON('https://api.twelvedata.com/quote' +
           `?symbol=${encodeURIComponent(batch.join(','))}&apikey=${key}`);
@@ -343,21 +365,16 @@ const Stocks = (() => {
     const bySym = new Map(hold.map(h => [h.ticker, h.symbol]));
     const tickers = [...bySym.keys()];
     const next = {};
-    let requests = 0;
+    let complete = true;
 
     for(let i = 0; i < tickers.length; i += 8){
       const batch = tickers.slice(i, i+8);
-
-      /* Free tier allows 8 requests a minute. Batching 8 symbols per
-         request keeps 41 holdings to ~6 requests, but pause if a larger
-         portfolio would push past the limit. */
-      if(requests >= 7){ await new Promise(r => setTimeout(r, 61000)); requests = 0; }
+      await tdBudget(batch.length);
 
       try{
         const d = await getJSON('https://api.twelvedata.com/time_series' +
           `?symbol=${encodeURIComponent(batch.join(','))}` +
           `&interval=1day&outputsize=300&apikey=${key}`);
-        requests++;
 
         if(d && d.code && d.code !== 200) throw new Error(d.message || `Twelve Data error ${d.code}`);
 
@@ -372,17 +389,28 @@ const Stocks = (() => {
         }
       }catch(e){
         console.error('History failed for', batch.join(','), e.message);
+        complete = false;
         if(/api key|401|403/i.test(e.message)){
           Store.toast(`Twelve Data rejected the key: ${e.message}`);
-          return;
+          break;
         }
+      }
+
+      /* Merged and painted per batch: a full portfolio takes minutes to
+         walk at eight credits a minute, and the windows should fill in as
+         it goes rather than all at the end. Merging also means a batch
+         that fails does not wipe the symbols that already worked. */
+      if(Object.keys(next).length){
+        anchors = {...anchors, ...next};
+        /* No timestamp until the walk finishes: a reload part-way through
+           keeps the anchors it already has and picks the walk back up,
+           rather than treating a half-filled cache as today's answer. */
+        Store.set('portfolio.history', {at:null, anchors});
+        if(Store.get('holdings',[]).length) render();
       }
     }
 
-    if(Object.keys(next).length){
-      anchors = next;
-      Store.set('portfolio.history', {at:new Date().toISOString(), anchors});
-    }
+    if(complete) Store.set('portfolio.history', {at:new Date().toISOString(), anchors});
   }
 
   /* values arrive newest-first; pick the last close at or before each mark. */

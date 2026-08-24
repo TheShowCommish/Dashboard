@@ -669,8 +669,11 @@ input,select{
 /* ---- drawer + modal ---- */
 /* The hidden attribute must beat the display rules below, or Cancel
    and Close appear to do nothing. Keep this first. */
-#drawer[hidden],#scrim[hidden],#teamModal[hidden],#movieModal[hidden],
-#dayModal[hidden],#standModal[hidden],#playerModal[hidden]{display:none !important;}
+/* Selected by class, not by an id list: every popup added since carries
+   class="modal", and the two that were missing from the old list
+   (#gameModal, #wxModal) rendered inline in the page instead of over it,
+   which read as "the button does nothing". */
+#drawer[hidden],#scrim[hidden],.modal[hidden]{display:none !important;}
 
 #scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:60;}
 #drawer{
@@ -695,7 +698,7 @@ fieldset label{display:block;font-size:12px;color:var(--muted);margin-bottom:10p
 fieldset label input,fieldset label select{margin-top:4px;}
 .note-line{font-size:12px;color:var(--muted);margin:0 0 14px;}
 
-#teamModal,#movieModal,#dayModal,#standModal,#playerModal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:80;display:flex;align-items:center;justify-content:center;padding:20px;}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:80;display:flex;align-items:center;justify-content:center;padding:20px;}
 .modal-card{
   background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);
   padding:20px;width:min(360px,92vw);
@@ -1160,3 +1163,149 @@ body{
 /* When rotation is on and a real ad is up, the underlying nav gets hidden
    from focus and screen readers — the overlay owns the viewport. */
 body.kiosk-on #adOverlay.is-on ~ *{}
+
+/* ============================================================
+   H-batch: slim game cards, tinted sports AD, movie grids,
+   scroll-free portfolio, full-height weather tile.
+   ============================================================ */
+
+/* ---- probable starters (baseball) ---- */
+.gc-probables{margin-top:11px;padding-top:9px;border-top:1px solid var(--edge);}
+.gc-pitches{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
+.gc-pitch{
+  display:flex;align-items:center;gap:8px;text-align:left;
+  background:color-mix(in srgb,var(--panel-2) 70%,transparent);
+  border:1px solid var(--edge);border-radius:8px;padding:6px 8px;
+  color:inherit;font:inherit;cursor:pointer;min-width:0;
+  transition:border-color .16s var(--ease);
+}
+.gc-pitch:hover{border-color:var(--accent);}
+.gc-pitch.is-tbd{color:var(--muted);font-size:11px;justify-content:center;cursor:default;}
+.gc-pitch-shot{
+  width:34px;height:34px;border-radius:99px;object-fit:cover;
+  background:var(--panel);flex:0 0 auto;
+}
+.gc-pitch-txt{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.gc-pitch-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gc-pitch-name i{font-style:normal;color:var(--muted);font-family:var(--mono);font-size:10px;}
+.gc-pitch-line{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
+.gs-pitches{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-bottom:14px;}
+
+/* ---- movie grids (no side-scrolling) ---- */
+.mv-grid{
+  display:grid;gap:12px;
+  grid-template-columns:repeat(auto-fill,minmax(118px,1fr));
+  margin-top:10px;
+}
+.mv-card{
+  position:relative;display:flex;flex-direction:column;gap:3px;text-align:left;
+  background:transparent;border:0;padding:0;cursor:pointer;color:var(--text);font:inherit;
+  min-width:0;
+}
+.mv-poster{
+  width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:9px;
+  border:1px solid var(--edge);transition:transform .18s var(--ease),border-color .18s var(--ease);
+}
+.mv-card:hover .mv-poster{transform:translateY(-3px);border-color:var(--accent);}
+.mv-genre{
+  font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.04em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.mv-more{font-family:var(--mono);font-size:10px;color:var(--muted);margin:8px 0 0;}
+
+/* The focus-strip rail still scrolls, it just does it on its own now. */
+/* Snap set to proximity, not mandatory: the focus-strip rail is driven by
+   a timer, and mandatory snapping fights a programmatic scroll position. */
+.car-rail{scrollbar-width:none;-ms-overflow-style:none;scroll-snap-type:x proximity;}
+.car-rail::-webkit-scrollbar{display:none;}
+
+/* ---- portfolio: everything on one screen ---- */
+#pfBody{overflow-y:hidden;}
+.pf-body{display:flex;flex-direction:column;min-height:0;padding-bottom:0;}
+.pf-grid,.plot-head,.pf-foot,.pf-unpriced{flex:0 0 auto;}
+.pf-grid{gap:10px;}
+.pf-card{padding:10px 12px;}
+.pf-pct{font-size:23px;}
+.pf-h3{margin:12px 0 6px;}
+/* Fills what the cards leave, but capped: past roughly this height the
+   plot is only letterboxing itself, and the tab reads better with the
+   graph a little smaller than with it stretched. */
+.plot-wrap{flex:1 1 auto;min-height:130px;max-height:46vh;overflow:hidden;display:flex;}
+.plot{width:100%;height:100%;min-width:0;}
+.pf-foot{margin:8px 0 4px;}
+.pf-unpriced{margin-top:8px;padding:7px 10px;}
+
+/* ---- weather tile fills its cell ---- */
+.wx-tile{display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+#weatherBody{flex:1;min-height:0;display:flex;flex-direction:column;}
+.wx-tile-grid{flex:1;min-height:0;}
+.wx-tile-now{flex:0 0 auto;}
+/* The seven-day row is the part that grows: on a 1080 screen the tile has
+   room to spare under the hour strip, and a short row of boxes floating
+   above dead space is the "blank space" this fixes. The floor stops flex
+   from collapsing it on a shorter screen instead. */
+.wx-tile .wx-days{flex:1 1 auto;min-height:78px;align-content:stretch;}
+.wx-tile .wx-day{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 4px;}
+.wx-tile .wx-hours{scrollbar-width:none;}
+.wx-tile .wx-hours::-webkit-scrollbar{display:none;}
+.wx-foot{flex:0 0 auto;}
+
+/* ---- sports AD ---- */
+#adOverlay.is-tinted{
+  background:
+    radial-gradient(58% 78% at 6% 46%, color-mix(in srgb,var(--ad-a) 40%,transparent), transparent 72%),
+    radial-gradient(58% 78% at 94% 46%, color-mix(in srgb,var(--ad-h) 40%,transparent), transparent 72%),
+    var(--ink);
+}
+.ad-matchup{
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:40px;
+}
+.ad-team{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.ad-team-logo{width:190px;height:190px;object-fit:contain;
+  filter:drop-shadow(0 8px 26px rgba(0,0,0,.5));}
+.ad-team-name{font-family:var(--display);font-size:52px;font-weight:700;line-height:1;}
+.ad-team-rec{font-family:var(--mono);font-size:22px;color:var(--muted);}
+.ad-mid{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.ad-vs{font-family:var(--display);font-size:44px;color:var(--muted);}
+.ad-sc{font-family:var(--mono);font-size:72px;font-weight:700;display:flex;gap:14px;align-items:center;}
+.ad-sc i{font-style:normal;color:var(--muted);font-size:44px;}
+.ad-when{font-family:var(--mono);font-size:30px;color:var(--text);}
+.ad-gmeta{text-align:center;margin:4px 0 0;font-size:22px;}
+
+.ad-sps{margin-top:6px;}
+.ad-sp-head{
+  font-family:var(--mono);letter-spacing:.24em;font-size:14px;color:var(--muted);
+  text-transform:uppercase;display:block;text-align:center;margin-bottom:10px;
+}
+.ad-sp-row{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+.ad-sp{
+  display:flex;align-items:center;gap:18px;padding:14px 20px;
+  border:1px solid color-mix(in srgb,var(--muted) 40%,transparent);border-radius:16px;
+  background:color-mix(in srgb,#000 26%,transparent);
+}
+.ad-sp.is-home{flex-direction:row-reverse;text-align:right;}
+.ad-sp-shot{width:104px;height:104px;border-radius:99px;object-fit:cover;background:var(--panel-2);}
+.ad-sp-txt{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.ad-sp.is-home .ad-sp-txt{align-items:flex-end;}
+.ad-sp-lab{font-family:var(--mono);font-size:14px;letter-spacing:.18em;color:var(--accent);text-transform:uppercase;}
+.ad-sp-name{font-family:var(--display);font-size:40px;font-weight:700;line-height:1.05;}
+.ad-sp-name i{font-style:normal;font-family:var(--mono);font-size:20px;color:var(--muted);}
+.ad-sp-line{font-family:var(--mono);font-size:24px;color:var(--text);}
+.ad-sp-tbd{font-size:24px;color:var(--muted);margin:0;}
+
+.ad-leads{display:grid;grid-template-columns:1fr 1fr;gap:40px;flex:1;min-height:0;}
+.ad-lead-col{min-height:0;display:flex;flex-direction:column;}
+.ad-lead{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;}
+.ad-lead li{
+  display:grid;grid-template-columns:1fr auto;gap:4px 14px;align-items:baseline;
+  border-bottom:1px solid color-mix(in srgb,var(--muted) 22%,transparent);padding-bottom:6px;
+}
+.ad-lead-cat{
+  grid-column:1 / -1;font-family:var(--mono);font-size:13px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);
+}
+.ad-lead-name{font-size:26px;}
+.ad-lead-name i{font-style:normal;color:var(--muted);font-family:var(--mono);font-size:16px;}
+.ad-lead-val{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--accent);}
+
+.ad-cols.is-two{grid-template-columns:1fr 1fr;}

@@ -93,8 +93,8 @@ A rolling two-week grid, deliberately sparse so it can stay large: a weather gly
 
 Everything that needs room renders in the **focus strip below the grid** for whichever day is selected:
 
-- **Game preview** — both teams' logos and records, kickoff or live score, who's broadcasting, venue, the betting line, and the game leaders. Click a leader for their season game log; click **Standings** for the full league table. When a day holds several games, only one preview shows at a time with dots down the side to page through them.
-- **Movie carousel** — posters for that day's releases with director and top-3 cast; click one for the synopsis.
+- **Game preview** — both teams' logos and records, kickoff or live score, who's broadcasting, venue and the betting line. For baseball it also carries both **probable starting pitchers** with their season line. Click the card for the full stats popup, or **Standings** for the league table. When a day holds several games, one preview shows at a time and they **rotate themselves every 12 seconds**; the dots page through them by hand, and a pointer over the card holds it.
+- **Movie carousel** — posters for that day's releases with director and top-3 cast; click one for the synopsis. The rail **scrolls itself** back and forth when the day has more releases than fit, and shows no scrollbar.
 - **Fantasy scoreboard** — on Sundays and Mondays only, showing the week's matchup score and each side's top three scorers.
 
 Click any day to focus it; double-click for a summary dialog.
@@ -107,15 +107,18 @@ Click any day to focus it; double-click for a summary dialog.
 
 One sub-tab per followed team, showing the team's record and conference standing, the schedule, recent results, and the latest team news from ESPN. **Georgia Tech football is followed out of the box.**
 
-The **whole remaining season** is listed, not a fixed handful of games. The next three get full preview cards; the rest are compact rows, because each preview card costs a summary request to enrich and a 162-game baseball season would fire one per game. In a preview card, each team's stat leaders sit stacked directly under that team's own logo, so a stat is always on the same side as the team it belongs to.
+The **whole remaining season** is listed, not a fixed handful of games. The next three get preview cards; the rest are compact rows, because each preview card costs a summary request to enrich and a 162-game baseball season would fire one per game.
 
-Clicking any **recent result** — or any row in the rest-of-season list — opens a stats popup with the final line, the per-quarter score, both teams' totals side by side, and the leaders. Every popup in the app closes three ways: the × in its corner, a click on the backdrop, or Escape.
+A preview card carries only what you read at a glance: the two teams, their records, when it starts, where to watch, the venue and the line — plus both **probable starting pitchers** for baseball. Everything else is one click away.
+
+**Every game on the tab opens the stats popup** — the preview cards, the rest-of-season rows and the recent results alike. The popup holds the final line, the per-quarter score, both teams' totals side by side, the probable starters before first pitch, and each side's leaders; click a leader for their season game log. Every popup in the app closes three ways: the × in its corner, a click on the backdrop, or Escape.
 
 Sports data needs no API key. It is fetched straight from ESPN's public site API — never through the fantasy proxy, because ESPN answers `403` to datacenter IPs and routing it through a Worker breaks calls that work fine from the browser.
 
 ### Portfolio
 
-Returns over five windows, plus a scatter of weight against return. See below.
+Returns over five windows, plus a scatter of weight against return. See below. The whole tab is sized to
+**fit its screen without scrolling** — the plot takes whatever room the cards leave.
 
 **Every holding is plotted**, including ones with no price history for the chosen window — those sit in a
 dashed "no history" lane on the left rather than being dropped from the chart or, worse, drawn at 0% as
@@ -123,13 +126,18 @@ though they were flat. Hovering any bubble shows its ticker, its return, and its
 
 ### Movies
 
-Three strips:
+Four blocks. Posters wrap into a **grid** — a few rows deep, no side-scrolling — and every poster carries
+its genre under the title:
 
-- **Must watch** — your Letterboxd watchlist as a scrolling poster carousel.
+- **Must watch** — your Letterboxd watchlist.
+- **Popular movies out now** — what is actually in cinemas this week, ranked by TMDB popularity.
 - **Coming out** — upcoming theatrical releases from TMDB, the same feed that puts 🎬 pills on the
   calendar, here with room for posters. The full forward window of the endpoint is fetched, not just the
   first page.
 - **Recently watched** — your Letterboxd diary feed, with your star ratings.
+
+Each grid stops at a couple of dozen posters and says how many it left out, so one 500-film watchlist
+cannot push everything else off the screen.
 
 See **Step 8** for the Letterboxd setup.
 
@@ -146,6 +154,30 @@ Its own tab, intentionally a shell for now.
 Two separate crawls along the bottom — **markets** (the day's biggest movers, by percentage) and **inbox** (unread mail). Each pauses on hover.
 
 Teams are managed in Settings, since following a team is a rare action and its games belong on the calendar.
+
+### Kiosk rotation
+
+**AUTO** in the header hands the deck over to itself: each tab holds for 15 seconds, and after a full pass
+one full-screen **AD** summarises the most important thing from a single tab for 30 seconds. ADs take
+turns, one per pass, so every tab gets equal airtime. Touching the screen pauses everything and the
+rotation resumes 20 seconds after the last interaction; **SKIP** jumps to the next AD without counting as
+an interruption.
+
+What the ADs show:
+
+- **Calendar** — today's events, or if today is empty, the next day inside a week that isn't, headed
+  "In 4 days". If the whole week is empty the AD is **skipped** and the next pass starts immediately —
+  the only slot that is ever skipped rather than rendered.
+- **Sports** — the next game as a full preview: both teams' logos and records, the screen tinted with
+  each team's own colours, where to watch, both sides' season stat leaders, and for baseball the two
+  probable starting pitchers at full size.
+- **Portfolio** — today's move, with the day's top gainers and top losers.
+- **Movies**, **Notes**, **Fantasy** — the next release or watchlist pick, the nearest open note, and the
+  current (or, midweek, the coming) matchup.
+
+**Settings → Kiosk previews** opens any single AD on demand and holds it there — no rotation, no timer —
+so it can be restyled without waiting for its slot. It works whether AUTO is on or off, closes with the ✕
+or Escape, and is `Kiosk.previewAd('sports')` from the console.
 
 ## Step 4 — Google (Gmail + Calendar)
 

@@ -40,42 +40,44 @@ const GameCard = (() => {
     return el;
   }
 
-  /* Each team's leaders sit under that team's own logo, so the buttons are
-     always on the same side of the card as the team they belong to. They are
-     stacked vertically and kept small: a card can carry six of them and the
-     matchup itself must stay the thing you read first. */
-  function statsHtml(leaders){
-    if(!leaders.length) return '';
-    return `<div class="gc-sidestats">${leaders.map(l => `
-      <button class="gc-player" data-athlete="${esc(l.athleteId || '')}"
-              data-name="${esc(l.athlete)}" data-pos="${esc(l.position)}"
-              data-shot="${esc(l.headshot)}"
-              title="Game log for ${esc(l.athlete)} · ${esc(l.category)}">
-        <span class="gc-pcat">${esc(l.category)}</span>
-        <span class="gc-pname">${esc(l.athlete)}${l.position ? ` <i>${esc(l.position)}</i>` : ''}</span>
-        <span class="gc-pval">${esc(l.value)}</span>
-      </button>`).join('')}</div>`;
-  }
-
-  function sideHtml(s, g, leaders = []){
+  function sideHtml(s, g){
     const logo = s.logo || Sports.logoFor({league:g.league, id:s.id});
     return `<div class="gc-side">
       <img class="gc-logo" src="${esc(logo)}" alt="" loading="lazy">
       <span class="gc-name">${esc(s.abbr || s.name)}</span>
-      <span class="gc-rec">${esc(s.record || '—')}</span>
-      ${statsHtml(leaders)}
+      <span class="gc-rec">${esc(s.record || '&mdash;')}</span>
     </div>`;
   }
 
-  /* leaders[].team is an abbreviation; match it to the side. Anything that
-     matches neither side (ESPN occasionally omits the team block) is dropped
-     rather than guessed at, so a stat never lands under the wrong team. */
-  function splitLeaders(leaders, away, home){
-    const mine = (side) => leaders.filter(l =>
-      l.team && side.abbr && l.team.toUpperCase() === side.abbr.toUpperCase());
-    return {away: mine(away).slice(0,4), home: mine(home).slice(0,4)};
+  /* Baseball is the one sport whose matchup is really a pitching matchup,
+     and ESPN publishes the probables days ahead of first pitch. Every other
+     league leaves this empty and the row disappears. */
+  function probablesHtml(away, home){
+    if(!away?.probable && !home?.probable) return '';
+    const one = s => {
+      const p = s?.probable;
+      if(!p) return `<span class="gc-pitch is-tbd">Starter TBD</span>`;
+      return `<button class="gc-pitch" data-athlete="${esc(p.id || '')}"
+                data-name="${esc(p.name)}" data-pos="${esc(p.position)}"
+                data-shot="${esc(p.headshot)}"
+                title="Game log for ${esc(p.name)}">
+        ${p.headshot ? `<img class="gc-pitch-shot" src="${esc(p.headshot)}" alt="" loading="lazy">` : ''}
+        <span class="gc-pitch-txt">
+          <span class="gc-pitch-name">${esc(p.name)}${p.throws ? ` <i>${esc(p.throws)}HP</i>` : ''}</span>
+          <span class="gc-pitch-line">${esc(p.line || p.label)}</span>
+        </span>
+      </button>`;
+    };
+    return `<div class="gc-probables">
+      <span class="gc-lab">Probable starters</span>
+      <div class="gc-pitches">${one(away)}${one(home)}</div>
+    </div>`;
   }
 
+  /* Deliberately thin: the matchup, when it is, both records, and where to
+     watch. Everything else — leaders, team totals, the line score — is one
+     click away in the game modal rather than crowding three of these onto
+     the top of the tab. */
   function render(g, sum){
     const state = sum?.state || g.state;
     const live  = state === 'in';
@@ -94,15 +96,12 @@ const GameCard = (() => {
     const scoreBlock = (live || done)
       ? `<div class="gc-score">
            <b class="${done && +away.score > +home.score ? 'win' : ''}">${esc(String(away.score ?? ''))}</b>
-           <i>–</i>
+           <i>&ndash;</i>
            <b class="${done && +home.score > +away.score ? 'win' : ''}">${esc(String(home.score ?? ''))}</b>
          </div>`
       : `<div class="gc-at">@</div>`;
 
     const tv = (sum?.broadcast?.length ? sum.broadcast : g.broadcast) || [];
-
-    const split = splitLeaders(sum?.leaders || [], away, home);
-    const anyLeaders = split.away.length || split.home.length;
 
     return `
       <div class="gc-top">
@@ -111,13 +110,11 @@ const GameCard = (() => {
         <span class="gc-when">${esc(when)}</span>
       </div>
       <div class="gc-matchup">
-        ${sideHtml(away, g, split.away)}
-        <div class="gc-mid">
-          ${scoreBlock}
-          ${anyLeaders ? `<span class="gc-lab">${live || done ? 'Leaders' : 'Watch for'}</span>` : ''}
-        </div>
-        ${sideHtml(home, g, split.home)}
+        ${sideHtml(away, g)}
+        <div class="gc-mid">${scoreBlock}</div>
+        ${sideHtml(home, g)}
       </div>
+      ${done ? '' : probablesHtml(away, home)}
       <div class="gc-meta">
         ${tv.length ? `<span class="gc-tv">📺 ${esc(tv.join(', '))}</span>` : ''}
         ${(sum?.venue || g.venue) ? `<span>📍 ${esc(sum?.venue || g.venue)}</span>` : ''}
@@ -327,7 +324,26 @@ const GameStats = (() => {
       <p class="row-sub gs-status">${esc(sum.status || 'Final')}${
         sum.odds ? ` · ${esc(sum.odds)}` : ''}</p>` : '';
 
-    const detail = scoreLine + periodTable(sides) +
+    /* Pre-game baseball has no box score yet, but it does have the two
+       probable starters — which is the whole reason to open the game. */
+    const probables = (sum.state !== 'post' && (away?.probable || home?.probable))
+      ? `<h3 class="pf-h3">Probable starters</h3>
+         <div class="gs-pitches">${[away, home].map(s => {
+            const p = s?.probable;
+            if(!p) return `<span class="gc-pitch is-tbd">${esc(s?.abbr || '')} starter TBD</span>`;
+            return `<button class="gc-pitch" data-athlete="${esc(p.id || '')}"
+                      data-name="${esc(p.name)}" data-pos="${esc(p.position)}"
+                      data-shot="${esc(p.headshot)}">
+              ${p.headshot ? `<img class="gc-pitch-shot" src="${esc(p.headshot)}" alt="">` : ''}
+              <span class="gc-pitch-txt">
+                <span class="gc-pitch-name">${esc(s.abbr || '')} · ${esc(p.name)}${
+                  p.throws ? ` <i>${esc(p.throws)}HP</i>` : ''}</span>
+                <span class="gc-pitch-line">${esc(p.line || p.label)}</span>
+              </span></button>`;
+          }).join('')}</div>`
+      : '';
+
+    const detail = scoreLine + probables + periodTable(sides) +
       statTable(sum.teamStats || [], sides) + leaderHtml(sum.leaders || []);
 
     body.innerHTML = headHtml(g) +

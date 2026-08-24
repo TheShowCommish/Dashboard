@@ -272,15 +272,33 @@ const Teams = (() => {
     if(state === 'post' && isToday(new Date(e.date)))
       result = me.winner === true ? 'win' : me.winner === false ? 'loss' : null;
 
+    /* Both sides in full, and the event id: the kiosk's sports AD fetches
+       the summary for this game, and a tile row that only knows "us and a
+       name" cannot ask for it or draw the other team's logo. */
+    const side = c => ({
+      id: c.team?.id,
+      name: c.team?.displayName || c.team?.name || 'TBD',
+      abbr: c.team?.abbreviation || '',
+      logo: c.team?.logos?.[0]?.href || c.team?.logo || '',
+      record: c.records?.find(r => /total|overall/i.test(r.name || r.type || ''))?.summary
+           || c.records?.[0]?.summary || '',
+      score: c.score?.displayValue ?? c.score ?? '',
+      home: c.homeAway === 'home'
+    });
+
     return {
+      eventId: e.id,
       league:t.league, name:t.name, abbr:t.abbr,
       opponent: opp.team?.displayName || opp.team?.name || 'TBD',
       home: me.homeAway === 'home',
       kickoff: e.date,
       venue: comp.venue?.fullName || '',
+      broadcast: (comp.broadcasts || []).flatMap(b => b.names || [b.media?.shortName]).filter(Boolean),
       state, result,
       score: state !== 'pre'
         ? `${me.score?.displayValue ?? me.score ?? ''}–${opp.score?.displayValue ?? opp.score ?? ''}` : '',
+      me: side(me),
+      opp: side(opp),
       id: String(t.id)
     };
   }

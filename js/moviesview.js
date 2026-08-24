@@ -1,47 +1,33 @@
 /* ============================================================
    moviesview.js — the Movies tab.
 
-   Three strips, in the order they earn their space:
-     1. Must watch — the Letterboxd watchlist, as a scrolling carousel.
-     2. Recently watched — the Letterboxd diary feed, compact.
+   Four blocks, in the order they earn their space:
+     1. Must watch — the Letterboxd watchlist.
+     2. Popular right now — what is actually in cinemas this week,
+        ranked by TMDB popularity.
      3. Coming out — TMDB upcoming releases, the same data the calendar
         pills already use, here with room for posters.
+     4. Recently watched — the Letterboxd diary feed, compact.
+
+   Posters wrap into a grid rather than a side-scrolling rail: the tab has
+   to be readable on a wall screen nobody is going to swipe.
    ============================================================ */
 
 const MoviesView = (() => {
   const body  = document.getElementById('moviesBody');
   const count = document.getElementById('mvCount');
 
-  /* A carousel is only useful with arrows when it actually overflows, and
-     that depends on the rail width, so the check happens after paint. */
-  function wireRail(section){
-    const rail = section.querySelector('.car-rail');
-    const nav  = section.querySelector('.car-nav');
-    if(!rail) return;
-
-    if(nav){
-      const overflows = rail.scrollWidth > rail.clientWidth + 4;
-      nav.hidden = !overflows;
-      nav.querySelectorAll('[data-car]').forEach(b =>
-        b.onclick = () => rail.scrollBy({left: +b.dataset.car * rail.clientWidth * 0.8,
-                                         behavior:'smooth'}));
-    }
-
-    /* A horizontal rail inside a page that must not scroll vertically: turn
-       a plain wheel into sideways movement so it is usable without a
-       trackpad gesture. */
-    rail.addEventListener('wheel', e => {
-      if(Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-      e.preventDefault();
-      rail.scrollLeft += e.deltaY;
-    }, {passive:false});
-  }
+  /* How many posters a block shows before it stops. Two to three rows at
+     the widths this deck runs at — enough to browse, not so many that the
+     block below is pushed off the screen entirely. */
+  const CAP = 24;
 
   function posterHtml(f, badge){
     const art = f.poster
       ? `<img class="mv-poster" src="${esc(f.poster)}" alt="" loading="lazy">`
       : '<div class="mv-poster mv-noart">🎬</div>';
-    return `<button class="mv-card car-item" data-film="${esc(f.tmdbId || '')}"
+    const genres = (f.genres || []).join(' · ');
+    return `<button class="mv-card" data-film="${esc(f.tmdbId || '')}"
                     data-url="${esc(f.url || '')}" title="${esc(f.title)}">
       ${art}
       ${badge ? `<span class="mv-chip${badge.warn ? ' warn' : ''}">${esc(badge.text)}</span>` : ''}
@@ -49,8 +35,25 @@ const MoviesView = (() => {
         <span class="mv-title">${esc(f.title)}</span>
         <span class="mv-line">${esc(String(f.year || ''))}${
           f.score ? ` · <i>${f.score.toFixed(1)}</i>` : ''}</span>
+        <span class="mv-genre">${esc(genres) || '—'}</span>
       </span>
     </button>`;
+  }
+
+  /* One block: a heading, a capped grid, and an honest note when the cap
+     hid something. */
+  function block(title, films, opts = {}){
+    const shown = films.slice(0, opts.cap || CAP);
+    const rest  = films.length - shown.length;
+    return `<section class="mv-strip">
+      <div class="car-head">
+        <h3 class="pf-h3">${title}${
+          films.length ? ` <span class="pf-h3-n">${films.length}</span>` : ''}</h3>
+        ${opts.note ? `<span class="plot-key">${opts.note}</span>` : ''}
+      </div>
+      <div class="mv-grid">${shown.map(f => posterHtml(f, f._badge)).join('')}</div>
+      ${rest > 0 ? `<p class="mv-more">+${rest} more not shown</p>` : ''}
+    </section>`;
   }
 
   function watchlistHtml(){
@@ -71,17 +74,20 @@ const MoviesView = (() => {
           Letterboxd.error ? ` — ${esc(Letterboxd.error)}` : ''}.</p>
       </section>`;
     }
+    return block('Must watch', films);
+  }
 
-    return `<section class="mv-strip">
-      <div class="car-head">
-        <h3 class="pf-h3">Must watch <span class="pf-h3-n">${films.length}</span></h3>
-        <span class="car-nav" hidden>
-          <button class="ghost-btn sm" data-car="-1" aria-label="Scroll left">‹</button>
-          <button class="ghost-btn sm" data-car="1" aria-label="Scroll right">›</button>
-        </span>
-      </div>
-      <div class="car-rail mv-rail">${films.map(f => posterHtml(f, null)).join('')}</div>
-    </section>`;
+  function playingHtml(){
+    const films = (window.Movies ? Movies.playing : []) || [];
+    if(!films.length) return '';
+    const today = new Date(); today.setHours(0,0,0,0);
+    return block('Popular movies out now', films.map(f => ({
+      title: f.title,
+      year: (f.date || '').slice(0,4),
+      poster: f.poster ? `https://image.tmdb.org/t/p/w342${f.poster}` : '',
+      tmdbId: f.id, score: f.score, genres: f.genres,
+      _badge: {text:'in cinemas', warn:false}
+    })), {cap:12, note:'in cinemas this week, most popular first'});
   }
 
   function diaryHtml(){
@@ -113,29 +119,20 @@ const MoviesView = (() => {
     }
 
     const today = new Date(); today.setHours(0,0,0,0);
-    return `<section class="mv-strip">
-      <div class="car-head">
-        <h3 class="pf-h3">Coming out <span class="pf-h3-n">${films.length}</span></h3>
-        <span class="car-nav" hidden>
-          <button class="ghost-btn sm" data-car="-1" aria-label="Scroll left">‹</button>
-          <button class="ghost-btn sm" data-car="1" aria-label="Scroll right">›</button>
-        </span>
-      </div>
-      <div class="car-rail mv-rail">${films.map(f => {
-        const d = new Date(f.date + 'T12:00:00');
-        const days = Math.round((d - today) / 864e5);
-        const badge = {
-          text: days <= 0 ? 'out now' : days < 7 ? `${days}d` :
-                d.toLocaleDateString(undefined,{month:'short',day:'numeric'}),
+    return block('Coming out', films.map(f => {
+      const d = new Date(f.date + 'T12:00:00');
+      const days = Math.round((d - today) / 864e5);
+      return {
+        title: f.title, year: (f.date || '').slice(0,4),
+        poster: f.poster ? `https://image.tmdb.org/t/p/w342${f.poster}` : '',
+        tmdbId: f.id, score: f.score, genres: f.genres,
+        _badge: {
+          text: days <= 0 ? 'out now' : days < 7 ? `${days}d`
+              : d.toLocaleDateString(undefined,{month:'short',day:'numeric'}),
           warn: days >= 0 && days < 7
-        };
-        return posterHtml({
-          title: f.title, year: (f.date || '').slice(0,4),
-          poster: f.poster ? `https://image.tmdb.org/t/p/w342${f.poster}` : '',
-          tmdbId: f.id, score: f.score
-        }, badge);
-      }).join('')}</div>
-    </section>`;
+        }
+      };
+    }));
   }
 
   function render(){
@@ -146,9 +143,7 @@ const MoviesView = (() => {
       count.textContent = n ? `${n} to watch` : '—';
     }
 
-    body.innerHTML = watchlistHtml() + upcomingHtml() + diaryHtml();
-
-    body.querySelectorAll('.mv-strip').forEach(wireRail);
+    body.innerHTML = watchlistHtml() + playingHtml() + upcomingHtml() + diaryHtml();
 
     /* A TMDB id opens the existing detail modal; a watchlist film with no
        match falls back to its Letterboxd page. */

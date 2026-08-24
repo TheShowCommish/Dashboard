@@ -194,6 +194,12 @@ const Sports = (() => {
            || c.record?.[0]?.displayValue || '',
       score: c.score ?? '',
       home: c.homeAway === 'home',
+      /* The team's own two colours, for tinting a full-screen AD. */
+      color: hex(c.team?.color),
+      altColor: hex(c.team?.alternateColor),
+      /* Baseball hands back the probable starter well before first pitch;
+         every other sport leaves this null. */
+      probable: probableOf(c),
       /* Per-period scores, for the quarter/inning strip in the game popup. */
       periods: (c.linescores || []).map(l => l.displayValue ?? l.value ?? '')
     }));
@@ -229,9 +235,60 @@ const Sports = (() => {
         .concat((d.news?.articles || []).slice(0,3).map(a => a.headline)).filter(Boolean),
       status: comp?.status?.type?.shortDetail || '',
       state: comp?.status?.type?.state || 'pre',
-      broadcast: (d.broadcasts || []).flatMap(b => b.media?.shortName || b.names || []).filter(Boolean),
+      broadcast: channels(d.broadcasts),
       venue: d.gameInfo?.venue?.fullName || '',
       odds: d.pickcenter?.[0]?.details || d.odds?.[0]?.details || ''
+    };
+  }
+
+  /* ESPN writes colours as bare hex. Empty and "ffffff" are both useless
+     as a tint, so they come back null and the caller falls back. */
+  function hex(v){
+    const c = String(v || '').replace(/^#/,'').trim();
+    return /^[0-9a-f]{6}$/i.test(c) ? `#${c}` : '';
+  }
+
+  /* Where to watch, national feeds first, then the home market — that is
+     the order a viewer would actually try them in. Names arrive duplicated
+     across the entries, so they are de-duplicated on the way out. */
+  function channels(list){
+    const rank = b => b.market?.type === 'National' ? 0
+                    : b.market?.type === 'Home' ? 1 : 2;
+    const out = [];
+    for(const b of [...(list || [])].sort((a,z) => rank(a) - rank(z))){
+      const names = [b.station, b.media?.shortName, ...(b.names || [])].filter(Boolean);
+      for(const n of names){ if(!out.includes(n)){ out.push(n); break; } }
+    }
+    return out.slice(0, 4);
+  }
+
+  /* The probable starting pitcher, with the season line a fan actually
+     reads: record, ERA, strikeouts. */
+  function probableOf(c){
+    const p = (c.probables || [])[0];
+    const a = p?.athlete;
+    if(!a) return null;
+
+    const cats = p.statistics?.splits?.categories || [];
+    const stat = n => cats.find(x => x.name === n)?.displayValue;
+    const w = stat('wins'), l = stat('losses');
+    const line = [
+      (w != null && l != null) ? `${w}-${l}` : '',
+      stat('ERA') ? `${stat('ERA')} ERA` : '',
+      stat('strikeouts') ? `${stat('strikeouts')} K` : '',
+      stat('WHIP') ? `${stat('WHIP')} WHIP` : ''
+    ].filter(Boolean);
+
+    return {
+      id: a.id,
+      name: a.displayName || a.fullName || '',
+      short: a.shortName || a.displayName || '',
+      headshot: a.headshot?.href || '',
+      jersey: a.jersey || '',
+      throws: a.throws?.abbreviation || '',
+      position: a.position?.abbreviation || 'SP',
+      label: p.shortDisplayName || 'Starter',
+      line: line.join(' · ')
     };
   }
 
