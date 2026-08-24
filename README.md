@@ -17,7 +17,12 @@ js/sky.js               animated backdrop (rain, snow, stars, confetti)
 js/weather.js           Open-Meteo (no key needed) + the weather tile and popup
 js/google.js            Gmail + Google Calendar, incl. silent token renewal
 js/stocks.js            portfolio pricing, earnings dates, the weight/return plot
-js/fantasy.js           ESPN fantasy football
+js/fantasy.js           ESPN fantasy football; routes the four Fantasy screens
+js/ffdata.js            the draft/season model: ADP, scoring, depth, injuries
+js/ffplayer.js          the player card (scoring history, position room)
+js/ffdraft.js           the live draft board
+js/ffseason.js          post-draft analysis: talent, weaknesses, free agents
+js/ffseasonview.js      the Team, Waivers and League screens
 js/sports.js            team data from ESPN's public site API
 js/teams.js             followed teams and their schedules
 js/movies.js            upcoming theatrical releases (TMDB)
@@ -29,7 +34,9 @@ js/calendarview.js      the two-week grid and the focus strip
 js/notes.js             to-do list + sticky notes
 js/ticker.js            the two bottom crawls
 js/app.js               boot, clock, settings drawer, refresh timers
-proxy/worker.js         optional proxy: private ESPN leagues + Letterboxd
+proxy/worker.js         optional proxy: private ESPN leagues, Letterboxd, ADP
+tools/build-season.js   bakes the NFL data files the Fantasy tab reads
+data/                   the baked output; regenerated, not hand-edited
 sample-holdings.csv     example portfolio file
 ```
 
@@ -306,7 +313,113 @@ Put the league ID, season, and team ID in Settings.
 
 Cloudflare Workers has a free tier that covers this easily. The cookies live as Cloudflare secrets — never in your repo, never in your browser.
 
-The proxy also unlocks free-agent suggestions, which need a request header ESPN won't accept directly from a browser, and it forwards Letterboxd (see Step 8). **If you deployed this worker before the Movies tab existed, redeploy it** — the Letterboxd path is new.
+The proxy also unlocks free-agent suggestions, which need a request header ESPN won't accept directly from a browser, and it forwards Letterboxd (see Step 8) and the mock-draft ADP feed. **If you deployed this worker before the Movies tab existed, redeploy it** — the Letterboxd path is new. **If you deployed it before the draft board existed, redeploy it too** — `/ffc/adp` is new.
+
+### Step 6b — Bake the NFL data
+
+The Fantasy tab reads three files out of `data/`. They are already committed, so
+there is nothing to do before a first run — but they go stale, and this is how
+they are refreshed:
+
+```bash
+node tools/build-season.js
+```
+
+| file | what it is | how often it moves |
+| --- | --- | --- |
+| `data/season-YYYY.json` | every player's PPR score, week by week | weekly, in season |
+| `data/depth-YYYY.json` | the current offensive depth charts | constantly, in season |
+| `data/adp-YYYY.json` | a mock-draft ADP snapshot | daily, before the draft |
+
+Why baked rather than fetched live: the two upstream files are 8 MB and 44 MB.
+Parsing those in a Cloudflare Worker blows past the free tier's 10 ms CPU
+ceiling, and parsing them in the browser costs a second of jank on every load
+for a finished season that will never change again. So they are parsed once,
+here, and the result is about 200 KB served straight from the repo.
+
+`.github/workflows/refresh-fantasy-data.yml` runs the same command every Tuesday
+morning and commits anything that changed, so during the season this looks after
+itself. Run it by hand from the Actions tab whenever you want it sooner.
+
+## The Fantasy tab
+
+Four screens behind one row of buttons. The board is what opens until the last
+pick of the draft is in; after that the roster is.
+
+### Draft
+
+The board is every player being drafted in 12-team PPR mocks, in ADP order,
+against what he actually scored last season.
+
+- **ADP** is the consensus of every mock draft Fantasy Football Calculator ran in
+  the last seven days at exactly your format — thousands of them, not a pundit's
+  list. It carries the high pick, the low pick and the spread, so "he might last"
+  becomes a number.
+- **Avg / median / high / low** are real PPR box scores, not projections. They are
+  labelled with the year everywhere they appear. A player with no NFL snaps —
+  every rookie — shows em dashes rather than a zero, because unmeasured and bad
+  are not the same thing.
+- **VOR** is points per game over the last startable player at that position
+  (QB12, RB30, WR36, TE12 in a 12-team league). It is the only column that says
+  what a player is *worth* rather than what he *costs*.
+- **VALUE / REACH** flag anyone going a full round away from where his scoring
+  ranks him.
+- **The last column** is the chance he survives to your next pick, from his ADP
+  and its standard deviation. Set your slot in the panel on the right and the
+  snake maths follows.
+- A **NAME OUT** chip means someone *ahead of him on his own depth chart* is out.
+  That is the cheap edge on draft day. A starter whose backup is hurt is not
+  flagged — he was already taking the touches.
+
+Hit **take** as each pick goes in, whoever made it. The board tracks whose turn
+it is, hides who is gone, keeps your own roster with its positional holes, and
+calls out a run when one is happening. **Undo** fixes a misclick; **Reset** starts
+over. It all survives a reload — a closed laptop mid-draft is not a lost draft.
+
+Click any row for the player card: the weekly bars for last season with the
+median drawn across them, every injury at his position on his NFL team, and
+every other player at that position in depth-chart order with his ADP and his
+scoring. That last block is the one that answers "if I take him, what is actually
+in front of him".
+
+### Roster, Waivers, League
+
+After the draft the same data answers different questions.
+
+- **Roster** — who on your team is hurt, who is on bye, and which team-mate
+  injuries move your players. Rows open the same player card.
+- **Waivers** — the free agent pool, led by anyone who just had the man ahead of
+  him go down, then by anyone outscoring somebody you are starting. Each shows
+  his last game and how generous the defence he played it against has been all
+  season.
+- **League** — all twelve rosters ranked twice: **starting talent** (QB, 2 RB,
+  2 WR, TE and a flex, the seven that actually score) and **total talent**
+  (everything rostered). Where the two rankings disagree by three places or more,
+  it says so — that is depth sitting on a bench.
+
+Kickers and defences are left out of the talent ranking on purpose: they swing
+week to week on nothing a roster controls, and counting them would rank the
+league on coin flips.
+
+They also carry no scoring column anywhere in the tab, only em dashes. The
+play-by-play source behind everything here does not score kicking at all, and
+team defences are not individual players in it — so rather than print a flat
+0.0 that reads as "measured, and worthless", they are shown as what they are:
+not measured. They still appear on the board at their ADP, because you still
+have to draft them.
+
+### What is measured, and what is not
+
+Everything on these screens is a real box score or a real mock draft. There are
+no projections anywhere, and nothing is modelled. The two judgement calls are
+stated rather than hidden: replacement level is set at QB12/RB30/WR36/TE12, and
+survival probability treats a player's draft slot as normal around his ADP. Last
+season's scoring is last season's scoring — it is labelled with the year because
+a backward-looking number dressed up as a forecast is worse than no number.
+
+Before the season starts `data/season-YYYY.json` for the current year does not
+exist yet and the browser logs one 404 for it. That is expected: the file appears
+the week the first games are played, and the tab picks it up on its own.
 
 ### A note on the My teams picker
 

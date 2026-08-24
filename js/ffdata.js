@@ -148,7 +148,22 @@ const FFData = (() => {
   /* Why the board is showing what it is showing, if it is not the live feed. */
   let adpNote = '';
 
-  /* The live injury report. Public, CORS-open, no key. */
+  /* ESPN spells the same designation two ways depending on which API you
+     ask — the fantasy one says INJURY_RESERVE, the site one INJURED_RESERVE.
+     Both mean the same thing and both are folded to IR here, so nothing
+     downstream has to know which endpoint a status came from. */
+  function normStatus(raw){
+    const s = String(raw || '').toUpperCase().replace(/[\s-]+/g, '_');
+    if(s === 'INJURED_RESERVE' || s === 'INJURY_RESERVE') return 'IR';
+    return s;
+  }
+
+  /* The live injury report. Public, CORS-open, no key.
+
+     The team abbreviation is read off the athlete, not off the group node
+     it is filed under: that node carries only an id and a display name, so
+     reading a non-existent abbreviation off it yields an empty string and
+     quietly breaks every join that depends on the team. */
   async function loadInjuries(){
     const hit = cached('injuries', 15 * 60 * 1000);
     if(hit) return hit;
@@ -156,26 +171,28 @@ const FFData = (() => {
     const d = await getJSON('https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries');
     const out = [];
     for(const t of (d.injuries || []))
-      for(const it of (t.injuries || []))
+      for(const it of (t.injuries || [])){
+        const pos = it.athlete?.position?.abbreviation || '';
         out.push({
-          team:   team(t.abbreviation),
+          team:   team(it.athlete?.team?.abbreviation) || ESPN_TEAM[t.id] || '',
           name:   it.athlete?.displayName || '',
-          pos:    it.athlete?.position?.abbreviation || '',
-          status: (it.status || '').toUpperCase().replace(/\s+/g, '_'),
+          pos:    pos === 'PK' ? 'K' : pos,           // the feed says PK, the board says K
+          status: normStatus(it.status),
           detail: it.details?.type || it.shortComment || it.longComment || '',
           date:   it.date || ''
         });
+      }
     keep('injuries', out);
     return out;
   }
 
   /* ---- injury severity ---- */
-  const OUT    = ['OUT', 'DOUBTFUL', 'INJURY_RESERVE', 'SUSPENSION', 'PUP', 'NFI'];
+  const OUT    = ['OUT', 'DOUBTFUL', 'IR', 'SUSPENSION', 'PUP', 'NFI'];
   const DINGED = OUT.concat(['QUESTIONABLE']);
 
   function statusRank(s){
     s = String(s || '').toUpperCase();
-    if(s.includes('INJURY_RESERVE') || s === 'IR' || s === 'PUP' || s === 'NFI') return 4;
+    if(s === 'IR' || s === 'PUP' || s === 'NFI') return 4;
     if(s === 'OUT' || s === 'SUSPENSION') return 3;
     if(s === 'DOUBTFUL') return 2;
     if(s === 'QUESTIONABLE') return 1;
@@ -276,6 +293,7 @@ const FFData = (() => {
       /* Injuries last, so they land on players the other sources created.
          Worst designation wins if a player somehow appears twice. */
       for(const inj of injuries){
+        if(!statusRank(inj.status)) continue;        // ACTIVE is news, not an injury
         const p = index.get(key(inj.name, inj.pos));
         if(p && statusRank(inj.status) >= statusRank(p.injury && p.injury.status)) p.injury = inj;
       }
@@ -345,8 +363,12 @@ const FFData = (() => {
      A 12-team league starting QB/RB/RB/WR/WR/TE/FLEX drafts roughly 12 QBs,
      30 RBs, 36 WRs and 12 TEs before the position stops mattering. The
      player at that rank is the one available for nothing, so only the points
-     above him are worth spending a pick on. */
-  const REPLACEMENT = {QB: 12, RB: 30, WR: 36, TE: 12, K: 12, DEF: 12};
+     above him are worth spending a pick on.
+
+     Kickers and team defences are absent on purpose: neither is scored in the
+     data behind this tab, so a replacement level for them would be a number
+     invented out of nothing. */
+  const REPLACEMENT = {QB: 12, RB: 30, WR: 36, TE: 12};
   const MIN_GAMES = 6;      // a two-game cameo must not set the baseline
 
   function replacementLevels(field){
@@ -424,7 +446,7 @@ const FFData = (() => {
 
   return {
     load, mates, group, replacementLevels, survival, defenceRanks,
-    pickOf, myPicks, onClock, clearCache, norm, key, team, statusRank,
+    pickOf, myPicks, onClock, clearCache, norm, key, team, statusRank, normStatus,
     LEAGUE_SIZE, REPLACEMENT, OUT, DINGED, ESPN_POS, ESPN_TEAM,
     get bundle(){ return bundle; }
   };

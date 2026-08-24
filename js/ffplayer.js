@@ -17,9 +17,9 @@ const FFPlayer = (() => {
 
   /* Injury designations worth a red chip rather than an amber one. */
   const chipFor = inj => {
-    if(!inj) return '';
-    const cls = FFData.statusRank(inj.status) >= 3 ? 'hot' : 'warn';
-    return `<span class="chip ${cls}">${esc(inj.status.replace('INJURY_RESERVE', 'IR'))}</span>`;
+    const rank = inj ? FFData.statusRank(inj.status) : 0;
+    if(!rank) return '';                     // ACTIVE, or no designation at all
+    return `<span class="chip ${rank >= 3 ? 'hot' : 'warn'}">${esc(inj.status)}</span>`;
   };
 
   /* ---- weekly scoring, drawn ----

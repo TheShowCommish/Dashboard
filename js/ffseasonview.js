@@ -92,6 +92,10 @@ const FFSeasonView = (() => {
   async function waivers(host){
     host.innerHTML = '<p class="empty">Reading the free agent pool…</p>';
 
+    /* The league has to be in hand before it can be ranked — rankings() on an
+       unloaded league returns nothing, which would silently empty the whole
+       "better than somebody you are starting" block rather than fail. */
+    await FFSeason.loadLeague();
     const rows = FFSeason.rankings();
     let fas;
     try{ fas = await FFSeason.freeAgents(); }
@@ -119,7 +123,7 @@ const FFSeasonView = (() => {
     const openBlock = opens.length
       ? opens.slice(0, 10).map(o => {
           const names = o.ahead.map(m =>
-            `${esc(m.name)} (${esc(m.pos)}${m.depth || ''}, ${esc(m.injury.status.replace('INJURY_RESERVE','IR').toLowerCase())})`).join(', ');
+            `${esc(m.name)} (${esc(m.pos)}${m.depth || ''}, ${esc(m.injury.status.toLowerCase())})`).join(', ');
           return openable(o.fa,
             `${esc(o.fa.name)} <span class="chip">${esc(o.fa.pos)}</span>
              <span class="chip">${esc(o.fa.team)}</span>

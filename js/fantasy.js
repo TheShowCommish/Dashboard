@@ -23,8 +23,11 @@ const Fantasy = (() => {
   const POS = FFData.ESPN_POS;
   const PRO = FFData.ESPN_TEAM;
 
-  const HURT = ['OUT','DOUBTFUL','INJURY_RESERVE','SUSPENSION','QUESTIONABLE'];
-  const SIDELINED = ['OUT','DOUBTFUL','INJURY_RESERVE','SUSPENSION'];
+  /* The roster feed and the injury feed use different words for the same
+     thing, so both spellings are listed. FFData.normStatus folds the site
+     API's; the fantasy API's INJURY_RESERVE arrives here untouched. */
+  const HURT = ['OUT','DOUBTFUL','INJURY_RESERVE','IR','SUSPENSION','QUESTIONABLE'];
+  const SIDELINED = ['OUT','DOUBTFUL','INJURY_RESERVE','IR','SUSPENSION'];
 
   /* Which teammate injuries actually move the needle for a given position. */
   const IMPACT = [
@@ -46,10 +49,14 @@ const Fantasy = (() => {
   const MODES = ['draft', 'roster', 'waivers', 'league'];
   const HOST  = {draft:'ffDraft', roster:'ffRoster', waivers:'ffWaivers', league:'ffLeague'};
 
+  /* Which screen opens by default, before the tab has ever been switched by
+     hand. It stays on the draft board until the last pick of the last round
+     is in — flipping to the roster the moment pick one lands would take the
+     board away in the middle of the very night it was built for. */
   const mode = () => {
     const m = Store.get('fantasy.mode', '');
     if(MODES.includes(m)) return m;
-    return (Store.get('draft.picks', []) || []).length ? 'roster' : 'draft';
+    return (window.FFDraft && FFDraft.isComplete()) ? 'roster' : 'draft';
   };
 
   function setMode(name){
@@ -153,20 +160,28 @@ const Fantasy = (() => {
     return out;
   }
 
-  /* League-wide NFL injury report — public ESPN endpoint, no auth. */
+  /* League-wide NFL injury report — public ESPN endpoint, no auth.
+
+     The abbreviation comes off the athlete's own team, not off the node the
+     injury is filed under: that node carries only an id and a display name.
+     Reading a field that is not there yielded an empty string, which meant
+     the ripple-effect matching below never found a single team and the
+     section silently rendered empty every week. */
   async function nflInjuries(){
     const d = await getJSON('https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries');
     const out = [];
-    for(const team of (d.injuries||[]))
-      for(const it of (team.injuries||[]))
+    for(const node of (d.injuries||[]))
+      for(const it of (node.injuries||[])){
+        const pos = it.athlete?.position?.abbreviation || '';
         out.push({
-          team: (team.displayName||'').toUpperCase(),
-          teamAbbr: (team.abbreviation||'').toUpperCase(),
+          team: (node.displayName||'').toUpperCase(),
+          teamAbbr: (it.athlete?.team?.abbreviation || PRO[node.id] || '').toUpperCase(),
           name: it.athlete?.displayName || '',
-          pos: it.athlete?.position?.abbreviation || '',
-          status:(it.status||'').toUpperCase(),
+          pos: pos === 'PK' ? 'K' : pos,
+          status: FFData.normStatus(it.status),
           detail: it.details?.type || it.shortComment || ''
         });
+      }
     return out;
   }
 

@@ -218,12 +218,12 @@ const FFDraft = (() => {
             p.depth ? ' · ' + esc(p.pos) + p.depth : ''}</span>
         </span>
         <span class="ff-chips">${inj}${edgeChip}${hurtMate}</span>
-        <span class="ff-num" title="${s ? s.season + ' points per game' : 'no NFL scoring on record'}">${s ? one(s.avg) : '—'}</span>
-        <span class="ff-num dim" title="Median week">${s ? one(s.med) : '—'}</span>
-        <span class="ff-num dim" title="Best and worst week">${s ? one(s.hi) + '/' + one(s.lo) : '—'}</span>
-        <span class="ff-num" title="Points per game over the last startable player at this position">${
+        <span class="ff-num ff-avg" title="${s ? s.season + ' points per game' : 'no NFL scoring on record'}">${s ? one(s.avg) : '—'}</span>
+        <span class="ff-num dim ff-med" title="Median week">${s ? one(s.med) : '—'}</span>
+        <span class="ff-num dim ff-hilo" title="Best and worst week">${s ? one(s.hi) + '/' + one(s.lo) : '—'}</span>
+        <span class="ff-num ff-vor" title="Points per game over the last startable player at this position">${
           p._vor == null ? '—' : (p._vor > 0 ? '+' : '') + one(p._vor)}</span>
-        <span class="ff-num ${surv != null && surv < 0.35 ? 'down' : ''}"
+        <span class="ff-num ff-surv ${surv != null && surv < 0.35 ? 'down' : ''}"
               title="${target ? 'Chance he is still there at pick ' + target : 'Draft complete'}">${
           surv == null ? '—' : pct(surv)}</span>
         <button class="ghost-btn sm ff-take" data-take="${esc(p.key)}">${p._taken ? 'taken' : 'take'}</button>
@@ -232,13 +232,19 @@ const FFDraft = (() => {
   }
 
   /* A same-position team-mate being out is the cheapest edge on the board,
-     so it earns a chip on the row rather than only living on the card. */
+     so it earns a chip on the row rather than only living on the card.
+
+     Only a man AHEAD of him counts. A starter whose backup is hurt gains
+     nothing — he was already taking the touches — and flagging that reads
+     as a signal where there is none. The backup behind an injured starter
+     is the one whose value actually moves. */
   function matesHurt(p){
+    const mine = p.depth ?? 99;
     const hurt = FFData.mates(p).filter(m =>
-      m.injury && FFData.statusRank(m.injury.status) >= 3 && (m.depth || 9) <= 3);
+      m.injury && FFData.statusRank(m.injury.status) >= 3 && (m.depth ?? 99) < mine);
     if(!hurt.length) return '';
-    return `<span class="chip warn" title="${esc(hurt.map(h => h.name + ' — ' + h.injury.status).join('; '))}">
-              ${hurt.length === 1 ? esc(hurt[0].name.split(' ').pop()) : hurt.length + ' MATES'} OUT</span>`;
+    return `<span class="chip warn" title="${esc(hurt.map(h => h.name + ' (' + h.pos + (h.depth || '') + ') — ' + h.injury.status).join('; '))}">
+              ${hurt.length === 1 ? esc(hurt[0].name.split(' ').pop()) : hurt.length + ' AHEAD'} OUT</span>`;
   }
 
   function clockPanel(c, data){
@@ -365,7 +371,10 @@ const FFDraft = (() => {
     if(sel) sel.onchange = () => { Store.set('draft.slot', Number(sel.value)); render(); };
   }
 
-  return {render, take, undo, reset, board, clock, myRoster};
+  /* The draft is over when every seat has made every pick. */
+  const isComplete = () => picks().length >= FFData.LEAGUE_SIZE * ROUNDS;
+
+  return {render, take, undo, reset, board, clock, myRoster, isComplete, ROUNDS};
 })();
 
 window.FFDraft = FFDraft;

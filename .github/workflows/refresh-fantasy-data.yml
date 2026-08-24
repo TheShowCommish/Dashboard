@@ -1,0 +1,46 @@
+# Keeps the fantasy tab's baked data current without anyone remembering to.
+#
+# Three files are rebuilt and committed:
+#   data/season-YYYY.json   weekly PPR scoring — grows by a week every week
+#   data/depth-YYYY.json    depth charts — move constantly in season
+#   data/adp-YYYY.json      mock-draft ADP snapshot — the draft-night fallback
+#
+# Tuesday morning is the slot: every regular-season game bar the Monday
+# nighter is final, and nflverse has published by then. Out of season it
+# simply finds nothing new and commits nothing.
+
+name: Refresh fantasy data
+
+on:
+  schedule:
+    - cron: '0 11 * * 2'      # Tuesdays, 11:00 UTC (6am ET)
+  workflow_dispatch:           # and on demand, from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Rebuild the baked data
+        run: node tools/build-season.js
+
+      - name: Commit if anything moved
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          # Nothing to say if the week produced no new games.
+          if git diff --staged --quiet; then
+            echo "No change in the baked data."
+          else
+            git commit -m "Refresh baked fantasy data"
+            git push
+          fi

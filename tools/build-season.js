@@ -41,10 +41,16 @@ const path = require('path');
 const OUT_DIR = path.join(__dirname, '..', 'data');
 const SRC = y => `https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_${y}.csv`;
 
-/* Positions worth carrying. Everything else in the file is defence
-   and special teams at an individual level, which no fantasy league
-   scores this way. FB is folded into RB. */
-const KEEP = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'FB']);
+/* Positions worth carrying. Everything else in the file is defence at an
+   individual level, which no fantasy league scores this way. FB is folded
+   into RB.
+
+   Kickers are deliberately NOT here. The upstream fantasy_points_ppr column
+   does not include kicking at all — every kicker in the file scores a flat
+   zero, which on a board reads as "measured, and he is worthless" rather
+   than "not measured". Leaving them out makes the tab show them the way it
+   shows team defences: em dashes, which is the truth. */
+const KEEP = new Set(['QB', 'RB', 'WR', 'TE', 'FB']);
 
 /* nflverse and ESPN disagree on exactly two teams. Everything is
    normalised to ESPN's spelling, because the league is on ESPN and
