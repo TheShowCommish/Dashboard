@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=2">
 </head>
 <body>
 
@@ -130,8 +130,8 @@
       <label>League ID<input id="k_ffLeague" inputmode="numeric"></label>
       <label>Season<input id="k_ffSeason" inputmode="numeric" placeholder="2026"></label>
       <label>Your team ID<input id="k_ffTeam" inputmode="numeric"></label>
-      <label>Proxy URL (private leagues only)<input id="k_ffProxy" type="text" placeholder="https://your-worker.workers.dev"></label>
-      <p class="note-line">A public league needs no proxy. A private league does — see README, step 6.</p>
+      <label>Proxy URL<input id="k_ffProxy" type="text" placeholder="https://your-worker.workers.dev"></label>
+      <p class="note-line">Needed for a private league, and for live team lists and schedules in the My&nbsp;teams tile — ESPN sends no CORS header, so the browser cannot call it directly. See README, step 6.</p>
     </fieldset>
 
     <fieldset>
@@ -172,16 +172,16 @@
   </div>
 </div>
 
-<script src="js/store.js"></script>
-<script src="js/themes.js"></script>
-<script src="js/sky.js"></script>
-<script src="js/weather.js"></script>
-<script src="js/google.js"></script>
-<script src="js/stocks.js"></script>
-<script src="js/fantasy.js"></script>
-<script src="js/teams.js"></script>
-<script src="js/movies.js"></script>
-<script src="js/notes.js"></script>
-<script src="js/app.js"></script>
+<script src="js/store.js?v=2"></script>
+<script src="js/themes.js?v=2"></script>
+<script src="js/sky.js?v=2"></script>
+<script src="js/weather.js?v=2"></script>
+<script src="js/google.js?v=2"></script>
+<script src="js/stocks.js?v=2"></script>
+<script src="js/fantasy.js?v=2"></script>
+<script src="js/teams.js?v=2"></script>
+<script src="js/movies.js?v=2"></script>
+<script src="js/notes.js?v=2"></script>
+<script src="js/app.js?v=2"></script>
 </body>
 </html>

@@ -51,70 +51,95 @@ const App = (() => {
     refreshAll();
   }
 
-  /* ---- refresh ---- */
+  /* ---- refresh ----
+     Each loader is independent: one failing service must not stop the
+     others from painting their tile. */
+  async function run(label, fn){
+    try{ await fn(); }
+    catch(e){ console.error(`${label} refresh failed:`, e); }
+  }
+
   async function refreshAll(){
-    await Weather.load();
+    await run('Weather', () => Weather.load());
     recheckTheme();
-    Movies.load();
-    Stocks.load();
-    Fantasy.load();
-    Teams.load();
-    if(Google.ready){ Calendar.load(); Mail.load(); }
+    run('Movies',    () => Movies.load());
+    run('Stocks',    () => Stocks.load());
+    run('Fantasy',   () => Fantasy.load());
+    run('Teams',     () => Teams.load());
+    if(Google.ready){
+      run('Calendar', () => Calendar.load());
+      run('Mail',     () => Mail.load());
+    }
   }
 
   /* ---- boot ---- */
+  /* Every step is isolated. A module that fails to load (a bad CDN
+     response, a blocked file) used to abort the whole of boot() at the
+     first ReferenceError, which left every button on the page unwired —
+     including Cancel on the team picker. Now one casualty stays one. */
+  function step(label, fn){
+    try{ fn(); }
+    catch(e){ console.error(`Boot step "${label}" failed:`, e); }
+  }
+
+  function on(id, event, handler){
+    const el = document.getElementById(id);
+    if(!el) return console.error(`Missing element #${id} — handler not attached.`);
+    el.addEventListener(event, handler);
+  }
+
   function boot(){
-    clock(); setInterval(clock, 15000);
+    step('clock', () => { clock(); setInterval(clock, 15000); });
 
-    document.getElementById('zipInput').value = Store.get('zip','');
-    Todos.render();
-    StickyNotes.render();
-    recheckTheme();
+    step('zip field',  () => { document.getElementById('zipInput').value = Store.get('zip',''); });
+    step('todos',      () => Todos.render());
+    step('notes',      () => StickyNotes.render());
+    step('theme',      () => recheckTheme());
 
-    document.getElementById('zipForm').onsubmit = e => {
+    on('zipForm','submit', e => {
       e.preventDefault();
       const z = document.getElementById('zipInput').value.trim();
       if(!/^\d{5}$/.test(z)) return Store.toast('That is not a 5-digit ZIP code.');
       Store.set('zip', z);
       Weather.load().then(recheckTheme);
-    };
+    });
 
-    document.getElementById('todoForm').onsubmit = e => {
+    on('todoForm','submit', e => {
       e.preventDefault();
       const i = document.getElementById('todoInput');
       Todos.add(i.value); i.value = '';
-    };
+    });
 
-    document.getElementById('btnAddNote').onclick = StickyNotes.add;
-    document.getElementById('btnSettings').onclick = openDrawer;
-    document.getElementById('btnCloseDrawer').onclick = closeDrawer;
+    on('btnAddNote','click',     () => StickyNotes.add());
+    on('btnSettings','click',    openDrawer);
+    on('btnCloseDrawer','click', closeDrawer);
     scrim.onclick = closeDrawer;
-    document.getElementById('btnGoogle').onclick = () => Google.connect();
-    document.getElementById('csvInput').onchange = e => {
+    on('btnGoogle','click',      () => Google.connect());
+    on('csvInput','change', e => {
       if(e.target.files[0]) Stocks.ingest(e.target.files[0]);
       e.target.value = '';
-    };
+    });
 
-    document.getElementById('btnAddTeam').onclick = Teams.openPicker;
-    document.getElementById('tmCancel').onclick   = Teams.closePicker;
-    document.getElementById('tmSave').onclick     = Teams.saveTeam;
-    document.getElementById('tmLeague').onchange  = Teams.fillTeams;
+    on('btnAddTeam','click', () => Teams.openPicker());
+    on('tmCancel','click',   () => Teams.closePicker());
+    on('tmSave','click',     () => Teams.saveTeam());
+    on('tmLeague','change',  () => Teams.fillTeams());
 
-    document.getElementById('btnExport').onclick = Store.export;
-    document.getElementById('btnWipe').onclick = () => {
+    on('btnExport','click', () => Store.export());
+    on('btnWipe','click', () => {
       if(confirm('Erase every saved key, note, task, holding and team from this browser?')){
         Store.wipe(); location.reload();
       }
-    };
+    });
 
     addEventListener('keydown', e => {
       if(e.key === 'Escape'){
         if(!drawer.hidden) closeDrawer();
-        Teams.closePicker();
+        document.getElementById('teamModal').hidden = true;
       }
     });
 
-    refreshAll();
+    step('first refresh', refreshAll);
     setInterval(() => { Weather.load().then(recheckTheme); }, 10*60*1000); // weather: 10 min
     setInterval(() => { Stocks.load(); }, 5*60*1000);                       // quotes: 5 min
     setInterval(() => { Teams.load(); }, 15*60*1000);                       // scores: 15 min

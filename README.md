@@ -119,6 +119,12 @@ Cloudflare Workers has a free tier that covers this easily. The cookies live as 
 
 The proxy also unlocks free-agent suggestions, which need a request header ESPN won't accept directly from a browser.
 
+### A note on the My teams picker
+
+ESPN's team-*list* endpoint (`/teams`) sends no `Access-Control-Allow-Origin` header, so no browser can read it from any origin — it fails with `Failed to fetch` for every league. Schedules and scoreboards on the same host do allow CORS and work fine.
+
+So the dashboard ships built-in NFL, NBA, MLB and NHL rosters using ESPN's own team IDs. Those four leagues need **no proxy at all**: pick a team and its schedule loads normally. Only the two college leagues — far too large to bundle — need the worker above. Deploy it and paste the URL into Settings → Proxy URL; the same worker forwards both fantasy and site API paths.
+
 ## Step 7 — Followed teams
 
 Click **Add team**, pick a league and a team. Their games appear in the Calendar tile alongside your Google events, and they drive the game-day, win, and loss themes.

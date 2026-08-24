@@ -22,7 +22,14 @@ const Teams = (() => {
     'mens-college-basketball':'basketball/mens-college-basketball'
   };
 
-  /* Offline safety net. ESPN's site API uses these same IDs for NFL. */
+  /* Offline safety net.
+     ESPN's /teams list endpoint sends no Access-Control-Allow-Origin
+     header, so a browser cannot read it from any origin — it fails with
+     "Failed to fetch" for every league. (Schedules and scoreboards on the
+     same host DO allow CORS, so only the picker is affected.) These
+     built-in rosters carry ESPN's own team IDs, which is all the schedule
+     calls need; the two college leagues are far too large to ship here,
+     so those still want the proxy. */
   const NFL_FALLBACK = [
     [22,'ARI','Arizona Cardinals'],[1,'ATL','Atlanta Falcons'],[33,'BAL','Baltimore Ravens'],
     [2,'BUF','Buffalo Bills'],[29,'CAR','Carolina Panthers'],[3,'CHI','Chicago Bears'],
@@ -35,7 +42,57 @@ const Teams = (() => {
     [20,'NYJ','New York Jets'],[21,'PHI','Philadelphia Eagles'],[23,'PIT','Pittsburgh Steelers'],
     [25,'SF','San Francisco 49ers'],[26,'SEA','Seattle Seahawks'],[27,'TB','Tampa Bay Buccaneers'],
     [10,'TEN','Tennessee Titans'],[28,'WSH','Washington Commanders']
-  ].map(([id,abbr,name]) => ({id:String(id), abbreviation:abbr, displayName:name}));
+  ];
+
+  const NBA_FALLBACK = [
+    [1,'ATL','Atlanta Hawks'],[2,'BOS','Boston Celtics'],[17,'BKN','Brooklyn Nets'],
+    [30,'CHA','Charlotte Hornets'],[4,'CHI','Chicago Bulls'],[5,'CLE','Cleveland Cavaliers'],
+    [6,'DAL','Dallas Mavericks'],[7,'DEN','Denver Nuggets'],[8,'DET','Detroit Pistons'],
+    [9,'GS','Golden State Warriors'],[10,'HOU','Houston Rockets'],[11,'IND','Indiana Pacers'],
+    [12,'LAC','LA Clippers'],[13,'LAL','Los Angeles Lakers'],[29,'MEM','Memphis Grizzlies'],
+    [14,'MIA','Miami Heat'],[15,'MIL','Milwaukee Bucks'],[16,'MIN','Minnesota Timberwolves'],
+    [3,'NO','New Orleans Pelicans'],[18,'NY','New York Knicks'],[25,'OKC','Oklahoma City Thunder'],
+    [19,'ORL','Orlando Magic'],[20,'PHI','Philadelphia 76ers'],[21,'PHX','Phoenix Suns'],
+    [22,'POR','Portland Trail Blazers'],[23,'SAC','Sacramento Kings'],[24,'SA','San Antonio Spurs'],
+    [28,'TOR','Toronto Raptors'],[26,'UTAH','Utah Jazz'],[27,'WSH','Washington Wizards']
+  ];
+
+  const MLB_FALLBACK = [
+    [29,'ARI','Arizona Diamondbacks'],[15,'ATL','Atlanta Braves'],[1,'BAL','Baltimore Orioles'],
+    [2,'BOS','Boston Red Sox'],[16,'CHC','Chicago Cubs'],[4,'CWS','Chicago White Sox'],
+    [17,'CIN','Cincinnati Reds'],[5,'CLE','Cleveland Guardians'],[27,'COL','Colorado Rockies'],
+    [6,'DET','Detroit Tigers'],[18,'HOU','Houston Astros'],[7,'KC','Kansas City Royals'],
+    [3,'LAA','Los Angeles Angels'],[19,'LAD','Los Angeles Dodgers'],[28,'MIA','Miami Marlins'],
+    [8,'MIL','Milwaukee Brewers'],[9,'MIN','Minnesota Twins'],[21,'NYM','New York Mets'],
+    [10,'NYY','New York Yankees'],[11,'ATH','Athletics'],[22,'PHI','Philadelphia Phillies'],
+    [23,'PIT','Pittsburgh Pirates'],[25,'SD','San Diego Padres'],[26,'SF','San Francisco Giants'],
+    [12,'SEA','Seattle Mariners'],[24,'STL','St. Louis Cardinals'],[30,'TB','Tampa Bay Rays'],
+    [13,'TEX','Texas Rangers'],[14,'TOR','Toronto Blue Jays'],[20,'WSH','Washington Nationals']
+  ];
+
+  const NHL_FALLBACK = [
+    [25,'ANA','Anaheim Ducks'],[24,'UTAH','Utah Mammoth'],[1,'BOS','Boston Bruins'],
+    [2,'BUF','Buffalo Sabres'],[3,'CGY','Calgary Flames'],[7,'CAR','Carolina Hurricanes'],
+    [4,'CHI','Chicago Blackhawks'],[17,'COL','Colorado Avalanche'],[29,'CBJ','Columbus Blue Jackets'],
+    [9,'DAL','Dallas Stars'],[5,'DET','Detroit Red Wings'],[6,'EDM','Edmonton Oilers'],
+    [26,'FLA','Florida Panthers'],[8,'LA','Los Angeles Kings'],[30,'MIN','Minnesota Wild'],
+    [10,'MTL','Montreal Canadiens'],[27,'NSH','Nashville Predators'],[11,'NJ','New Jersey Devils'],
+    [12,'NYI','New York Islanders'],[13,'NYR','New York Rangers'],[14,'OTT','Ottawa Senators'],
+    [15,'PHI','Philadelphia Flyers'],[16,'PIT','Pittsburgh Penguins'],[18,'SJ','San Jose Sharks'],
+    [124292,'SEA','Seattle Kraken'],[19,'STL','St. Louis Blues'],[20,'TB','Tampa Bay Lightning'],
+    [21,'TOR','Toronto Maple Leafs'],[22,'VAN','Vancouver Canucks'],[37,'VGK','Vegas Golden Knights'],
+    [23,'WSH','Washington Capitals'],[28,'WPG','Winnipeg Jets']
+  ];
+
+  const asTeams = rows =>
+    rows.map(([id,abbr,name]) => ({id:String(id), abbreviation:abbr, displayName:name}));
+
+  const FALLBACK = {
+    'nfl': asTeams(NFL_FALLBACK),
+    'nba': asTeams(NBA_FALLBACK),
+    'mlb': asTeams(MLB_FALLBACK),
+    'nhl': asTeams(NHL_FALLBACK)
+  };
 
   let games = [];
   let listOK = false;      // true only when the dropdown holds real teams
@@ -65,12 +122,19 @@ const Teams = (() => {
       paint(list);
     }catch(e){
       console.error('Team list failed:', e);
-      if(lg === 'nfl'){
-        paint(NFL_FALLBACK);
-        Store.toast('Using the offline NFL list — live list failed: ' + e.message);
+      const blocked = /failed to fetch|networkerror|load failed/i.test(e.message);
+      if(FALLBACK[lg]){
+        paint(FALLBACK[lg]);
+        Store.toast(blocked
+          ? `Using the built-in ${lg.toUpperCase()} roster — ESPN's team-list endpoint sends no ` +
+            'CORS header. Schedules and scores still load normally.'
+          : `Using the built-in ${lg.toUpperCase()} list — live list failed: ${e.message}`);
       }else{
         selTm.innerHTML = `<option value="">Unavailable — ${esc(e.message)}</option>`;
-        Store.toast(`Could not load ${lg.toUpperCase()} teams: ${e.message}`);
+        Store.toast(blocked
+          ? 'College teams need the proxy — ESPN refuses direct browser calls. ' +
+            'Add a Proxy URL in Settings (see README, step 6).'
+          : `Could not load ${lg.toUpperCase()} teams: ${e.message}`);
       }
     }
   }
@@ -136,8 +200,8 @@ const Teams = (() => {
 
     if(teams.length && failed === teams.length){
       tileError(body, `Schedules unavailable (${esc(lastErr)}). ` +
-        'If that reads "Failed to fetch", ESPN is refusing the browser request — ' +
-        'set a proxy URL in Settings and traffic will route through it instead.');
+        'If that reads &quot;Failed to fetch&quot;, ESPN is refusing the browser request — ' +
+        'it sends no CORS header. Set a Proxy URL in Settings and traffic routes through it instead.');
       return;
     }
     render();
@@ -175,8 +239,10 @@ const Teams = (() => {
   function render(){
     const teams = Store.get('teams',[]);
     body.innerHTML = teams.map(t => {
-      const g = games.find(x => x.id === String(t.id) && x.state !== 'post')
-             || games.find(x => x.id === String(t.id));
+      /* Match on league too: ESPN numbers each league from 1, so NFL 16
+         (Vikings) and NBA 16 (Timberwolves) would otherwise collide. */
+      const mine = g => g.league === t.league && g.id === String(t.id);
+      const g = games.find(x => mine(x) && x.state !== 'post') || games.find(mine);
       let side = '<span class="row-sub">No games scheduled</span>';
       if(g){
         const when = new Date(g.kickoff);
