@@ -66,11 +66,16 @@ const Letterboxd = (() => {
     const out = [];
     const seen = new Set();
 
-    /* Slug and display name, in the order Letterboxd emits them. */
-    const RE = /data-item-slug="([^"]+)"[^>]*?data-item-name="([^"]*)"/g;
+    /* One pass per tag that carries a slug, then both attributes read out
+       of that tag — Letterboxd emits data-item-name BEFORE data-item-slug,
+       and a regex that assumed the other order matched nothing at all. */
+    const TAG = /<[^>]*data-item-slug="[^"]+"[^>]*>/g;
     let m;
-    while((m = RE.exec(html))){
-      add(m[1], decodeEntities(m[2]));
+    while((m = TAG.exec(html))){
+      const tag = m[0];
+      const slug = (tag.match(/data-item-slug="([^"]+)"/) || [])[1] || '';
+      const name = (tag.match(/data-item-name="([^"]*)"/) || [])[1] || '';
+      add(slug, decodeEntities(name));
     }
 
     /* Legacy shapes: the older grid used data-film-slug with the title in
@@ -87,7 +92,7 @@ const Letterboxd = (() => {
     /* Last resort: film links alone still give a slug, and a slug still
        gives a searchable title. */
     if(!out.length){
-      const links = html.match(/href="\/film\/([a-z0-9-]+)\/"/g) || [];
+      const links = html.match(/(?:href|data-item-link)="\/film\/([a-z0-9-]+)\/"/g) || [];
       for(const l of links) add((l.match(/\/film\/([a-z0-9-]+)\//) || [])[1], '');
     }
 
