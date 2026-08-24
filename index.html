@@ -75,6 +75,10 @@
       <div class="cal-grid" id="calGrid"></div>
     </div>
 
+    <!-- Focus strip and weather share the row under the grid: stacking them
+         is what pushed the calendar past a 1080-tall screen. -->
+    <div class="cal-lower">
+
     <!-- everything for the selected day lives below the grid -->
     <section id="dayFocus" class="focus">
       <div class="focus-head">
@@ -95,6 +99,8 @@
       </div>
       <div id="weatherBody"><p class="empty">Loading weather…</p></div>
     </section>
+
+    </div><!-- /.cal-lower -->
   </section>
 
   <!-- ===================== Sports ===================== -->

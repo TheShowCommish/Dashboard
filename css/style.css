@@ -578,7 +578,7 @@ input,select{
 .wx-meta{font-size:13px;color:var(--muted);}
 .wx-meta strong{color:var(--text);display:block;font-weight:600;text-transform:capitalize;}
 .wx-glyph{font-size:40px;line-height:1;}
-.wx-days{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}
+.wx-days{display:grid;grid-template-columns:repeat(auto-fit,minmax(56px,1fr));gap:6px;}
 .wx-day{
   text-align:center;padding:9px 4px;border-radius:8px;
   background:var(--panel-2);border:1px solid var(--edge);
@@ -754,3 +754,262 @@ fieldset label input,fieldset label select{margin-top:4px;}
   margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--edge);
   font-size:11px;color:var(--muted);font-family:var(--mono);
 }
+
+/* ============================================================
+   F1 — fit to 1920x1080 with no page scrolling.
+
+   The approach is a max-width lock rather than fixed pixels: the deck is
+   sized in viewport units so it fills a 1080-tall screen exactly, and the
+   content stops widening past --deck-max so a wider monitor gets margins
+   instead of stretched cards. Nothing is pinned to 1920 absolutely, so a
+   laptop still gets a usable dashboard rather than a clipped one.
+
+   The page itself never scrolls. Panels whose contents are genuinely
+   unbounded — a full season of fixtures, every note, a standings table —
+   scroll inside their own frame.
+   ============================================================ */
+:root{
+  --deck-max:1740px;
+  --head-h:52px;
+}
+
+html,body{height:100%;}
+body{
+  height:100vh;
+  overflow:hidden;                 /* the page never scrolls; panels do */
+}
+
+#deck-head{flex-wrap:nowrap;}
+#tabs{flex-wrap:wrap;}
+
+#deck{
+  height:calc(100vh - var(--head-h) - var(--ticker-h));
+  max-width:var(--deck-max);
+  margin:0 auto;
+  padding:10px 22px 8px;
+  overflow:hidden;
+  display:flex;flex-direction:column;
+}
+
+/* A visible view becomes the flex column that owns the height. The
+   [hidden] rule further up already wins with !important. */
+.view{display:flex;flex-direction:column;min-height:0;flex:1;}
+.view-head{flex:0 0 auto;}
+
+/* Every view's main body is the part that flexes and, if it must, scrolls. */
+#sportsBody,#pfBody,#moviesBody,#notesArchive,#ffBody{
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;
+}
+
+/* Thin, themed scrollbars — a default chrome scrollbar is a bright band
+   across a dark dashboard. */
+*::-webkit-scrollbar{width:9px;height:9px;}
+*::-webkit-scrollbar-track{background:transparent;}
+*::-webkit-scrollbar-thumb{
+  background:color-mix(in srgb,var(--muted) 40%,transparent);
+  border-radius:99px;
+}
+*::-webkit-scrollbar-thumb:hover{background:var(--muted);}
+
+/* ---- calendar at 1080 ----
+   The grid takes the room it needs and the lower row takes the rest, with
+   the two panels side by side instead of stacked — stacking them is what
+   pushed this view past a 1080-tall screen. */
+.cal-wrap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;}
+.cal-grid{flex:1;min-height:0;}
+.cal-day{min-height:0;overflow:hidden;}
+.cal-pills{overflow:hidden;}
+
+.cal-lower{
+  flex:0 0 auto;
+  display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);
+  gap:var(--gap);margin-top:var(--gap);
+  max-height:38vh;
+}
+.cal-lower > *{min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;}
+.focus{margin-top:0;}
+
+@media (max-width:1100px){
+  .cal-lower{grid-template-columns:1fr;max-height:46vh;overflow-y:auto;}
+}
+
+/* ---- shared bits ---- */
+.empty{font-size:13px;color:var(--muted);margin:8px 0;}
+.pf-h3-n{
+  font-family:var(--mono);font-size:10px;letter-spacing:0;
+  color:var(--accent);margin-left:6px;
+}
+.icon-btn.no-spin:hover{transform:none;}
+
+/* A row that is also a button: keep the row look, add the affordance. */
+.row-btn{
+  width:100%;background:transparent;border:0;border-bottom:1px solid var(--edge);
+  color:inherit;font:inherit;text-align:left;cursor:pointer;
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:8px 6px;border-radius:6px;
+  transition:background .14s var(--ease);
+}
+.row-btn:last-child{border-bottom:0;}
+.row-btn:hover{background:color-mix(in srgb,var(--accent) 8%,transparent);}
+
+/* ---- A2/A3 weather tile + popup ---- */
+.wx-tile{
+  padding:12px 13px;
+  background:color-mix(in srgb,var(--panel) 88%,transparent);
+  border:1px solid var(--edge);border-radius:var(--r);
+}
+.wx-tile-head{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.wx-tile-head .pf-h3{margin:0;}
+.wx-tile-grid{display:flex;flex-direction:column;gap:12px;margin-top:10px;}
+.wx-tile .wx-now{margin-bottom:8px;}
+.wx-tile .wx-temp{font-size:34px;}
+.wx-tile .wx-glyph{font-size:30px;}
+
+.wx-hours{
+  display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;
+  scrollbar-width:thin;
+}
+.wx-hour{
+  flex:0 0 auto;width:46px;display:flex;flex-direction:column;
+  align-items:center;gap:2px;padding:5px 2px;border-radius:8px;
+  background:color-mix(in srgb,var(--panel-2) 70%,transparent);
+}
+.wx-h-time{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.04em;}
+.wx-h-glyph{font-size:15px;line-height:1;}
+.wx-h-bar{display:flex;align-items:flex-end;height:38px;}
+.wx-h-bar i{
+  display:block;width:5px;border-radius:99px;
+  background:linear-gradient(to top,var(--accent),color-mix(in srgb,var(--accent) 30%,transparent));
+}
+.wx-h-temp{font-family:var(--mono);font-size:11px;font-weight:700;}
+.wx-h-pop{font-family:var(--mono);font-size:8.5px;color:var(--muted);}
+.wx-h-pop.is-wet{color:#7AA2F7;}
+.wx-day .p{font-family:var(--mono);font-size:9px;color:var(--muted);display:block;}
+.wx-day .p.is-wet{color:#7AA2F7;}
+
+#wxModalBody .wx-days{grid-template-columns:repeat(auto-fit,minmax(62px,1fr));}
+#wxModalBody h2{margin:0 0 12px;font-family:var(--display);font-size:19px;}
+
+/* ---- B3 modal close ---- */
+.modal-card{position:relative;}
+.modal-x{
+  width:30px;height:30px;display:grid;place-items:center;
+  background:var(--panel-2);border:1px solid var(--edge);border-radius:8px;
+  color:var(--muted);font-size:19px;line-height:1;cursor:pointer;
+  transition:color .14s var(--ease),border-color .14s var(--ease);
+  position:absolute;top:8px;right:8px;z-index:2;
+}
+.modal-x:hover{color:var(--bad);border-color:var(--bad);}
+/* A tall card scrolls its own contents, so the X has to travel with the
+   scroll rather than sliding off the top of the frame. */
+.modal-card.wide > .modal-x,.modal-card.xwide > .modal-x{
+  position:sticky;float:right;top:0;margin:0 0 -30px 0;
+}
+
+/* ---- B1/B2 per-team stat stacks ---- */
+.gc-matchup{align-items:start;}
+.gc-mid{display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:14px;}
+.gc-lab{
+  display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);
+}
+.gc-sidestats{
+  display:flex;flex-direction:column;gap:3px;
+  width:100%;margin-top:7px;
+}
+/* Smaller than the old shared grid and stacked vertically, so four fit
+   under a logo without the card growing. */
+.gc-sidestats .gc-player{
+  padding:3px 6px;gap:0;align-items:flex-start;text-align:left;
+}
+.gc-sidestats .gc-pcat{font-size:8px;}
+.gc-sidestats .gc-pname{font-size:10.5px;line-height:1.2;}
+.gc-sidestats .gc-pname i{font-size:9px;}
+.gc-sidestats .gc-pval{font-size:10px;}
+
+.gc-player{
+  display:flex;flex-direction:column;background:var(--panel-2);
+  border:1px solid var(--edge);border-radius:7px;padding:5px 7px;
+  color:inherit;font:inherit;cursor:pointer;text-align:left;
+  transition:border-color .14s var(--ease);
+}
+
+.tm-later{margin-top:12px;}
+
+/* ---- B4 game stats popup ---- */
+.gs-head{margin-bottom:12px;}
+.gs-head h2{margin:0;font-family:var(--display);font-size:19px;}
+.gs-score{
+  display:flex;align-items:center;justify-content:center;gap:20px;
+  padding:12px 0;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge);
+  margin-bottom:4px;
+}
+.gs-team{display:flex;align-items:center;gap:9px;font-family:var(--display);font-size:16px;}
+.gs-team .gc-logo{width:38px;height:38px;}
+.gs-nums{font-family:var(--mono);font-size:30px;font-weight:700;}
+.gs-status{text-align:center;margin:0 0 14px;}
+.gs-line td,.gs-line th{text-align:center;}
+.gs-line td:first-child,.gs-line th:first-child{text-align:left;}
+.gs-leaders{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px;}
+
+/* ---- C1/C2 plot ---- */
+.plot-wrap{position:relative;}
+.plot{min-width:0;}
+.plot-axis.is-dash{stroke-dasharray:3 4;}
+/* Holdings with no return history for the window: same weight, hollow, so
+   they read as "no data" rather than as flat. */
+.plot-pt.is-dark circle{
+  fill:none;stroke:var(--muted);stroke-width:1.4;stroke-dasharray:2.5 2.5;opacity:.85;
+}
+.plot-pt.is-dark .plot-lab{fill:var(--muted);}
+.plot-pt{cursor:pointer;outline:none;}
+.plot-pt:focus-visible circle{stroke:var(--accent);stroke-width:2;}
+
+.plot-tip{
+  position:absolute;z-index:6;pointer-events:none;
+  transform:translate(-50%,calc(-100% - 10px));
+  min-width:150px;padding:8px 10px;
+  background:var(--panel-2);border:1px solid var(--accent);border-radius:8px;
+  box-shadow:0 8px 22px rgba(0,0,0,.45);
+  display:flex;flex-direction:column;gap:2px;
+}
+.plot-tip[hidden]{display:none;}
+.plot-tip.flip-r{transform:translate(-12px,calc(-100% - 10px));}
+.plot-tip.flip-l{transform:translate(calc(-100% + 12px),calc(-100% - 10px));}
+.plot-tip b{font-family:var(--mono);font-size:13px;letter-spacing:.04em;}
+.tip-name{
+  font-size:10.5px;color:var(--muted);margin-bottom:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:190px;
+}
+.tip-row{display:flex;justify-content:space-between;gap:12px;font-size:11px;}
+.tip-row i{font-style:normal;color:var(--muted);}
+.tip-row em{font-style:normal;font-family:var(--mono);font-weight:700;}
+.tip-row em.up{color:var(--good);}
+.tip-row em.down{color:var(--bad);}
+
+/* ---- D1/D2 Movies tab ---- */
+.mv-body{display:flex;flex-direction:column;gap:var(--gap);}
+.mv-strip{
+  padding:12px 13px;
+  background:color-mix(in srgb,var(--panel) 88%,transparent);
+  border:1px solid var(--edge);border-radius:var(--r);
+}
+.mv-strip .car-head{margin-bottom:9px;}
+.mv-strip .pf-h3{margin:0;}
+.mv-rail{
+  display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;
+  scroll-snap-type:x proximity;scrollbar-width:thin;
+}
+.mv-rail .mv-card{
+  flex:0 0 auto;width:132px;scroll-snap-align:start;
+}
+.mv-seen{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 18px;}
+.mv-seen-row{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:6px 2px;border-bottom:1px solid var(--edge);
+  color:inherit;text-decoration:none;
+}
+.mv-seen-row:hover .row-title{color:var(--accent);}
+.mv-seen-row .row-title i{font-style:normal;color:var(--muted);font-size:11px;}
+.mv-stars{color:var(--accent);font-size:11px;letter-spacing:.06em;}

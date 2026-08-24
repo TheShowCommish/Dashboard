@@ -34,6 +34,40 @@ export default {
 
     const url = new URL(request.url);
 
+    // ---- Letterboxd ----
+    // Letterboxd publishes no watchlist API and sends no CORS headers, so the
+    // browser cannot read letterboxd.com directly from GitHub Pages. This
+    // forwards the public profile pages and RSS feed as text.
+    //
+    // Deliberately a separate branch with its OWN headers: the ESPN cookies
+    // below must never travel to a third-party host.
+    if (url.pathname.startsWith('/letterboxd/')) {
+      const path = url.pathname.slice('/letterboxd'.length);
+
+      // Only public read-only profile surfaces. No account or settings paths.
+      if (!/^\/[A-Za-z0-9_-]+\/(rss\/?|watchlist\/(page\/\d+\/?)?|films\/(diary\/)?(page\/\d+\/?)?)?$/.test(path))
+        return new Response('That Letterboxd path is not proxied.', { status: 400, headers: cors });
+
+      const lb = await fetch('https://letterboxd.com' + path + url.search, {
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml',
+          'User-Agent': 'control-deck (personal dashboard)'
+        }
+      });
+      const text = await lb.text();
+
+      return new Response(text, {
+        status: lb.status,
+        headers: {
+          ...cors,
+          'Content-Type': 'text/plain; charset=utf-8',
+          // Letterboxd is not a live feed; an hour of cache spares them the load.
+          'Cache-Control': 'public, max-age=3600'
+        }
+      });
+    }
+
+    // ---- ESPN ----
     // Two allowed paths, each to its own ESPN host. Nothing else forwards.
     let host;
     if (url.pathname.startsWith('/apis/v3/games/ffl/'))      host = 'https://lm-api-reads.fantasy.espn.com';

@@ -176,6 +176,8 @@ const StickyNotes = (() => {
             <td class="row-sub">${made}</td>
             <td>${n.done ? '<span class="chip ok">done</span>' : '<span class="chip">open</span>'}</td>
             <td class="arch-acts">
+              ${n.day ? `<button class="note-btn" data-aunpin="${n.id}"
+                  title="Unpin from ${day.replace(/<[^>]*>/g,'')}">⇱</button>` : ''}
               <button class="note-btn" data-adone="${n.id}">${n.done ? '↺' : '✓'}</button>
               <button class="note-btn" data-adel="${n.id}">×</button>
             </td>
@@ -189,6 +191,12 @@ const StickyNotes = (() => {
       render();
     });
     archive.querySelectorAll('[data-adel]').forEach(b => b.onclick = () => remove(b.dataset.adel));
+    /* The calendar tray used to be the drop target for un-pinning a note.
+       With the tray gone, that has to live somewhere — here. */
+    archive.querySelectorAll('[data-aunpin]').forEach(b => b.onclick = () => {
+      assign(b.dataset.aunpin, null);
+      renderArchive();
+    });
   }
 
   function render(){

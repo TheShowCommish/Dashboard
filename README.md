@@ -14,15 +14,22 @@ css/style.css           all styling; every colour is a CSS variable
 js/store.js             localStorage layer + shared helpers
 js/themes.js            the theme engine  ← add new themes here
 js/sky.js               animated backdrop (rain, snow, stars, confetti)
-js/weather.js           OpenWeatherMap
-js/google.js            Gmail + Google Calendar
-js/stocks.js            portfolio pricing + earnings dates
+js/weather.js           Open-Meteo (no key needed) + the weather tile and popup
+js/google.js            Gmail + Google Calendar, incl. silent token renewal
+js/stocks.js            portfolio pricing, earnings dates, the weight/return plot
 js/fantasy.js           ESPN fantasy football
+js/sports.js            team data from ESPN's public site API
 js/teams.js             followed teams and their schedules
-js/movies.js            upcoming theatrical releases
+js/movies.js            upcoming theatrical releases (TMDB)
+js/letterboxd.js        watchlist scrape + diary RSS + CSV import
+js/moviesview.js        the Movies tab
+js/gamecard.js          game previews, standings, player logs, game stats
+js/sportsview.js        the Sports tab
+js/calendarview.js      the two-week grid and the focus strip
 js/notes.js             to-do list + sticky notes
+js/ticker.js            the two bottom crawls
 js/app.js               boot, clock, settings drawer, refresh timers
-proxy/worker.js         optional ESPN proxy for private leagues
+proxy/worker.js         optional proxy: private ESPN leagues + Letterboxd
 sample-holdings.csv     example portfolio file
 ```
 
@@ -76,7 +83,9 @@ The tile refreshes at **6am, noon, 3pm, 6pm and 10pm** local time, and shows whe
 
 ## The layout
 
-A slim header holds the tab bar, a weather pill (glyph + temperature, click to refresh) and a settings cog. Five tabs:
+A slim header holds the tab bar, a weather pill (glyph + temperature, click to refresh), the clock, a weather button that opens the full forecast, and a settings cog. Six tabs:
+
+Every tab is designed to fit a 1920x1080 screen with **no page scrolling**. The layout is a max-width lock rather than fixed pixels, so a smaller screen degrades gracefully instead of clipping. Panels whose contents are genuinely unbounded — a full season of fixtures, every note, a standings table — scroll inside their own frame rather than pushing the page.
 
 ### Calendar
 
@@ -90,17 +99,39 @@ Everything that needs room renders in the **focus strip below the grid** for whi
 
 Click any day to focus it; double-click for a summary dialog.
 
-**Sticky notes** live in a tray under the calendar. Drag one onto a day to pin it, between days, or back to the tray to un-pin. Completing a note never deletes it.
+- **Weather tile** — under the grid: the current conditions, an hour-by-hour strip, and a seven-day outlook with rain chance. Click **Open detail** (or the weather button in the header) for 24 hours and two weeks at full size.
+
+**Sticky notes.** The tray that used to sit under the calendar is gone; **+ Add Note** in the calendar header creates a note pinned to whichever day is in focus. Notes still drag between days, and the Notes tab has an un-pin control (⇱) on any pinned note. Completing a note never deletes it.
 
 ### Sports
 
-One sub-tab per followed team. Each shows the team's record and conference standing, previews of the next five games, recent results, and the latest team news from ESPN. **Georgia Tech football is followed out of the box.**
+One sub-tab per followed team, showing the team's record and conference standing, the schedule, recent results, and the latest team news from ESPN. **Georgia Tech football is followed out of the box.**
+
+The **whole remaining season** is listed, not a fixed handful of games. The next three get full preview cards; the rest are compact rows, because each preview card costs a summary request to enrich and a 162-game baseball season would fire one per game. In a preview card, each team's stat leaders sit stacked directly under that team's own logo, so a stat is always on the same side as the team it belongs to.
+
+Clicking any **recent result** — or any row in the rest-of-season list — opens a stats popup with the final line, the per-quarter score, both teams' totals side by side, and the leaders. Every popup in the app closes three ways: the × in its corner, a click on the backdrop, or Escape.
 
 Sports data needs no API key. It is fetched straight from ESPN's public site API — never through the fantasy proxy, because ESPN answers `403` to datacenter IPs and routing it through a Worker breaks calls that work fine from the browser.
 
 ### Portfolio
 
 Returns over five windows, plus a scatter of weight against return. See below.
+
+**Every holding is plotted**, including ones with no price history for the chosen window — those sit in a
+dashed "no history" lane on the left rather than being dropped from the chart or, worse, drawn at 0% as
+though they were flat. Hovering any bubble shows its ticker, its return, and its share of the portfolio.
+
+### Movies
+
+Three strips:
+
+- **Must watch** — your Letterboxd watchlist as a scrolling poster carousel.
+- **Coming out** — upcoming theatrical releases from TMDB, the same feed that puts 🎬 pills on the
+  calendar, here with room for posters. The full forward window of the endpoint is fetched, not just the
+  first page.
+- **Recently watched** — your Letterboxd diary feed, with your star ratings.
+
+See **Step 8** for the Letterboxd setup.
 
 ### Notes
 
@@ -197,7 +228,7 @@ Put the league ID, season, and team ID in Settings.
 
 Cloudflare Workers has a free tier that covers this easily. The cookies live as Cloudflare secrets — never in your repo, never in your browser.
 
-The proxy also unlocks free-agent suggestions, which need a request header ESPN won't accept directly from a browser.
+The proxy also unlocks free-agent suggestions, which need a request header ESPN won't accept directly from a browser, and it forwards Letterboxd (see Step 8). **If you deployed this worker before the Movies tab existed, redeploy it** — the Letterboxd path is new.
 
 ### A note on the My teams picker
 
@@ -212,6 +243,30 @@ So the dashboard ships built-in NFL, NBA, MLB and NHL rosters using ESPN's own t
 Click **Add team**, pick a league and a team. Their games appear in the Calendar tile alongside your Google events, and they drive the game-day, win, and loss themes.
 
 ---
+
+## Step 8 — Letterboxd (Movies tab)
+
+Letterboxd publishes **no API**, and its pages send no `Access-Control-Allow-Origin` header, so a static
+page on GitHub Pages cannot read them — the browser blocks the request outright. Its RSS feed carries only
+films you have *logged*; there is no feed for a watchlist. So there are two ways in, and you can use either
+or both.
+
+**Option A — through the worker (stays current on its own).**
+
+1. Deploy or redeploy the proxy from Step 6. The same worker now forwards `/letterboxd/*`.
+2. Settings → Movies → paste the worker URL into **Scrape proxy URL** and put your username in
+   **Letterboxd username**.
+
+This reads your public watchlist page and your diary RSS server-side. Both are cached in the browser, so a
+reload costs nothing and a Letterboxd outage leaves the last good list on screen.
+
+**Option B — CSV import (no proxy, never breaks).**
+
+Letterboxd → Settings → Data → Export, then **Import watchlist CSV** on the Movies tab. Nothing to deploy,
+but it goes stale until you re-import.
+
+Posters are in neither payload. Titles are matched against TMDB (the key you already added in Step 3) and
+the result is cached per film, so a settled watchlist reloads without spending any API calls.
 
 ## Adding a theme
 
@@ -253,13 +308,16 @@ Every token in `:root` at the top of `style.css` can be overridden. Set Settings
 
 | Tile | Interval |
 |---|---|
-| Weather | 10 minutes |
-| Portfolio | 5 minutes |
+| Weather | fixed slots: 6am, noon, 3pm, 6pm, 10pm |
+| Portfolio quotes | once a day (hourly poke to catch the date rolling over) |
 | Gmail, Calendar | 5 minutes |
+| Google access token | renewed silently ~5 min before it expires |
 | Team scores | 15 minutes |
-| Fantasy, Movies | on load and on settings change |
+| Live game schedules | 5 minutes |
+| Fantasy, Movies, Letterboxd | on load and on settings change |
 
-Clock updates every 15 seconds.
+Clock updates every 15 seconds. The weather timer reschedules itself from the wall clock after every run,
+so it survives a laptop sleep and a DST change instead of drifting.
 
 ---
 
@@ -281,4 +339,13 @@ Then open `http://localhost:8000`. Opening `index.html` by double-clicking won't
 - **ESPN's fantasy API is unofficial.** It can change without notice. If the tile breaks after an ESPN update, that's usually why.
 - **Finnhub's earnings calendar is restricted on some plans.** The tile says so plainly if your key can't reach it.
 - **The Google Calendar API must be enabled separately from Gmail.** Enabling only one gives a `403` on the other tile while the first keeps working. Both live under **APIs & Services → Library**.
-- **Google test-user mode expires.** An unpublished OAuth app makes you re-approve every 7 days. Publishing the consent screen removes that.
+- **Google sign-in has two separate expiries, and only one is fixable in code.** The *access token* lasts
+  about an hour; the dashboard now renews it silently before it lapses, retries once on a rejected call, and
+  re-arms itself on reload, so normal use no longer needs a manual reconnect. But an **unpublished OAuth app
+  in test-user mode also expires its grant every 7 days**, and no amount of silent renewal can get around
+  that — the only fix is publishing the consent screen in the Google Cloud console. If you are still being
+  asked to reconnect roughly weekly, that is which of the two you are hitting.
+- **The Letterboxd watchlist is scraped, not queried.** There is no API to use. The parse reads the
+  metadata attributes on Letterboxd's poster grid and falls back through two older markup shapes, but a big
+  enough redesign on their end will still break it — in which case the Movies tab keeps showing the cached
+  list and says what went wrong, and the CSV import always works.

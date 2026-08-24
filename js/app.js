@@ -38,6 +38,7 @@ const App = (() => {
       if(name === 'calendar'){ CalendarView.render(); CalendarView.renderFocus(); }
       if(name === 'sports')    SportsView.render();
       if(name === 'portfolio') Stocks.load();
+      if(name === 'movies')  { MoviesView.render(); Letterboxd.load(); }
       if(name === 'notes')     StickyNotes.renderArchive();
       if(name === 'fantasy')   Fantasy.load();
     }catch(e){ console.error(`Tab "${name}" refresh failed:`, e); }
@@ -60,6 +61,7 @@ const App = (() => {
     k_finnhub:'keys.finnhub', k_twelve:'keys.twelve',
     k_tmdb:'keys.tmdb', k_gclient:'keys.gclient',
     k_wxUrl:'weather.url',
+    k_lbUser:'movies.lbUser', k_lbProxy:'movies.lbProxy',
     k_ffLeague:'fantasy.league', k_ffSeason:'fantasy.season',
     k_ffTeam:'fantasy.team', k_ffProxy:'fantasy.proxy',
     k_themeMode:'theme.mode', k_themePick:'theme.pick'
@@ -74,6 +76,10 @@ const App = (() => {
        than retyped from scratch. */
     const wx = document.getElementById('k_wxUrl');
     if(wx && !wx.value) wx.value = Weather.DEFAULT_URL;
+    /* Same for the Letterboxd username — show the default rather than a
+       blank box the user has to guess the format of. */
+    const lb = document.getElementById('k_lbUser');
+    if(lb && !lb.value) lb.value = 'ijustwannabox';
     drawer.hidden = false; scrim.hidden = false;
   }
 
@@ -96,6 +102,7 @@ const App = (() => {
     await run('Weather', () => Weather.load());
     recheckTheme();
     run('Movies',   () => Movies.load());
+    run('Letterboxd', () => Letterboxd.load());
     run('Stocks',   () => Stocks.load());
     run('Teams',    () => Teams.load());
     run('Schedules',() => CalendarView.loadGames());
@@ -120,6 +127,19 @@ const App = (() => {
   }
 
   function boot(){
+    /* The deck is sized against the real header height rather than a guessed
+       constant — the header wraps at narrow widths, and a stale guess is the
+       difference between "fits exactly" and "one scrollbar". */
+    step('fit', () => {
+      const head = document.getElementById('deck-head');
+      if(!head) return;
+      const apply = () =>
+        document.documentElement.style.setProperty('--head-h', `${head.offsetHeight}px`);
+      apply();
+      if(window.ResizeObserver) new ResizeObserver(apply).observe(head);
+      addEventListener('resize', apply);
+    });
+
     step('clock', () => { clock(); setInterval(clock, 15000); });
     step('notes', () => StickyNotes.render());
     step('theme', () => recheckTheme());
@@ -140,9 +160,24 @@ const App = (() => {
     on('mvClose','click',      () => Movies.close());
     on('standClose','click',   () => StandingsView.close());
     on('playerClose','click',  () => PlayerLog.close());
+    on('gameClose','click',    () => GameStats.close());
+    on('wxClose','click',      () => Weather.closeModal());
 
-    on('btnAddNote','click',  () => StickyNotes.add());
+    /* The weather popout, reachable from the header and from the tile. */
+    on('btnWx','click',      () => Weather.openModal());
+    on('wxTileMore','click', () => Weather.openModal());
+
+    /* The calendar's Add Note pins to whichever day is in focus — an
+       unscheduled note would have nowhere to appear on this tab now that
+       the tray is gone. */
+    on('btnAddNote','click',  () => StickyNotes.add(CalendarView.focusDay));
     on('btnAddNote2','click', () => StickyNotes.add());
+
+    on('btnLbRefresh','click', () => Letterboxd.load(true));
+    on('lbInput','change', e => {
+      if(e.target.files[0]) Letterboxd.ingestCsv(e.target.files[0]);
+      e.target.value = '';
+    });
     on('notesFilter','click', e => {
       const order = ['all','open','done'];
       const next = order[(order.indexOf(StickyNotes.filterMode) + 1) % order.length];
@@ -172,14 +207,44 @@ const App = (() => {
       }
     });
 
+    const MODALS = ['teamModal','movieModal','dayModal','standModal',
+                    'playerModal','gameModal','wxModal'];
+
+    const closeModals = () => MODALS.forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.hidden = true;
+    });
+
+    /* Three ways out of every popup: the X in its corner, a click on the
+       backdrop, and Escape. The long ones — a game log table, a standings
+       table — scroll inside the card, so a Close button at the bottom is
+       not reachable without scrolling to find it. */
+    step('modal closers', () => {
+      document.querySelectorAll('[data-close]').forEach(b =>
+        b.addEventListener('click', () => {
+          const el = document.getElementById(b.dataset.close);
+          if(el) el.hidden = true;
+        }));
+
+      MODALS.forEach(id => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        el.addEventListener('mousedown', e => { if(e.target === el) el.hidden = true; });
+      });
+    });
+
     addEventListener('keydown', e => {
       if(e.key === 'Escape'){
         if(!drawer.hidden) closeDrawer();
-        for(const id of ['teamModal','movieModal','dayModal','standModal','playerModal']){
-          const el = document.getElementById(id);
-          if(el) el.hidden = true;
-        }
+        closeModals();
       }
+    });
+
+    /* A previously connected Google account re-arms itself silently, so a
+       reload is not a reconnect. Runs before the first refresh so Calendar
+       and Mail are included in it when the token comes back. */
+    step('google resume', () => {
+      Google.resume().then(ok => { if(ok) refreshAll(); });
     });
 
     step('first refresh', refreshAll);

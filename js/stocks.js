@@ -44,6 +44,12 @@ const Stocks = (() => {
 
   const clean = v => String(v ?? '').replace(/^"|"$/g,'').trim();
 
+  /* Account names arrive with runs of padding spaces between the nickname
+     and the masked number ("Roth Contributory IRA      ...790"). They are
+     used as object keys, so they have to normalise identically every time
+     or the filter cannot find its own holdings. */
+  const cleanAccount = v => clean(v).replace(/\s+/g,' ').trim();
+
   /* "$1,983.28" → 1983.28 · "-$4.16" → -4.16 · "--" → null */
   function money(v){
     const s = clean(v);
@@ -77,18 +83,35 @@ const Stocks = (() => {
       const line = raw.trim();
       if(!line) continue;
 
+      /* Schwab writes its blank separator lines as a row of empty quoted
+         cells ("" or "","",""), not as a truly empty line. Those survive the
+         check above, and every one of them used to be mistaken for an
+         account header — which silently reset the current account to the
+         empty string and orphaned every holding that followed it. */
+      if(!/[A-Za-z0-9]/.test(line)) continue;
+
       /* The title line is quoted and holds a comma, so it splits to a
          single cell exactly like an account header — test it first. */
       const title = line.match(/Positions for .*? as of (.+?)"?$/i);
       if(title){ asOf = title[1].trim(); continue; }
 
       const cells = splitRow(line);
-      if(cells.length === 1){ account = clean(cells[0]); continue; }
+
+      /* An account header is its name and nothing else. Schwab pads it out
+         with empty cells to the width of the table in some exports and not
+         in others, so both shapes have to count as a header — otherwise the
+         name falls through to the holdings branch, gets dropped for having
+         no share count, and every position lands under the previous
+         account. */
+      const isHeader = cells.length === 1 ||
+                       (cells.length > 1 && cells.slice(1).every(c => !clean(c)));
+      if(isHeader){ account = cleanAccount(cells[0]); continue; }
+
       if(/^symbol$/i.test(clean(cells[0]))){ head = idx(cells); continue; }
       if(!head) continue;
 
       const symbol = clean(cells[head.sym]);
-      if(!symbol || /^positions total/i.test(symbol)) continue;
+      if(!symbol || /^(positions total|account total)/i.test(symbol)) continue;
 
       const value = money(cells[head.val]);
       if(/^cash/i.test(symbol)){ accounts.push({name:account, cash:value || 0}); continue; }
@@ -341,28 +364,50 @@ const Stocks = (() => {
      null means every account combined. */
   let account = null;
 
+  /* Names come from the byAccount keys, not the accounts[] list, because
+     byAccount is what sharesOf() actually looks in. Reading the tab labels
+     from one place and the share counts from another is how a filter ends up
+     offering an account it then reports as empty. */
   function accountNames(){
     const set = new Set();
-    for(const h of Store.get('holdings',[]))
-      for(const a of (h.accounts || [])) set.add(a);
-    return [...set];
+    for(const h of Store.get('holdings',[])){
+      const keys = Object.keys(h.byAccount || {});
+      if(keys.length) keys.forEach(k => set.add(k));
+      else for(const a of (h.accounts || [])) set.add(a);   // pre-byAccount saves
+    }
+    return [...set].filter(Boolean).sort();
   }
 
-  /* Share count and cost for the active account, or the combined total. */
+  /* Share count and cost for the active account, or the combined total.
+     A holding saved before byAccount existed has no split to read, so it
+     falls back to its whole position when it belongs to this account. */
+  function slice(h){
+    if(h.byAccount && account in h.byAccount) return h.byAccount[account];
+    if(!h.byAccount && (h.accounts || []).includes(account))
+      return {shares: h.shares, cost: h.cost || 0};
+    return null;
+  }
   function sharesOf(h){
     if(!account) return h.shares;
-    return h.byAccount?.[account]?.shares ?? 0;
+    return slice(h)?.shares ?? 0;
   }
   function costOf(h){
     if(!account) return h.cost || 0;
-    return h.byAccount?.[account]?.cost ?? 0;
+    return slice(h)?.cost ?? 0;
   }
   const inView = h => sharesOf(h) > 0;
 
   /* ---- maths ---- */
+  /* Best available price, in order of freshness. The CSV fallbacks matter
+     for the graph: Finnhub's free tier has no quote for mutual funds or
+     money-market holdings, and without a price those positions have no
+     value and used to vanish from the plot entirely. */
   function priceNow(h){
     const q = quotes[h.symbol];
-    return q ? q.c : h.csvPrice;
+    if(q && q.c) return q.c;
+    if(h.csvPrice) return h.csvPrice;
+    if(h.csvValue && h.shares) return h.csvValue / h.shares;
+    return null;
   }
 
   function windowStats(win){
@@ -400,7 +445,9 @@ const Stocks = (() => {
   }
 
   /* Weight of each holding plus its return over the chosen window, which
-     is exactly the pair the scatter plots. */
+     is exactly the pair the scatter plots. Every holding in view comes back,
+     including those with no return for this window — ret is null there and
+     the plot gives them their own lane rather than dropping them. */
   function weights(winId){
     const hold = Store.get('holdings',[]).filter(inView);
     const vals = hold.map(h => {
@@ -412,6 +459,7 @@ const Stocks = (() => {
         : (a ? a[winId] : null);
       return {
         symbol: h.symbol,
+        name: h.name || '',
         val: p != null ? p * sh : 0,
         ret: (p != null && then) ? (p/then - 1) * 100 : null
       };
@@ -449,19 +497,28 @@ const Stocks = (() => {
      weight. Drawn as inline SVG rather than a chart library so the page
      stays dependency-free and themable through CSS variables. */
   function scatter(winId){
-    const pts = weights(winId).filter(p => p.ret != null && p.val > 0);
-    const W = 720, H = 260, PADL = 44, PADR = 16, PADT = 16, PADB = 30;
+    const all = weights(winId).filter(p => p.val > 0);
+    const pts  = all.filter(p => p.ret != null);
+    /* Holdings with no return for this window still hold real money, so they
+       get their own gutter on the left rather than being dropped or, worse,
+       drawn at 0% as though they were flat. */
+    const dark = all.filter(p => p.ret == null);
 
-    if(!pts.length){
-      return `<div class="plot-empty"><p class="empty">No priced history for this window yet.</p></div>`;
+    const W = 720, H = 280, PADR = 16, PADT = 16, PADB = 42;
+    const GUT  = dark.length ? 66 : 0;            // "no history" lane
+    const PADL = 44 + GUT;
+
+    if(!all.length){
+      return `<div class="plot-empty"><p class="empty">Nothing priced in this account yet.</p></div>`;
     }
 
     const rets = pts.map(p => p.ret);
-    let lo = Math.min(...rets, 0), hi = Math.max(...rets, 0);
+    let lo = pts.length ? Math.min(...rets, 0) : -1;
+    let hi = pts.length ? Math.max(...rets, 0) :  1;
     const pad = Math.max(1, (hi - lo) * 0.12);
     lo -= pad; hi += pad;
 
-    const maxW = Math.max(...pts.map(p => p.pct));
+    const maxW = Math.max(...all.map(p => p.pct));
     const x = v => PADL + (v - lo) / (hi - lo) * (W - PADL - PADR);
     const y = v => H - PADB - (v / maxW) * (H - PADT - PADB);
     const r = v => Math.max(4, Math.sqrt(v / maxW) * 22);
@@ -471,25 +528,82 @@ const Stocks = (() => {
     const ticks = [];
     for(let t = Math.ceil(lo / step) * step; t <= hi; t += step) ticks.push(t);
 
-    return `<svg class="plot" viewBox="0 0 ${W} ${H}" role="img"
+    /* Spread the no-history bubbles across the gutter so they do not stack
+       into one blob when several share a weight. */
+    const gutX = i => 46 + ((i % 2) ? GUT * 0.62 : GUT * 0.28);
+
+    const bubble = (p, cx, cy, cls) => `
+      <g class="plot-pt ${cls}" data-sym="${esc(p.symbol)}"
+         data-pct="${p.pct.toFixed(2)}" data-ret="${p.ret == null ? '' : p.ret.toFixed(2)}"
+         data-name="${esc(p.name)}" tabindex="0" role="listitem"
+         aria-label="${esc(p.symbol)}, ${p.pct.toFixed(1)} percent of portfolio${
+           p.ret == null ? ', no return data' : `, return ${p.ret.toFixed(2)} percent`}">
+        <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r(p.pct).toFixed(1)}"></circle>
+        ${p.pct >= maxW * 0.28 ? `<text class="plot-lab" x="${cx.toFixed(1)}"
+              y="${(cy + 3.5).toFixed(1)}" text-anchor="middle">${esc(p.symbol)}</text>` : ''}
+      </g>`;
+
+    return `<svg class="plot" viewBox="0 0 ${W} ${H}" role="list"
                  aria-label="Portfolio weight against return">
       ${ticks.map(t => `
         <line class="plot-grid${Math.abs(t) < 1e-9 ? ' is-zero' : ''}"
               x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${PADT}" y2="${H - PADB}"></line>
         <text class="plot-tick" x="${x(t).toFixed(1)}" y="${H - PADB + 15}"
               text-anchor="middle">${t >= 0 ? '+' : ''}${t.toFixed(step < 1 ? 1 : 0)}%</text>`).join('')}
+      ${dark.length ? `
+        <line class="plot-axis is-dash" x1="${PADL - 12}" x2="${PADL - 12}"
+              y1="${PADT}" y2="${H - PADB}"></line>
+        <text class="plot-tick" x="${(46 + GUT/2).toFixed(0)}" y="${H - PADB + 15}"
+              text-anchor="middle">no history</text>` : ''}
       <line class="plot-axis" x1="${PADL}" x2="${PADL}" y1="${PADT}" y2="${H - PADB}"></line>
       <text class="plot-tick" x="6" y="${PADT + 8}">${maxW.toFixed(0)}%</text>
       <text class="plot-tick" x="6" y="${H - PADB}">0%</text>
-      <text class="plot-axlab" x="6" y="${H - 4}">weight ↑ / return →</text>
-      ${pts.map(p => `
-        <g class="plot-pt ${p.ret >= 0 ? 'up' : 'down'}">
-          <title>${esc(p.symbol)} · ${p.pct.toFixed(1)}% of portfolio · ${p.ret >= 0 ? '+' : ''}${p.ret.toFixed(2)}%</title>
-          <circle cx="${x(p.ret).toFixed(1)}" cy="${y(p.pct).toFixed(1)}" r="${r(p.pct).toFixed(1)}"></circle>
-          ${p.pct >= maxW * 0.28 ? `<text class="plot-lab" x="${x(p.ret).toFixed(1)}"
-                y="${(y(p.pct) + 3.5).toFixed(1)}" text-anchor="middle">${esc(p.symbol)}</text>` : ''}
-        </g>`).join('')}
+      <text class="plot-axlab" x="6" y="${H - 6}">weight ↑ / return →</text>
+      ${dark.map((p,i) => bubble(p, gutX(i), y(p.pct), 'is-dark')).join('')}
+      ${pts.map(p => bubble(p, x(p.ret), y(p.pct), p.ret >= 0 ? 'up' : 'down')).join('')}
     </svg>`;
+  }
+
+  /* ---- hover tooltip ----
+     An SVG <title> only gives the browser's own delayed tooltip, which cannot
+     be styled and reads poorly for a chart you are scanning. This is a real
+     element positioned against the plot wrapper. */
+  function wireTooltip(wrap){
+    const tip = wrap.querySelector('.plot-tip');
+    if(!tip) return;
+
+    const show = g => {
+      const ret = g.dataset.ret;
+      tip.innerHTML =
+        `<b>${esc(g.dataset.sym)}</b>` +
+        (g.dataset.name ? `<span class="tip-name">${esc(g.dataset.name)}</span>` : '') +
+        `<span class="tip-row"><i>Return</i><em class="${ret === '' ? '' : (+ret >= 0 ? 'up' : 'down')}">${
+          ret === '' ? 'no history' : (+ret >= 0 ? '+' : '−') + Math.abs(+ret).toFixed(2) + '%'}</em></span>` +
+        `<span class="tip-row"><i>Of portfolio</i><em>${(+g.dataset.pct).toFixed(2)}%</em></span>`;
+      tip.hidden = false;
+
+      /* Position from the circle's real on-screen box, so it tracks the SVG's
+         responsive scaling instead of assuming viewBox units are pixels. */
+      const box  = g.querySelector('circle').getBoundingClientRect();
+      const host = wrap.getBoundingClientRect();
+      const left = box.left - host.left + box.width/2;
+      const top  = box.top  - host.top;
+      tip.style.left = `${left}px`;
+      tip.style.top  = `${Math.max(0, top)}px`;
+      /* Flip to the right of the point when it would overflow the left edge. */
+      tip.classList.toggle('flip-r', left < tip.offsetWidth/2 + 6);
+      tip.classList.toggle('flip-l', left > host.width - tip.offsetWidth/2 - 6);
+    };
+
+    const hide = () => { tip.hidden = true; };
+
+    wrap.querySelectorAll('.plot-pt').forEach(g => {
+      g.addEventListener('mouseenter', () => show(g));
+      g.addEventListener('focus',      () => show(g));
+      g.addEventListener('mouseleave', hide);
+      g.addEventListener('blur',       hide);
+    });
+    wrap.addEventListener('mouseleave', hide);
   }
 
   function niceStep(span){
@@ -507,7 +621,17 @@ const Stocks = (() => {
     renderAccountTabs();
 
     if(!hold.length){
-      body.innerHTML = `<p class="empty">Nothing held in ${esc(account)}.</p>`;
+      /* Say why, not just that. An account offered as a tab but reporting
+         nothing means the label and the share lookup disagree, which is a
+         data problem worth naming rather than a genuinely empty account. */
+      const known = new Set();
+      for(const h of all) Object.keys(h.byAccount || {}).forEach(k => known.add(k));
+      const mismatch = account && known.size && !known.has(account);
+
+      body.innerHTML = `<p class="empty">Nothing held in ${esc(account || 'this account')}.${
+        mismatch ? ` The import recorded positions under ${
+          [...known].map(k => `<b>${esc(k)}</b>`).join(', ')
+        } — re-import the CSV to rebuild the split.` : ''}</p>`;
       return;
     }
 
@@ -539,6 +663,7 @@ const Stocks = (() => {
     }).join('');
 
     const label = WINDOWS.find(w => w.id === plotWin)?.label || '';
+    const plotted = weights(plotWin).filter(p => p.val > 0).length;
 
     body.innerHTML = `
       <div class="pf-grid">${cards}</div>
@@ -546,15 +671,21 @@ const Stocks = (() => {
         <h3 class="pf-h3">Weight against return — ${esc(label.toLowerCase())}</h3>
         <span class="plot-key">bubble size = share of portfolio</span>
       </div>
-      <div class="plot-wrap">${scatter(plotWin)}</div>
+      <div class="plot-wrap">
+        ${scatter(plotWin)}
+        <div class="plot-tip" hidden></div>
+      </div>
       <p class="pf-foot">${hold.length} holdings${account ? ` in ${esc(account)}` : ' across all accounts'}
-        · quotes ${stampText()}${hasHistory ? ' · history current' : ''}
+        · ${plotted} plotted · quotes ${stampText()}${hasHistory ? ' · history current' : ''}
         · exact percentages, deliberately fuzzy dollars</p>`;
 
     body.querySelectorAll('[data-win]').forEach(b => b.onclick = () => {
       plotWin = b.dataset.win;
       render();
     });
+
+    const wrap = body.querySelector('.plot-wrap');
+    if(wrap) wireTooltip(wrap);
 
     if(stamp){
       stamp.textContent = stampText();
