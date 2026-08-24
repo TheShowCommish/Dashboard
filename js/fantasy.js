@@ -243,7 +243,7 @@ const Fantasy = (() => {
      The calendar strip wants the live score on Sundays and Mondays, which
      needs a different view set than the roster page: mMatchupScore carries
      the totals, mBoxscore the per-player applied points. */
-  async function matchup(){
+  async function matchup(opts = {}){
     const league = Store.get('fantasy.league','');
     const season = Store.get('fantasy.season', String(new Date().getFullYear()));
     const myTeam = Number(Store.get('fantasy.team',''));
@@ -253,7 +253,8 @@ const Fantasy = (() => {
       `${base()}/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${league}` +
       '?view=mMatchupScore&view=mBoxscore&view=mTeam', {credentials:'omit'});
 
-    const week = lg.status?.currentMatchupPeriod ?? lg.scoringPeriodId ?? 1;
+    const cur = lg.status?.currentMatchupPeriod ?? lg.scoringPeriodId ?? 1;
+    const week = cur + (opts.weekOffset || 0);
     const names = Object.fromEntries((lg.teams || []).map(t =>
       [t.id, t.name || `${t.location || ''} ${t.nickname || ''}`.trim() || `Team ${t.id}`]));
 

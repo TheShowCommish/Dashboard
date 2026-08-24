@@ -1013,3 +1013,123 @@ body{
 .mv-seen-row:hover .row-title{color:var(--accent);}
 .mv-seen-row .row-title i{font-style:normal;color:var(--muted);font-size:11px;}
 .mv-stars{color:var(--accent);font-size:11px;letter-spacing:.06em;}
+
+/* ============================================================
+   Kiosk rotation — the AUTO toggle, the skip control, and the
+   full-viewport AD overlay that covers everything else while a
+   summary slide is up. Sized for 1920x1080 with no scrollbar.
+   ============================================================ */
+
+#kioskToggle{
+  font-family:var(--mono);letter-spacing:.08em;font-size:11px;
+}
+#kioskToggle.is-on{
+  background:var(--accent);color:var(--accent-ink);border-color:var(--accent);
+}
+
+#kioskControls{
+  position:fixed;left:20px;bottom:20px;z-index:10000;
+  display:flex;gap:10px;pointer-events:none;
+}
+#kioskControls > *{pointer-events:auto;}
+#kioskSkip{
+  font-family:var(--mono);letter-spacing:.08em;font-size:12px;
+  background:color-mix(in srgb,var(--panel-2) 92%,transparent);
+  backdrop-filter:blur(4px);
+}
+#kioskSkip:hover{border-color:var(--accent);color:var(--accent);}
+
+#adOverlay{display:none;}
+#adOverlay.is-on{
+  position:fixed;inset:0;z-index:9998;
+  background:var(--ink);color:var(--text);
+  display:flex;flex-direction:column;
+  padding:60px 80px 100px;overflow:hidden;
+  font-family:var(--display);
+}
+
+.ad-brand{
+  font-family:var(--mono);letter-spacing:.35em;font-size:12px;
+  color:var(--muted);margin-bottom:24px;
+}
+.ad-body{flex:1;display:flex;flex-direction:column;gap:32px;min-height:0;overflow:hidden;}
+
+.ad-hero{margin-bottom:8px;}
+.ad-h1{
+  font-family:var(--display);font-weight:700;font-size:96px;line-height:1.02;
+  margin:0 0 8px;letter-spacing:-.02em;
+}
+.ad-sub{font-size:24px;color:var(--muted);margin:0;}
+.ad-h3{font-family:var(--display);font-size:28px;margin:0 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
+.ad-big{font-size:52px;font-weight:600;margin:0;}
+.ad-big-sm{font-size:32px;font-weight:600;font-family:var(--mono);}
+.ad-line{font-size:22px;margin:6px 0;color:var(--text);}
+.ad-line i{font-style:normal;color:var(--muted);margin-right:8px;}
+.ad-empty{font-size:36px;color:var(--muted);text-align:center;padding:60px 0;}
+
+.ad-up{color:var(--good);}
+.ad-down{color:var(--bad);}
+.ad-live{color:var(--bad);}
+
+.ad-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:14px;}
+.ad-row{
+  display:grid;grid-template-columns:180px 1fr auto;gap:24px;align-items:baseline;
+  font-size:32px;padding:14px 0;border-bottom:1px solid var(--edge);
+}
+.ad-time{font-family:var(--mono);color:var(--accent);font-size:24px;}
+.ad-title{color:var(--text);}
+.ad-where{color:var(--muted);font-size:20px;}
+
+.ad-cols{display:grid;grid-template-columns:1fr;gap:40px;flex:1;min-height:0;}
+.ad-col{min-height:0;display:flex;flex-direction:column;}
+
+.ad-game{
+  display:flex;align-items:center;gap:48px;padding:32px 0;
+}
+.ad-game-logo{width:220px;height:220px;object-fit:contain;}
+.ad-game-meta{display:flex;flex-direction:column;gap:12px;}
+
+.ad-movie{
+  display:grid;grid-template-columns:auto 1fr;gap:56px;flex:1;min-height:0;align-items:start;
+}
+.ad-poster{
+  width:400px;height:600px;object-fit:cover;border-radius:12px;
+  border:1px solid var(--edge);background:var(--panel-2);
+}
+.ad-poster.ad-noart{display:grid;place-items:center;font-size:120px;}
+.ad-movie-info{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:hidden;}
+.ad-overview{
+  font-family:var(--body);font-size:22px;line-height:1.5;color:var(--text);
+  margin-top:16px;max-width:900px;
+}
+
+.ad-note-card{
+  background:var(--note,var(--accent));color:var(--accent-ink);
+  padding:60px 64px;border-radius:16px;max-width:1400px;margin:auto;
+  display:flex;flex-direction:column;gap:24px;
+}
+.ad-note-card .ad-sub{color:var(--accent-ink);opacity:.7;font-family:var(--mono);font-size:20px;}
+.ad-note-text{
+  font-family:var(--display);font-weight:700;font-size:64px;line-height:1.15;
+  margin:0;overflow-wrap:break-word;
+}
+
+.ad-ff-vs{
+  display:grid;grid-template-columns:1fr auto 1fr;gap:32px;align-items:center;
+  padding:24px 0;flex:1;min-height:0;
+}
+.ad-ff-side{
+  display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--edge);
+  border-radius:12px;background:color-mix(in srgb,var(--panel) 90%,transparent);
+}
+.ad-ff-side.is-mine{border-color:var(--accent);}
+.ad-ff-team{font-size:28px;margin:0;color:var(--text);}
+.ad-ff-score{font-family:var(--mono);font-size:64px;font-weight:700;margin:0;color:var(--accent);}
+.ad-ff-top{list-style:none;padding:0;margin:0;font-size:18px;color:var(--muted);}
+.ad-ff-top li{padding:4px 0;}
+.ad-ff-top i{font-style:normal;color:var(--muted);font-size:14px;margin:0 6px;}
+.ad-ff-dash{font-size:32px;color:var(--muted);font-family:var(--mono);}
+
+/* When rotation is on and a real ad is up, the underlying nav gets hidden
+   from focus and screen readers — the overlay owns the viewport. */
+body.kiosk-on #adOverlay.is-on ~ *{}

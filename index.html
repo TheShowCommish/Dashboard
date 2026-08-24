@@ -43,6 +43,7 @@
         <path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.6A3.75 3.75 0 0 0 6.5 19z"></path>
       </svg>
     </button>
+    <button id="kioskToggle" class="ghost-btn sm" title="Start rotation">AUTO</button>
     <button id="btnSettings" class="icon-btn" aria-label="Open settings" title="Settings">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
            stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -183,6 +184,12 @@
     <span class="ticker-tag alt">INBOX</span>
     <div class="ticker-view"><div class="ticker-track" id="trackMail"></div></div>
   </div>
+</div>
+
+<!-- ===== Kiosk rotation ===== -->
+<div id="adOverlay" class="ad" aria-hidden="true"></div>
+<div id="kioskControls">
+  <button id="kioskSkip" class="ghost-btn sm" hidden title="Skip to next AD">SKIP ›</button>
 </div>
 
 <!-- ===== Settings drawer ===== -->
@@ -344,5 +351,6 @@
 <script src="js/calendarview.js?v=14"></script>
 <script src="js/ticker.js?v=14"></script>
 <script src="js/app.js?v=14"></script>
+<script src="js/kiosk.js?v=14"></script>
 </body>
 </html>

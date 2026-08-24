@@ -247,6 +247,7 @@ const App = (() => {
       Google.resume().then(ok => { if(ok) refreshAll(); });
     });
 
+    step('kiosk', () => { if(window.Kiosk) Kiosk.boot(); });
     step('first refresh', refreshAll);
     step('weather schedule', () => Weather.scheduleNext());   // 6am, noon, 3pm, 6pm, 10pm
 
