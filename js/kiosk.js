@@ -821,15 +821,19 @@ const Kiosk = (() => {
 
       const rates = {rt:'', lb:null, tmdb:film.tmdbScore};
 
+      /* Someone's own words about the film beat any synopsis, so if the
+         diary or the network has written about it, that goes on screen. */
+      if(window.Letterboxd)
+        film.said = Letterboxd.reviewFor(film.title, film.year, film.slug);
+
       /* Letterboxd knows the film by slug; a watchlist pick already has one,
          a TMDB pick gets the title slugified and both spellings tried. */
       if(window.Letterboxd){
-        const slugs = film.slug ? [film.slug]
-                    : Letterboxd.filmSlug(film.title, film.year);
-        for(const s of slugs){
-          const r = await Letterboxd.rating(s);
-          if(r != null){ rates.lb = r; break; }
-        }
+        /* A watchlist pick already knows its slug and can be asked
+           directly; anything else goes through the year check. */
+        rates.lb = film.slug
+          ? await Letterboxd.rating(film.slug)
+          : await Letterboxd.ratingFor(film.title, film.year);
       }
 
       if(window.Movies && film.imdb){
@@ -841,6 +845,25 @@ const Kiosk = (() => {
     }catch(e){
       console.error('Movie AD enrich failed:', e.message);
     }
+  }
+
+  /* A diary entry, quoted: who said it, what they gave it, and the words
+     if there were any. */
+  function saidHtml(said){
+    if(!said) return '';
+    /* Letterboxd rates in halves and so does this: rounding 4.5 up to
+       five stars misreports what someone actually gave a film. */
+    const stars = said.rated != null ? (() => {
+      const full = Math.floor(said.rated);
+      const half = said.rated - full >= .5;
+      return '★'.repeat(full) + (half ? '½' : '') +
+             '☆'.repeat(Math.max(0, 5 - full - (half ? 1 : 0)));
+    })() : '';
+    return `<blockquote class="ad-said">
+      <span class="ad-said-head">${esc(said.who || 'you')}${
+        stars ? ` <em>${stars}</em>` : ''}</span>
+      ${said.review ? `<span class="ad-said-text">${esc(said.review)}</span>` : ''}
+    </blockquote>`;
   }
 
   function adMovieHtml(f, rates){
@@ -880,6 +903,7 @@ const Kiosk = (() => {
           </div>
           ${f.director ? `<p class="ad-line"><i>Directed by</i> ${esc(f.director)}</p>` : ''}
           ${f.cast?.length ? `<p class="ad-line"><i>Starring</i> ${esc(f.cast.join(', '))}</p>` : ''}
+          ${saidHtml(f.said)}
           <p class="ad-overview">${esc(f.overview) || 'No synopsis published for this film yet.'}</p>
         </div>
       </div>`;

@@ -354,6 +354,16 @@ paste into Settings → API keys. Both are cached per film forever, and either o
 em dash. Click any poster and the popup names each score and its scale — a bare 7.4 says nothing about
 out of what, or from whom.
 
+The Letterboxd lookup **checks the year on the page it landed on**. Letterboxd keeps the bare slug for
+whichever film got there first and hands later ones the year, so `/film/the-odyssey/` is the 1997
+Konchalovsky film at 3.2 and Nolan's is `/film/the-odyssey-2026/` at 4.4. The year-suffixed guess is
+tried first and a page whose year disagrees is refused outright — a missing rating is better than
+another film's.
+
+**If anyone has written about the film**, that goes above the studio's synopsis, in the movie AD and in
+the popup: who said it, what they gave it, and their words. Yours wins over the network's, and an entry
+with actual writing wins over a bare star rating.
+
 ## Light and dark, with the sun
 
 The deck goes **light at sunrise and dark at sunset**, off the real times for your coordinates rather

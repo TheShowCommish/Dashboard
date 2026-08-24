@@ -404,6 +404,24 @@ const Letterboxd = (() => {
     Store.set('movies.network', {at:Date.now(), films});
   }
 
+  /* ---- has anyone written about this film? ----
+     Matched on the slug where both sides have one, and on a slugified
+     title otherwise, because a TMDB record and a Letterboxd entry only
+     ever agree on the words. Yours wins over the network's, and an entry
+     with actual words wins over a bare star rating. */
+  function reviewFor(title, year, slug){
+    const want = new Set([slug, slugify(title)].filter(Boolean));
+    if(year) want.add(`${slugify(title)}-${year}`);
+
+    const rows = [...diary, ...network].filter(f =>
+      (f.slug && want.has(f.slug)) || slugify(f.title) === slugify(title));
+    if(!rows.length) return null;
+
+    const withText = rows.filter(f => f.review);
+    return withText.find(f => f.mine) || withText[0]
+        || rows.find(f => f.mine) || rows[0];
+  }
+
   /* ---- one film's Letterboxd average ----
      The film page carries the site-wide average in a twitter:data2 meta
      tag ("3.61 out of 5"). Cached forever per slug: it moves in the third
@@ -411,35 +429,72 @@ const Letterboxd = (() => {
      Needs the proxy; without one this quietly returns null. */
   const rateCache = () => Store.get('movies.lbRating', {});
 
-  async function rating(slug){
+  /* One film page: its average and the year it came out. The year is the
+     point — "The Odyssey" is letterboxd.com/film/the-odyssey/ for the 1997
+     one and /the-odyssey-2026/ for Nolan's, and reading the first and
+     believing it is how a 4.4 turns into a 3.2. */
+  async function ratingPage(slug){
     if(!slug) return null;
     const cache = rateCache();
-    if(slug in cache) return cache[slug];
+    const had = cache[slug];
+    /* Entries cached before the year was stored are re-fetched once: a
+       bare number is exactly what could not be checked against the film
+       being asked about, and is the thing that was wrong. */
+    if(had !== undefined && typeof had !== 'number') return had;
     if(!proxy()) return null;
 
     try{
       const res = await fetch(`${proxy()}/letterboxd/film/${slug}/`);
-      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      /* A slug that does not exist is cached as a miss too, or every
+         lookup pays for the same 404 again. */
+      if(!res.ok){ cache[slug] = null; Store.set('movies.lbRating', cache); return null; }
       const html = await res.text();
+
       /* Two ways in, in case one moves: the twitter card's second data
          slot, and the JSON-LD block further down the page. */
       const m = html.match(/twitter:data2"\s+content="([\d.]+)\s+out of 5"/i)
              || html.match(/"ratingValue"\s*:\s*([\d.]+)/i);
+      const y = html.match(/og:title"\s+content="[^"]*\((\d{4})\)"/i)
+             || html.match(/"datePublished"\s*:\s*"?(\d{4})/i);
+
       const val = m ? parseFloat(m[1]) : null;
-      cache[slug] = Number.isFinite(val) ? val : null;
+      const out = Number.isFinite(val) ? {v:val, year: y ? +y[1] : null} : null;
+      cache[slug] = out;
       Store.set('movies.lbRating', cache);
-      return cache[slug];
+      return out;
     }catch(e){
       console.error('Letterboxd rating failed for', slug, e.message);
       return null;
     }
   }
 
+  /* By slug, when the slug is known to be right — a watchlist row. */
+  async function rating(slug){
+    const p = await ratingPage(slug);
+    return p ? p.v : null;
+  }
+
+  /* By title, when it is not. Tries the year-suffixed slug first and
+     refuses a page whose year disagrees with the one asked for, so a
+     remake can never answer for the original. */
+  async function ratingFor(title, year){
+    for(const slug of filmSlug(title, year)){
+      const p = await ratingPage(slug);
+      if(!p) continue;
+      if(year && p.year && String(p.year) !== String(year)) continue;
+      return p.v;
+    }
+    return null;
+  }
+
   /* Letterboxd film URLs are the title slugified; good enough to look up a
      film we only know from TMDB. A miss caches as null and is not retried. */
+  /* Letterboxd keeps the bare slug for whichever film got there first and
+     hands later ones the year, so the year-suffixed guess is tried FIRST:
+     a modern film is far more often the later one. */
   const filmSlug = (title, year) => {
     const base = slugify(title);
-    return year ? [base, `${base}-${year}`] : [base];
+    return year ? [`${base}-${year}`, base] : [base];
   };
 
   /* Watchlist rows joined to their cached art. */
@@ -462,7 +517,7 @@ const Letterboxd = (() => {
   }
 
   return {
-    load, ingestCsv, decorated, rating, filmSlug, loadNetwork,
+    load, ingestCsv, decorated, rating, ratingFor, filmSlug, loadNetwork, reviewFor,
     get diary(){ return diary; },
     get network(){ return network; },
     /* Mine and theirs in one list, newest first — what the Movies tab

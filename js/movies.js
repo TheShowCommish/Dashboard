@@ -254,6 +254,30 @@ const Movies = (() => {
     }
   }
 
+  /* If this film is in the diary — yours or the network's — what was
+     said about it belongs above the studio's synopsis. */
+  function saidHtml(f){
+    if(!window.Letterboxd) return '';
+    const said = Letterboxd.reviewFor(f.title, (f.date || '').slice(0,4), f.slug);
+    if(!said) return '';
+    /* Letterboxd rates in halves and so does this: rounding 4.5 up to
+       five stars misreports what someone actually gave a film. */
+    const stars = said.rated != null ? (() => {
+      const full = Math.floor(said.rated);
+      const half = said.rated - full >= .5;
+      return '★'.repeat(full) + (half ? '½' : '') +
+             '☆'.repeat(Math.max(0, 5 - full - (half ? 1 : 0)));
+    })() : '';
+    const when = said.watchedAt && !Number.isNaN(+new Date(said.watchedAt))
+      ? new Date(said.watchedAt).toLocaleDateString(undefined,{month:'short', day:'numeric'})
+      : '';
+    return `<blockquote class="mv-said">
+      <span class="mv-said-head">${esc(said.who || 'you')}${
+        stars ? ` <em>${stars}</em>` : ''}${when ? ` <i>${esc(when)}</i>` : ''}</span>
+      ${said.review ? `<span class="mv-said-text">${esc(said.review)}</span>` : ''}
+    </blockquote>`;
+  }
+
   function open(id){
     const f = films.find(x => String(x.id) === String(id));
     if(!f) return;
@@ -280,6 +304,7 @@ const Movies = (() => {
           ${rateRow}
           ${f.director ? `<p class="mv-line"><i>Director</i> ${esc(f.director)}</p>` : ''}
           ${f.cast.length ? `<p class="mv-line"><i>Cast</i> ${esc(f.cast.join(', '))}</p>` : ''}
+          ${saidHtml(f)}
           <p class="mv-overview">${esc(f.overview) || 'No synopsis available yet.'}</p>
         </div>
       </div>`;
@@ -308,11 +333,10 @@ const Movies = (() => {
 
     try{
       if(window.Letterboxd){
-        const year = (f.date || '').slice(0,4);
-        for(const slug of Letterboxd.filmSlug(f.title, year)){
-          const v = await Letterboxd.rating(slug);
-          if(v != null){ set('lb', `${v.toFixed(1)}<em>/5</em>`); break; }
-        }
+        /* ratingFor, not rating: it checks the page's year against the
+           film's, so a remake cannot answer for the original. */
+        const v = await Letterboxd.ratingFor(f.title, (f.date || '').slice(0,4));
+        if(v != null) set('lb', `${v.toFixed(1)}<em>/5</em>`);
       }
     }catch(e){ console.error('Letterboxd rating lookup failed:', e.message); }
   }
