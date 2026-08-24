@@ -95,8 +95,24 @@ const App = (() => {
       b.addEventListener('change', () => Store.set(`kiosk.show.${b.dataset.show}`, b.checked)));
   }
 
+  /* The game-day theme, forced to one followed team so it can be seen
+     without waiting for that team to actually play. */
+  function renderGamedayTest(){
+    const sel = document.getElementById('k_gameday');
+    if(!sel) return;
+    const teams = window.Sports ? Sports.teams() : [];
+    const cur = Store.get('theme.gamedayTest','');
+    sel.innerHTML = '<option value="">Off — follow the schedule</option>' +
+      teams.map(t => {
+        const k = `${t.league}|${t.id}`;
+        return `<option value="${esc(k)}"${k === cur ? ' selected' : ''}>${esc(t.name)}</option>`;
+      }).join('');
+    sel.onchange = () => { Store.set('theme.gamedayTest', sel.value); recheckTheme(); };
+  }
+
   function openDrawer(){
     renderKioskShow();
+    renderGamedayTest();
     renderPreviewTeams();
     const pick = document.getElementById('k_themePick');
     pick.innerHTML = Themes.all.map(t => `<option value="${t.id}">${t.label}</option>`).join('');

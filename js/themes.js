@@ -128,7 +128,7 @@ const THEMES = [
   /* ---------- sports (outrank weather on game day) ---------- */
   {
     id:'gameday', label:'Game day', priority:60, sky:'none',
-    when: c => c.games.some(g => isToday(g.kickoff) && (g.state === 'pre' || g.state === 'in')),
+    when: c => !!gamedayGame(c),
     tokens:{
       '--ink':'#0C0E13','--panel':'#151922','--panel-2':'#1B212C','--edge':'#2A3340',
       '--text':'#F0F3F8','--muted':'#828FA3','--accent':'#00E08A','--accent-ink':'#0C0E13',
@@ -138,7 +138,7 @@ const THEMES = [
        accent, and the panels take a wash of it. A colour too dark to read
        against falls back to the alternate, then to the static accent. */
     dynamic(c){
-      const g = c.games.find(x => isToday(x.kickoff) && (x.state === 'pre' || x.state === 'in'));
+      const g = gamedayGame(c);
       const col = pickReadable(g?.me?.color, g?.me?.altColor);
       if(!col) return null;
       return {
@@ -152,8 +152,9 @@ const THEMES = [
       };
     },
     labelFor(c){
-      const g = c.games.find(x => isToday(x.kickoff) && (x.state === 'pre' || x.state === 'in'));
-      return g ? `${g.abbr || g.name} day` : 'Game day';
+      const g = gamedayGame(c);
+      if(!g) return 'Game day';
+      return `${g.abbr || g.name} day${g.forced ? ' · test' : ''}`;
     }
   },
   {
@@ -197,6 +198,39 @@ const THEMES = [
 ];
 
 /* ---- helpers the dynamic themes need ---- */
+
+/* Which game owns the deck today.
+
+   Settings can pin one followed team for testing, which wins outright.
+   Otherwise: a game already in progress beats one that has not started,
+   and among those that have not, the one kicking off soonest wins. Two
+   teams playing at the same moment is settled by kickoff, then by the
+   order the teams are followed in — deterministic either way, never the
+   coin toss that "first one in the list" used to be. */
+function gamedayGame(c){
+  const forced = Store.get('theme.gamedayTest', '');
+  if(forced){
+    const [league, id] = forced.split('|');
+    const t = (window.Sports ? Sports.teams() : []).find(x =>
+      x.league === league && String(x.id) === String(id));
+    const saved = Store.get('teams.colors', {})[forced];
+    const col = typeof saved === 'string' ? {c: saved, a: ''} : (saved || {c:'', a:''});
+    if(t) return {abbr: t.abbr, name: t.name, forced: true,
+                  me: {color: col.c, altColor: col.a}};
+  }
+
+  const live = [];
+  const soon = [];
+  for(const g of (c.games || [])){
+    if(!isToday(g.kickoff)) continue;
+    if(g.state === 'in') live.push(g);
+    else if(g.state === 'pre') soon.push(g);
+  }
+  if(live.length)
+    return live.sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff))[0];
+  return soon.sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff))[0] || null;
+}
+
 const isToday = d => {
   if(!d) return false;
   const x = new Date(d);
@@ -261,7 +295,12 @@ const Themes = (() => {
       const extra = (() => { try { return theme.dynamic(ctx); } catch { return null; } })();
       if(extra) tokens = {...tokens, ...extra};
     }
-    const sig = theme.id + JSON.stringify(tokens);
+    const text = (theme.labelFor && ctx ? theme.labelFor(ctx) : theme.label) || theme.label;
+
+    /* The label is part of the signature: the same team's colours can
+       arrive by two different routes — the real schedule and the test
+       switch — and only the wording tells them apart. */
+    const sig = theme.id + text + JSON.stringify(tokens);
     if(sig === signature) return;
     signature = sig;
     current = theme;
@@ -270,8 +309,7 @@ const Themes = (() => {
     for(const [prop,val] of Object.entries(tokens)) root.style.setProperty(prop,val);
 
     const label = document.getElementById('railLabel');
-    if(label) label.textContent =
-      (theme.labelFor && ctx ? theme.labelFor(ctx) : theme.label) || theme.label;
+    if(label) label.textContent = text;
     if(window.Sky) Sky.set(theme.sky);
   }
 

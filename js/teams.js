@@ -237,7 +237,17 @@ const Teams = (() => {
     let failed = 0, lastErr = '';
     for(const t of teams){
       try{
-        const d = await getJSON(espn(`/apis/site/v2/sports/${PATH[t.league]}/teams/${t.id}/schedule`));
+        /* Both season types, for the same reason Sports.schedule takes
+           both: the default one dries up the moment the preseason ends. */
+        const path = `/apis/site/v2/sports/${PATH[t.league]}/teams/${t.id}/schedule`;
+        const [cur, reg] = await Promise.all([
+          getJSON(espn(path)),
+          getJSON(espn(`${path}?seasontype=2`)).catch(() => ({}))
+        ]);
+        const byId = new Map();
+        for(const e of [...(cur.events || []), ...(reg.events || [])])
+          if(e && !byId.has(e.id)) byId.set(e.id, e);
+        const d = {events: [...byId.values()]};
         /* The schedule payload carries no team colours, and the game-day
            theme is painted in them, so they are looked up once per team
            and cached — Sports.info is memoised on the URL. */
@@ -269,15 +279,17 @@ const Teams = (() => {
   async function teamColour(t){
     const key = `${t.league}|${t.id}`;
     const saved = Store.get('teams.colors', {});
-    if(saved[key] !== undefined) return saved[key];
+    const had = saved[key];
+    /* Entries cached before the alternate was stored are a bare string. */
+    if(had && typeof had === 'object') return had;
     try{
       const info = await Sports.info(t);
-      saved[key] = info.color || '';
+      saved[key] = {c: info.color || '', a: info.altColor || ''};
       Store.set('teams.colors', saved);
       return saved[key];
     }catch(e){
       console.error('Team colour lookup failed for', t.name, e.message);
-      return '';
+      return {c: typeof had === 'string' ? had : '', a: ''};
     }
   }
 
@@ -327,7 +339,9 @@ const Teams = (() => {
         ? `${me.score?.displayValue ?? me.score ?? ''}–${opp.score?.displayValue ?? opp.score ?? ''}` : '',
       /* The schedule gives no colours, so the followed team's own is
          patched in from the teams endpoint — the game-day theme reads it. */
-      me: {...side(me), color: side(me).color || colour || ''},
+      me: {...side(me),
+           color:    side(me).color    || colour?.c || '',
+           altColor: side(me).altColor || colour?.a || ''},
       opp: side(opp),
       id: String(t.id)
     };

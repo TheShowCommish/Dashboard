@@ -1996,3 +1996,25 @@ body.fx-sun .pf-card{
 .mv-seen-row .mv-seen-who{color:var(--good);}
 .mv-seen-row.is-mine{border-left-color:var(--accent);}
 .mv-seen-row.is-mine .mv-seen-who{color:var(--accent);font-weight:700;}
+
+/* ============================================================
+   M-batch: ticker head sizing, a rail that clears the tickers.
+   ============================================================ */
+
+/* Both bars start at the same x: the tag is a fixed width, not one that
+   depends on how long the word is. */
+.ticker-tag{width:84px;padding:0;}
+
+/* The head was cramped at 15px with three blocks in it. */
+.ticker-head{gap:10px;padding:0 12px;}
+.t-total,.t-pick{gap:5px;}
+.t-total i,.t-pick i{font-size:7.5px;letter-spacing:.12em;}
+.t-total b{font-size:13px;}
+.t-pick b{font-size:11px;}
+.t-pick em{font-size:11px;}
+.t-lamp svg{width:15px;height:15px;}
+.t-lamp b{font-size:11px;}
+
+/* The theme label sat on top of the ticker bars. */
+#rail{bottom:calc(var(--ticker-h) + 10px);}
+#railLabel{padding:0 0 40px;}

@@ -390,7 +390,15 @@ top edge of one cell is behind the cell above it.
 On a day a followed team plays, the deck paints itself in **that team's own colour** — accent, rail,
 panel wash and edges — and the status rail says whose day it is. A colour too dark to read against
 falls back to the team's alternate, and then to the standard green rather than shipping something
-illegible.
+illegible. (The Raiders are the case that matters: their primary is black, so the deck goes silver.)
+
+**When two teams play at once**, a game already in progress beats one that has not started, and among
+those that have not, the one kicking off soonest wins. A genuine tie — two kickoffs at the same minute —
+falls back to the order the teams are followed in. It is never a coin toss, and it re-evaluates every
+five minutes, so an evening game takes over from an afternoon one as the day goes on.
+
+**Settings → Theme → Game day test** pins the theme to any followed team, whatever the schedule says, so
+each one can be seen without waiting for them to play. The rail says `· test` while it is on.
 
 ## Adding a theme
 

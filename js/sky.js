@@ -104,10 +104,11 @@ const Sky = (() => {
     '.gc', '.pf-card', '.cal-day', '.ff-board', '.tm-hero', '.note',
     '.wx-now-card', '.td-row', '.nw', '.row-btn', '.plot-wrap', '.mv-seen-row',
     '.subtab', '.ticker', '.wx-hour', '.mv-diary', '.tm-games', '.tm-news',
-    /* The poster shelves land as one row: the cards inside them are moving,
-       and a drift measured off a moving card twitches every time it is
-       re-measured. */
-    '.mv-marquee', '.sp-card', '.sp-mini', '.sp-panel'
+    /* The poster SHELF, not the posters: the cards inside are moving, and
+       a drift measured off a moving card twitches every time it is
+       re-measured. The shelf is the box they sit in, so the snow settles
+       on its top edge above the heading, the way it would on a ledge. */
+    '.mv-strip', '.sp-card', '.sp-mini', '.sp-panel'
   ].join(', ');
 
   function measurePiles(){

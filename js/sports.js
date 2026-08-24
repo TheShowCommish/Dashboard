@@ -75,6 +75,9 @@ const Sports = (() => {
       id: team.id, name: team.displayName || t.name,
       abbr: team.abbreviation || t.abbr,
       color: team.color ? `#${team.color}` : null,
+      /* Kept because a primary is often near-black — the alternate is
+         what a game-day theme can actually use. */
+      altColor: team.alternateColor ? `#${team.alternateColor}` : null,
       logo: team.logos?.[0]?.href || logoFor(t),
       record: team.record?.items?.find(i => /overall/i.test(i.description || ''))?.summary
            || team.record?.items?.[0]?.summary || '',
@@ -92,9 +95,26 @@ const Sports = (() => {
     return `https://a.espncdn.com/i/teamlogos/${dir}/500/${t.id}.png`;
   }
 
+  /* The schedule endpoint answers for ONE season type, and defaults to
+     whichever is current — so in late August an NFL team returns three
+     preseason games and nothing else, and the tab looks like the season
+     is over before it starts. Both types are fetched and merged. */
   async function schedule(t){
-    const d = await get(`${BASE}/${PATH[t.league]}/teams/${t.id}/schedule`);
-    return (d.events || []).map(e => normalise(e, t)).filter(Boolean);
+    const url = `${BASE}/${PATH[t.league]}/teams/${t.id}/schedule`;
+    const [now, regular] = await Promise.all([
+      get(url),
+      get(`${url}?seasontype=2`).catch(() => ({}))
+    ]);
+
+    const seen = new Set();
+    const out = [];
+    for(const e of [...(now.events || []), ...(regular.events || [])]){
+      if(!e || seen.has(e.id)) continue;
+      seen.add(e.id);
+      const g = normalise(e, t);
+      if(g) out.push(g);
+    }
+    return out.sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff));
   }
 
   async function news(t, limit = 6){
