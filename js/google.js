@@ -1,6 +1,20 @@
 /* ============================================================
    google.js — Gmail + Calendar via Google Identity Services.
    Read-only scopes. The token lives in memory only, never on disk.
+
+   Token lifetime is the whole problem here. GIS hands out an access
+   token that dies after roughly an hour and there is no refresh token
+   in the implicit browser flow, so "staying connected" means silently
+   asking for a new token before the old one expires. Three mechanisms
+   cover that, in order of preference:
+
+     1. A timer that re-requests a token shortly before it expires.
+     2. A retry on the first 401/403, in case the timer was missed —
+        a sleeping laptop suspends timers, so this catches the wake-up.
+     3. A remembered "was connected" flag so a page reload re-arms the
+        token silently instead of waiting for a click.
+
+   Only the flag is persisted. The token itself never touches disk.
    ============================================================ */
 
 const Google = (() => {
@@ -10,6 +24,14 @@ const Google = (() => {
   ].join(' ');
 
   let token = null, client = null, ready = false;
+  let expiresAt = 0;            // ms epoch when the current token dies
+  let renewTimer = null;
+  let waiting = null;           // in-flight token request, so callers can await one
+
+  /* Ask for a new token this many ms before the old one expires. Google
+     issues ~3600s tokens; five minutes of headroom is plenty and keeps
+     the renewal well clear of the cliff. */
+  const EARLY = 5 * 60 * 1000;
 
   function loadScript(){
     return new Promise((ok, fail) => {
@@ -22,34 +44,154 @@ const Google = (() => {
     });
   }
 
-  async function connect(){
+  function label(text){
+    const b = document.getElementById('btnGoogle');
+    if(b) b.textContent = text;
+  }
+
+  /* One token client for the life of the page. Its callback resolves
+     whatever request is currently in flight, so both the interactive
+     click and the silent renewal share the same plumbing. */
+  async function ensureClient(){
     const id = Store.get('keys.gclient','');
-    if(!id){ Store.toast('Add your Google OAuth Client ID in Settings first.'); return false; }
+    if(!id) throw new Error('no client id');
     await loadScript();
 
     if(!client){
       client = google.accounts.oauth2.initTokenClient({
         client_id: id, scope: SCOPES,
         callback: r => {
-          if(r.access_token){ token = r.access_token; ready = true; onAuth(); }
+          if(r.access_token){
+            token = r.access_token;
+            /* expires_in is seconds; treat a missing value as one hour. */
+            const secs = Number(r.expires_in) || 3600;
+            expiresAt = Date.now() + secs * 1000;
+            const first = !ready;
+            ready = true;
+            Store.set('google.connected', true);
+            armRenew();
+            label('Refresh Google');
+            settle(true);
+            if(first) onAuth();
+          }else{
+            settle(false);
+          }
+        },
+        error_callback: err => {
+          /* Fires when a silent request cannot be fulfilled without UI —
+             consent revoked, third-party cookies blocked, popup closed. */
+          console.warn('Google token request failed:', err?.type || err);
+          settle(false);
         }
       });
     }
-    client.requestAccessToken({prompt: token ? '' : 'consent'});
-    return true;
+    return client;
   }
 
-  function api(url){
-    return getJSON(url, {headers:{Authorization:`Bearer ${token}`}});
+  function settle(result){
+    const w = waiting;
+    waiting = null;
+    if(w) w.ok(result);
+  }
+
+  /* silent=true never shows UI. It succeeds only if the user has already
+     granted consent in a live session; otherwise error_callback fires and
+     we fall back to asking properly. */
+  function request(silent){
+    if(waiting) return waiting.promise;
+
+    let ok;
+    const promise = new Promise(res => { ok = res; });
+    waiting = {promise, ok};
+
+    ensureClient()
+      .then(c => c.requestAccessToken(silent ? {prompt:'none'} : {prompt: token ? '' : 'consent'}))
+      .catch(e => {
+        console.warn('Google client unavailable:', e.message);
+        settle(false);
+      });
+
+    /* A silent request that never calls back at all (some cookie-blocking
+       setups drop it on the floor) must not wedge every later attempt. */
+    setTimeout(() => { if(waiting && waiting.promise === promise) settle(false); }, 20000);
+
+    return promise;
+  }
+
+  function armRenew(){
+    clearTimeout(renewTimer);
+    const wait = Math.max(30000, expiresAt - Date.now() - EARLY);
+    renewTimer = setTimeout(() => { renew(); }, wait);
+  }
+
+  /* Silent renewal. If it fails the token is left alone — an expired token
+     still triggers the 401 retry path, which gets one more chance at UI. */
+  async function renew(){
+    const got = await request(true);
+    if(!got){
+      console.warn('Silent Google renewal failed; will retry on next API call.');
+      /* Try again in a few minutes rather than giving up until a reload. */
+      clearTimeout(renewTimer);
+      renewTimer = setTimeout(() => { renew(); }, 5 * 60 * 1000);
+    }
+  }
+
+  const expired = () => !token || Date.now() >= expiresAt;
+
+  async function connect(){
+    const id = Store.get('keys.gclient','');
+    if(!id){ Store.toast('Add your Google OAuth Client ID in Settings first.'); return false; }
+    return request(false);
+  }
+
+  /* A remembered connection re-arms itself on boot without a click. Silent
+     first; no toast if it fails, because an unattended dashboard failing to
+     reconnect is not something to shout about — the button still works. */
+  async function resume(){
+    if(!Store.get('google.connected', false)) return false;
+    if(!Store.get('keys.gclient','')) return false;
+    label('Reconnecting…');
+    const got = await request(true);
+    label(got ? 'Refresh Google' : 'Connect Google');
+    return got;
+  }
+
+  /* Every Google call goes through here, so every Google call gets the
+     expiry check and the one-shot retry. */
+  async function api(url){
+    if(expired()) await request(true);
+    if(!token) throw new Error('not connected to Google');
+
+    try{
+      return await getJSON(url, {headers:{Authorization:`Bearer ${token}`}});
+    }catch(e){
+      if(!/\b401\b|\b403\b|invalid credentials|invalid authentication/i.test(e.message)) throw e;
+
+      /* Token was rejected. Ask for a fresh one and replay the call once. */
+      const got = await request(true);
+      if(!got){
+        ready = false;
+        label('Connect Google');
+        throw new Error('Google sign-in expired — click Connect Google');
+      }
+      return getJSON(url, {headers:{Authorization:`Bearer ${token}`}});
+    }
   }
 
   async function onAuth(){
-    document.getElementById('btnGoogle').textContent = 'Refresh Google';
+    label('Refresh Google');
     await Promise.all([Calendar.load(), Mail.load()]);
     App.recheckTheme();
   }
 
-  return { connect, api, get ready(){ return ready; } };
+  function disconnect(){
+    clearTimeout(renewTimer);
+    token = null; ready = false; expiresAt = 0;
+    Store.set('google.connected', false);
+    label('Connect Google');
+  }
+
+  return { connect, resume, disconnect, api, get ready(){ return ready; } };
 })();
 
 

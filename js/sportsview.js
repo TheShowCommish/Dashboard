@@ -48,9 +48,20 @@ const SportsView = (() => {
       Sports.news(t, 6).catch(() => [])
     ]);
 
+    /* ESPN hands back the team's whole season, so show the whole season.
+       Both lists scroll inside their own panel rather than being truncated
+       to an arbitrary handful. */
+    /* ESPN hands back the team's whole season, so show the whole season.
+       Only the next few get a full preview card, because each card costs a
+       summary request to enrich — a 12-game NFL season would fire twelve at
+       once, a 162-game MLB season far worse. The rest list as compact rows
+       that cost nothing and open the same stats popup on click. */
     const now = Date.now();
-    const upcoming = games.filter(g => new Date(g.kickoff).getTime() > now - 4*36e5).slice(0,5);
-    const recent   = games.filter(g => g.state === 'post').slice(-3).reverse();
+    const future = games.filter(g => new Date(g.kickoff).getTime() > now - 4*36e5);
+    const CARDS = 3;
+    const upcoming = future.slice(0, CARDS);
+    const later    = future.slice(CARDS);
+    const recent   = games.filter(g => g.state === 'post').reverse();
 
     body.innerHTML = `
       <div class="tm-hero"${info.color ? ` style="--tm:${esc(info.color)}"` : ''}>
@@ -66,19 +77,32 @@ const SportsView = (() => {
         <button class="ghost-btn sm" data-stand="${esc(t.league)}">League standings</button>
       </div>
 
-      <h3 class="pf-h3">Upcoming</h3>
+      <h3 class="pf-h3">Upcoming <span class="pf-h3-n">${future.length}</span></h3>
       <div class="tm-games" id="tmGames"></div>
-
-      ${recent.length ? `<h3 class="pf-h3">Recent</h3>
-        <div class="tm-recent">${recent.map(g => `
-          <div class="row">
+      ${later.length ? `<div class="tm-later">
+        <span class="gc-lab">Rest of the season</span>
+        <div class="tm-recent">${later.map((g,i) => `
+          <button class="row row-btn" data-later="${i}">
             <span class="row-main">
               <span class="row-title">${g.home ? 'vs' : '@'} ${esc(g.opponent)}</span>
-              <span class="row-sub">${new Date(g.kickoff).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>
+              <span class="row-sub">${new Date(g.kickoff).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</span>
+            </span>
+            <span class="row-side"><span class="row-sub">${
+              new Date(g.kickoff).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}</span></span>
+          </button>`).join('')}</div>
+      </div>` : ''}
+
+      ${recent.length ? `<h3 class="pf-h3">Recent <span class="pf-h3-n">${recent.length}</span>
+          <span class="plot-key">click a game for its stats</span></h3>
+        <div class="tm-recent">${recent.map((g,i) => `
+          <button class="row row-btn" data-recent="${i}">
+            <span class="row-main">
+              <span class="row-title">${g.home ? 'vs' : '@'} ${esc(g.opponent)}</span>
+              <span class="row-sub">${new Date(g.kickoff).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'2-digit'})}</span>
             </span>
             <span class="row-side"><span class="chip ${g.result === 'win' ? 'ok' : 'hot'}">${
               g.result === 'win' ? 'W' : 'L'} ${esc(g.score)}</span></span>
-          </div>`).join('')}</div>` : ''}
+          </button>`).join('')}</div>` : ''}
 
       <h3 class="pf-h3">Latest news</h3>
       <div class="tm-news">${news.length ? news.map(n => `
@@ -97,6 +121,11 @@ const SportsView = (() => {
 
     const sb = body.querySelector('[data-stand]');
     if(sb) sb.onclick = () => StandingsView.open(t.league);
+
+    body.querySelectorAll('[data-recent]').forEach(b =>
+      b.onclick = () => GameStats.open(recent[+b.dataset.recent]));
+    body.querySelectorAll('[data-later]').forEach(b =>
+      b.onclick = () => GameStats.open(later[+b.dataset.later]));
   }
 
   return { render, select(k){ active = k; render(); } };

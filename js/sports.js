@@ -193,7 +193,19 @@ const Sports = (() => {
       record: c.record?.find(r => /total|overall/i.test(r.type || ''))?.displayValue
            || c.record?.[0]?.displayValue || '',
       score: c.score ?? '',
-      home: c.homeAway === 'home'
+      home: c.homeAway === 'home',
+      /* Per-period scores, for the quarter/inning strip in the game popup. */
+      periods: (c.linescores || []).map(l => l.displayValue ?? l.value ?? '')
+    }));
+
+    /* Team totals, keyed by team id. ESPN labels these per sport, so the
+       labels travel with the values rather than being hardcoded here. */
+    const teamStats = (d.boxscore?.teams || []).map(t => ({
+      id: t.team?.id,
+      abbr: t.team?.abbreviation || '',
+      stats: (t.statistics || [])
+        .map(s => ({label: s.label || s.name, value: s.displayValue}))
+        .filter(s => s.label && s.value != null)
     }));
 
     /* leaders[] is per team, each holding categories, each holding people. */
@@ -212,6 +224,9 @@ const Sports = (() => {
     return {
       sides,
       leaders,
+      teamStats,
+      headlines: (d.article ? [d.article.headline] : [])
+        .concat((d.news?.articles || []).slice(0,3).map(a => a.headline)).filter(Boolean),
       status: comp?.status?.type?.shortDetail || '',
       state: comp?.status?.type?.state || 'pre',
       broadcast: (d.broadcasts || []).flatMap(b => b.media?.shortName || b.names || []).filter(Boolean),

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=13">
+<link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body>
 
@@ -24,6 +24,7 @@
     <button class="tab-btn is-on" data-tab="calendar"  role="tab" aria-selected="true">Calendar</button>
     <button class="tab-btn"       data-tab="sports"    role="tab" aria-selected="false">Sports</button>
     <button class="tab-btn"       data-tab="portfolio" role="tab" aria-selected="false">Portfolio</button>
+    <button class="tab-btn"       data-tab="movies"    role="tab" aria-selected="false">Movies</button>
     <button class="tab-btn"       data-tab="notes"     role="tab" aria-selected="false">Notes</button>
     <button class="tab-btn"       data-tab="fantasy"   role="tab" aria-selected="false">Fantasy</button>
   </nav>
@@ -36,6 +37,12 @@
       <span id="clockTime">--:--</span>
       <span id="clockDate">—</span>
     </div>
+    <button id="btnWx" class="icon-btn no-spin" aria-label="Open weather detail" title="Weather detail">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.6A3.75 3.75 0 0 0 6.5 19z"></path>
+      </svg>
+    </button>
     <button id="btnSettings" class="icon-btn" aria-label="Open settings" title="Settings">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
            stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -59,6 +66,7 @@
         <button id="calPrev"  class="ghost-btn sm" aria-label="Previous two weeks">‹</button>
         <button id="calToday" class="ghost-btn sm">Today</button>
         <button id="calNext"  class="ghost-btn sm" aria-label="Next two weeks">›</button>
+        <button id="btnAddNote" class="ghost-btn sm primary">+ Add Note</button>
       </div>
     </div>
 
@@ -79,14 +87,14 @@
       <p id="focusEmpty" class="empty" hidden>Nothing else on this day.</p>
     </section>
 
-    <aside class="tray">
-      <div class="tray-head">
-        <h3>Unscheduled notes</h3>
-        <button id="btnAddNote" class="ghost-btn sm">New note</button>
+    <!-- fuller weather readout, directly under the grid -->
+    <section id="wxTile" class="wx-tile">
+      <div class="wx-tile-head">
+        <h3 class="pf-h3">Weather</h3>
+        <button id="wxTileMore" class="ghost-btn sm">Open detail</button>
       </div>
-      <p class="note-line">Drag a note onto any day to pin it there.</p>
-      <div id="trayBoard" class="tray-board"></div>
-    </aside>
+      <div id="weatherBody"><p class="empty">Loading weather…</p></div>
+    </section>
   </section>
 
   <!-- ===================== Sports ===================== -->
@@ -114,6 +122,21 @@
       </div>
     </div>
     <div id="pfBody" class="pf-body"><p class="empty">Import your positions CSV to get started.</p></div>
+  </section>
+
+  <!-- ===================== Movies ===================== -->
+  <section class="view" id="view-movies" role="tabpanel" hidden>
+    <div class="view-head slim">
+      <div class="view-title">
+        <h2>Movies</h2>
+        <span class="chip" id="mvCount">—</span>
+      </div>
+      <div class="view-tools">
+        <button id="btnLbRefresh" class="ghost-btn sm">Refresh Letterboxd</button>
+        <label class="ghost-btn sm file-btn">Import watchlist CSV<input id="lbInput" type="file" accept=".csv,.txt" hidden></label>
+      </div>
+    </div>
+    <div id="moviesBody" class="mv-body"><p class="empty">Loading…</p></div>
   </section>
 
   <!-- ===================== Notes ===================== -->
@@ -184,6 +207,13 @@
     </fieldset>
 
     <fieldset>
+      <legend>Movies</legend>
+      <label>Letterboxd username<input id="k_lbUser" type="text" autocomplete="off" placeholder="ijustwannabox"></label>
+      <label>Scrape proxy URL<input id="k_lbProxy" type="text" autocomplete="off" placeholder="https://your-worker.workers.dev"></label>
+      <p class="note-line">Letterboxd publishes no watchlist API and GitHub Pages cannot read letterboxd.com directly — the browser blocks it. Point this at the same Cloudflare Worker as Fantasy (redeploy it after this update; it now forwards <code>/letterboxd/*</code>) and the watchlist and recent-diary feed are both read server-side. With no proxy set, use <b>Import watchlist CSV</b> on the Movies tab instead: Letterboxd → Settings → Data → Export.</p>
+    </fieldset>
+
+    <fieldset>
       <legend>Followed teams</legend>
       <div id="teamsBody" class="settings-list"><p class="empty">No teams followed yet.</p></div>
       <button id="btnAddTeam" class="ghost-btn sm">Add team</button>
@@ -219,39 +249,61 @@
 </div>
 
 <!-- day detail -->
-<div id="dayModal" hidden>
+<div id="dayModal" class="modal" hidden>
   <div class="modal-card wide">
+    <button class="modal-x" data-close="dayModal" aria-label="Close">×</button>
     <div id="dayModalBody"></div>
     <div class="modal-actions"><button id="dayClose" class="ghost-btn sm">Close</button></div>
   </div>
 </div>
 
 <!-- standings -->
-<div id="standModal" hidden>
+<div id="standModal" class="modal" hidden>
   <div class="modal-card xwide">
+    <button class="modal-x" data-close="standModal" aria-label="Close">×</button>
     <div id="standModalBody"></div>
     <div class="modal-actions"><button id="standClose" class="ghost-btn sm">Close</button></div>
   </div>
 </div>
 
 <!-- player game log -->
-<div id="playerModal" hidden>
+<div id="playerModal" class="modal" hidden>
   <div class="modal-card xwide">
+    <button class="modal-x" data-close="playerModal" aria-label="Close">×</button>
     <div id="playerModalBody"></div>
     <div class="modal-actions"><button id="playerClose" class="ghost-btn sm">Close</button></div>
   </div>
 </div>
 
+<!-- single game stats -->
+<div id="gameModal" class="modal" hidden>
+  <div class="modal-card xwide">
+    <button class="modal-x" data-close="gameModal" aria-label="Close">×</button>
+    <div id="gameModalBody"></div>
+    <div class="modal-actions"><button id="gameClose" class="ghost-btn sm">Close</button></div>
+  </div>
+</div>
+
+<!-- weather detail -->
+<div id="wxModal" class="modal" hidden>
+  <div class="modal-card xwide">
+    <button class="modal-x" data-close="wxModal" aria-label="Close">×</button>
+    <div id="wxModalBody"></div>
+    <div class="modal-actions"><button id="wxClose" class="ghost-btn sm">Close</button></div>
+  </div>
+</div>
+
 <!-- movie detail -->
-<div id="movieModal" hidden>
+<div id="movieModal" class="modal" hidden>
   <div class="modal-card wide">
+    <button class="modal-x" data-close="movieModal" aria-label="Close">×</button>
     <div id="movieModalBody"></div>
     <div class="modal-actions"><button id="mvClose" class="ghost-btn sm">Close</button></div>
   </div>
 </div>
 
 <!-- team picker -->
-<div id="teamModal" hidden>
+<div id="teamModal" class="modal" hidden>
   <div class="modal-card">
     <h2>Follow a team</h2>
     <label>League<select id="tmLeague">
@@ -268,21 +320,23 @@
   </div>
 </div>
 
-<script src="js/store.js?v=13"></script>
-<script src="js/themes.js?v=13"></script>
-<script src="js/sky.js?v=13"></script>
-<script src="js/weather.js?v=13"></script>
-<script src="js/google.js?v=13"></script>
-<script src="js/stocks.js?v=13"></script>
-<script src="js/fantasy.js?v=13"></script>
-<script src="js/sports.js?v=13"></script>
-<script src="js/teams.js?v=13"></script>
-<script src="js/movies.js?v=13"></script>
-<script src="js/notes.js?v=13"></script>
-<script src="js/gamecard.js?v=13"></script>
-<script src="js/sportsview.js?v=13"></script>
-<script src="js/calendarview.js?v=13"></script>
-<script src="js/ticker.js?v=13"></script>
-<script src="js/app.js?v=13"></script>
+<script src="js/store.js?v=14"></script>
+<script src="js/themes.js?v=14"></script>
+<script src="js/sky.js?v=14"></script>
+<script src="js/weather.js?v=14"></script>
+<script src="js/google.js?v=14"></script>
+<script src="js/stocks.js?v=14"></script>
+<script src="js/fantasy.js?v=14"></script>
+<script src="js/sports.js?v=14"></script>
+<script src="js/teams.js?v=14"></script>
+<script src="js/movies.js?v=14"></script>
+<script src="js/letterboxd.js?v=14"></script>
+<script src="js/moviesview.js?v=14"></script>
+<script src="js/notes.js?v=14"></script>
+<script src="js/gamecard.js?v=14"></script>
+<script src="js/sportsview.js?v=14"></script>
+<script src="js/calendarview.js?v=14"></script>
+<script src="js/ticker.js?v=14"></script>
+<script src="js/app.js?v=14"></script>
 </body>
 </html>

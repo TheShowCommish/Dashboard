@@ -14,11 +14,13 @@
    ============================================================ */
 
 const Weather = (() => {
-  /* There is no weather tile any more — the forecast lives in the calendar
-     cells via forDay(). body stays optional so the module keeps working if
-     a tile is ever reintroduced. */
+  /* The tile under the calendar grid renders into #weatherBody, and the
+     header button opens the same data at full size in #wxModal. body stays
+     optional so the module keeps working if either is absent. */
   const body  = document.getElementById('weatherBody');
   const stamp = document.getElementById('wxUpdated');
+  const modal = document.getElementById('wxModal');
+  const mBody = document.getElementById('wxModalBody');
 
   let current = null;      // { main, desc, temp, feels, wind, isDay }
   let hourly  = [];        // [{ t:Date, temp, main, desc, pop }]
@@ -211,17 +213,70 @@ const Weather = (() => {
   }
 
   /* ---- render ---- */
-  function daily(){
+  /* The request asks for 14 forecast days; how many get rendered is the
+     caller's business — the tile wants a week, the modal wants the lot. */
+  function daily(count = 5){
     const byDay = new Map();
     for(const h of hourly){
       const k = h.t.toDateString();
-      if(!byDay.has(k)) byDay.set(k, {date:h.t, hi:-999, lo:999, noon:null});
+      if(!byDay.has(k)) byDay.set(k, {date:h.t, hi:-999, lo:999, noon:null, pop:0});
       const d = byDay.get(k);
       d.hi = Math.max(d.hi, h.temp);
       d.lo = Math.min(d.lo, h.temp);
+      d.pop = Math.max(d.pop, h.pop || 0);
       if(h.t.getHours() >= 11 && h.t.getHours() <= 14) d.noon = d.noon || h;
     }
-    return [...byDay.values()].slice(0,5).map(d => ({...d, noon: d.noon || hourly[0]}));
+    return [...byDay.values()].slice(0, count).map(d => ({...d, noon: d.noon || hourly[0]}));
+  }
+
+  /* The next N forecast hours from now, for the hour-by-hour strip. This is
+     the part of the payload that was already being fetched and thrown away. */
+  function nextHours(count = 12){
+    const now = Date.now() - 30*60*1000;      // keep the hour just gone
+    return hourly.filter(h => h.t.getTime() >= now).slice(0, count);
+  }
+
+  const hourLabel = t =>
+    t.toLocaleTimeString(undefined,{hour:'numeric'}).replace(/\s/g,'').toLowerCase();
+
+  function hourStripHtml(count){
+    const hrs = nextHours(count);
+    if(!hrs.length) return '';
+    const temps = hrs.map(h => h.temp);
+    const lo = Math.min(...temps), hi = Math.max(...temps);
+    const span = Math.max(1, hi - lo);
+    return `<div class="wx-hours">${hrs.map((h,i) => `
+      <div class="wx-hour">
+        <span class="wx-h-time">${i === 0 ? 'now' : esc(hourLabel(h.t))}</span>
+        <span class="wx-h-glyph">${glyph(h.main)}</span>
+        <span class="wx-h-bar"><i style="height:${(12 + (h.temp - lo) / span * 26).toFixed(0)}px"></i></span>
+        <span class="wx-h-temp">${h.temp}°</span>
+        <span class="wx-h-pop${h.pop >= 30 ? ' is-wet' : ''}">${h.pop ? h.pop + '%' : '—'}</span>
+      </div>`).join('')}</div>`;
+  }
+
+  function nowHtml(){
+    return `<div class="wx-now">
+        <span class="wx-glyph">${glyph(current.main)}</span>
+        <span class="wx-temp">${current.temp}°</span>
+        <span class="wx-meta">
+          <strong>${esc(current.desc)}</strong>
+          Feels ${current.feels}° · Wind ${current.wind} mph${
+            current.humidity != null ? ` · ${current.humidity}% hum` : ''}
+        </span>
+      </div>`;
+  }
+
+  function daysHtml(count){
+    return `<div class="wx-days">
+        ${daily(count).map(d => `
+          <div class="wx-day">
+            <b>${d.date.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase()}</b>
+            <span class="g">${glyph(d.noon.main)}</span>
+            <span class="t">${d.hi}° <i>${d.lo}°</i></span>
+            <span class="p${d.pop >= 30 ? ' is-wet' : ''}">${d.pop ? d.pop + '%' : ''}</span>
+          </div>`).join('')}
+      </div>`;
   }
 
   function stampText(){
@@ -234,27 +289,18 @@ const Weather = (() => {
 
   function paint(){
     if(!current) return;
-    const days = daily();
 
     if(body) body.innerHTML = `
-      <div class="wx-now">
-        <span class="wx-glyph">${glyph(current.main)}</span>
-        <span class="wx-temp">${current.temp}°</span>
-        <span class="wx-meta">
-          <strong>${esc(current.desc)}</strong>
-          Feels ${current.feels}° · Wind ${current.wind} mph${
-            current.humidity != null ? ` · ${current.humidity}% hum` : ''}
-        </span>
-      </div>
-      <div class="wx-days">
-        ${days.map(d => `
-          <div class="wx-day">
-            <b>${d.date.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase()}</b>
-            <span class="g">${glyph(d.noon.main)}</span>
-            <span class="t">${d.hi}° <i>${d.lo}°</i></span>
-          </div>`).join('')}
+      <div class="wx-tile-grid">
+        <div class="wx-tile-now">
+          ${nowHtml()}
+          ${hourStripHtml(10)}
+        </div>
+        ${daysHtml(7)}
       </div>
       <p class="wx-foot">${esc(current.place)} · updated ${stampText()}</p>`;
+
+    if(modal && !modal.hidden) paintModal();
 
     if(stamp){
       stamp.textContent = stampText();
@@ -274,10 +320,42 @@ const Weather = (() => {
     if(window.CalendarView) CalendarView.render();
   }
 
+  /* ---- detail modal ---- */
+  function paintModal(){
+    if(!mBody) return;
+    if(!current){
+      mBody.innerHTML = '<h2>Weather</h2><p class="empty">No reading yet — check the URL in Settings.</p>';
+      return;
+    }
+    const rain = daily(14).filter(d => d.pop >= 30);
+    mBody.innerHTML = `
+      <h2>Weather · ${esc(current.place)}</h2>
+      ${nowHtml()}
+      <h3 class="pf-h3">Next 24 hours</h3>
+      ${hourStripHtml(24) || '<p class="empty">No hourly detail in this payload.</p>'}
+      <h3 class="pf-h3">Two weeks out</h3>
+      ${daysHtml(14)}
+      ${rain.length ? `<p class="wx-foot">Wet days ahead: ${rain.map(d =>
+          `${d.date.toLocaleDateString(undefined,{weekday:'short'})} ${d.pop}%`).join(' · ')}</p>` : ''}
+      <p class="wx-foot">Open-Meteo · updated ${stampText()} · refreshes at 6am, noon, 3pm, 6pm and 10pm</p>`;
+  }
+
+  function openModal(){
+    if(!modal) return;
+    modal.hidden = false;
+    paintModal();
+    /* An open popup on a stale slot is worth a quiet refresh. */
+    if(!current) load(true);
+  }
+
+  const closeModal = () => { if(modal) modal.hidden = true; };
+
   return {
     load,
     refresh: () => load(true),
     scheduleNext,
+    openModal,
+    closeModal,
     DEFAULT_URL,
     get current(){ return current; },
     get updatedAt(){ return fetchedAt; },

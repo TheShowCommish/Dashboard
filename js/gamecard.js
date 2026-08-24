@@ -27,13 +27,40 @@ const GameCard = (() => {
     return el;
   }
 
-  function sideHtml(s, g){
+  /* Each team's leaders sit under that team's own logo, so the buttons are
+     always on the same side of the card as the team they belong to. They are
+     stacked vertically and kept small: a card can carry six of them and the
+     matchup itself must stay the thing you read first. */
+  function statsHtml(leaders){
+    if(!leaders.length) return '';
+    return `<div class="gc-sidestats">${leaders.map(l => `
+      <button class="gc-player" data-athlete="${esc(l.athleteId || '')}"
+              data-name="${esc(l.athlete)}" data-pos="${esc(l.position)}"
+              data-shot="${esc(l.headshot)}"
+              title="Game log for ${esc(l.athlete)} · ${esc(l.category)}">
+        <span class="gc-pcat">${esc(l.category)}</span>
+        <span class="gc-pname">${esc(l.athlete)}${l.position ? ` <i>${esc(l.position)}</i>` : ''}</span>
+        <span class="gc-pval">${esc(l.value)}</span>
+      </button>`).join('')}</div>`;
+  }
+
+  function sideHtml(s, g, leaders = []){
     const logo = s.logo || Sports.logoFor({league:g.league, id:s.id});
     return `<div class="gc-side">
       <img class="gc-logo" src="${esc(logo)}" alt="" loading="lazy">
       <span class="gc-name">${esc(s.abbr || s.name)}</span>
       <span class="gc-rec">${esc(s.record || '—')}</span>
+      ${statsHtml(leaders)}
     </div>`;
+  }
+
+  /* leaders[].team is an abbreviation; match it to the side. Anything that
+     matches neither side (ESPN occasionally omits the team block) is dropped
+     rather than guessed at, so a stat never lands under the wrong team. */
+  function splitLeaders(leaders, away, home){
+    const mine = (side) => leaders.filter(l =>
+      l.team && side.abbr && l.team.toUpperCase() === side.abbr.toUpperCase());
+    return {away: mine(away).slice(0,4), home: mine(home).slice(0,4)};
   }
 
   function render(g, sum){
@@ -61,22 +88,8 @@ const GameCard = (() => {
 
     const tv = (sum?.broadcast?.length ? sum.broadcast : g.broadcast) || [];
 
-    const leaders = (sum?.leaders || []).slice(0,6);
-    const leaderHtml = leaders.length ? `
-      <div class="gc-leaders">
-        <span class="gc-lab">${live || done ? 'Leaders' : 'Watch for'}</span>
-        <div class="gc-lgrid">
-          ${leaders.map(l => `
-            <button class="gc-player" data-athlete="${esc(l.athleteId || '')}"
-                    data-name="${esc(l.athlete)}" data-pos="${esc(l.position)}"
-                    data-shot="${esc(l.headshot)}"
-                    title="Game log for ${esc(l.athlete)}">
-              <span class="gc-pcat">${esc(l.team)} · ${esc(l.category)}</span>
-              <span class="gc-pname">${esc(l.athlete)}${l.position ? ` <i>${esc(l.position)}</i>` : ''}</span>
-              <span class="gc-pval">${esc(l.value)}</span>
-            </button>`).join('')}
-        </div>
-      </div>` : '';
+    const split = splitLeaders(sum?.leaders || [], away, home);
+    const anyLeaders = split.away.length || split.home.length;
 
     return `
       <div class="gc-top">
@@ -85,17 +98,19 @@ const GameCard = (() => {
         <span class="gc-when">${esc(when)}</span>
       </div>
       <div class="gc-matchup">
-        ${sideHtml(away, g)}
-        ${scoreBlock}
-        ${sideHtml(home, g)}
+        ${sideHtml(away, g, split.away)}
+        <div class="gc-mid">
+          ${scoreBlock}
+          ${anyLeaders ? `<span class="gc-lab">${live || done ? 'Leaders' : 'Watch for'}</span>` : ''}
+        </div>
+        ${sideHtml(home, g, split.home)}
       </div>
       <div class="gc-meta">
         ${tv.length ? `<span class="gc-tv">📺 ${esc(tv.join(', '))}</span>` : ''}
         ${(sum?.venue || g.venue) ? `<span>📍 ${esc(sum?.venue || g.venue)}</span>` : ''}
         ${sum?.odds ? `<span>${esc(sum.odds)}</span>` : ''}
         <button class="gc-stand" data-league="${esc(g.league)}">Standings</button>
-      </div>
-      ${leaderHtml}`;
+      </div>`;
   }
 
   function wire(el, g, sum){
@@ -195,8 +210,132 @@ const PlayerLog = (() => {
   return { open, close };
 })();
 
+/* ---------------- one game's stats ----------------
+   Opened by clicking a finished game in the Sports tab. Shows the final
+   line, the per-period strip, both teams' totals side by side, and the
+   leaders — each still a button through to that player's game log. */
+const GameStats = (() => {
+  const modal = document.getElementById('gameModal');
+  const body  = document.getElementById('gameModalBody');
+
+  function headHtml(g){
+    const kick = new Date(g.kickoff);
+    return `<div class="gs-head">
+      <h2>${esc(g.abbr || g.teamName)} ${g.home ? 'vs' : '@'} ${esc(g.opponent)}</h2>
+      <p class="row-sub">${esc(Sports.leagueName(g.league))} · ${
+        kick.toLocaleString(undefined,{weekday:'short', month:'short', day:'numeric',
+                                       hour:'numeric', minute:'2-digit'})}${
+        g.venue ? ` · ${esc(g.venue)}` : ''}</p>
+    </div>`;
+  }
+
+  /* Team totals are two flat lists of label/value; pair them up by label so
+     the table reads across instead of down. A stat only one team reports
+     still gets a row, with an em dash on the other side. */
+  function statTable(teamStats, sides){
+    if(teamStats.length < 2) return '';
+    const labels = [];
+    for(const t of teamStats)
+      for(const s of t.stats)
+        if(!labels.includes(s.label)) labels.push(s.label);
+    if(!labels.length) return '';
+
+    const valueFor = (t, label) => t.stats.find(s => s.label === label)?.value ?? '—';
+    const nameFor = t => {
+      const side = sides.find(s => String(s.id) === String(t.id));
+      return side?.abbr || t.abbr || '—';
+    };
+
+    return `<h3 class="pf-h3">Team totals</h3>
+      <div class="tbl-wrap"><table class="std-table">
+        <thead><tr><th>Stat</th>${teamStats.map(t => `<th>${esc(nameFor(t))}</th>`).join('')}</tr></thead>
+        <tbody>${labels.map(l => `<tr>
+          <td>${esc(l)}</td>
+          ${teamStats.map(t => `<td>${esc(String(valueFor(t, l)))}</td>`).join('')}
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+  }
+
+  function periodTable(sides){
+    const withPeriods = sides.filter(s => s.periods?.length);
+    if(withPeriods.length < 2) return '';
+    const n = Math.max(...withPeriods.map(s => s.periods.length));
+    return `<div class="tbl-wrap"><table class="std-table gs-line">
+      <thead><tr><th>Team</th>
+        ${Array.from({length:n}, (_,i) => `<th>${i+1}</th>`).join('')}
+        <th>T</th></tr></thead>
+      <tbody>${withPeriods.map(s => `<tr>
+        <td>${esc(s.abbr || s.name)}</td>
+        ${Array.from({length:n}, (_,i) => `<td>${esc(String(s.periods[i] ?? '—'))}</td>`).join('')}
+        <td><b>${esc(String(s.score ?? ''))}</b></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  function leaderHtml(leaders){
+    if(!leaders.length) return '';
+    return `<h3 class="pf-h3">Leaders</h3>
+      <div class="gs-leaders">${leaders.map(l => `
+        <button class="gc-player" data-athlete="${esc(l.athleteId || '')}"
+                data-name="${esc(l.athlete)}" data-pos="${esc(l.position)}"
+                data-shot="${esc(l.headshot)}"
+                title="Game log for ${esc(l.athlete)}">
+          <span class="gc-pcat">${esc(l.team)} · ${esc(l.category)}</span>
+          <span class="gc-pname">${esc(l.athlete)}${l.position ? ` <i>${esc(l.position)}</i>` : ''}</span>
+          <span class="gc-pval">${esc(l.value)}</span>
+        </button>`).join('')}</div>`;
+  }
+
+  async function open(g){
+    modal.hidden = false;
+    body.innerHTML = headHtml(g) + '<p class="empty">Loading game stats…</p>';
+
+    let sum;
+    try{
+      sum = await Sports.summary(g.league, g.eventId, g.state === 'in');
+    }catch(e){
+      body.innerHTML = headHtml(g) +
+        `<p class="empty">Stats unavailable (${esc(e.message)}).</p>`;
+      return;
+    }
+
+    const sides = sum.sides?.length ? sum.sides : [];
+    const away = sides.find(s => !s.home);
+    const home = sides.find(s => s.home);
+
+    const scoreLine = (away && home) ? `
+      <div class="gs-score">
+        <span class="gs-team"><img src="${esc(away.logo)}" alt="" class="gc-logo">
+          <b>${esc(away.abbr || away.name)}</b></span>
+        <span class="gs-nums">${esc(String(away.score ?? ''))} – ${esc(String(home.score ?? ''))}</span>
+        <span class="gs-team"><img src="${esc(home.logo)}" alt="" class="gc-logo">
+          <b>${esc(home.abbr || home.name)}</b></span>
+      </div>
+      <p class="row-sub gs-status">${esc(sum.status || 'Final')}${
+        sum.odds ? ` · ${esc(sum.odds)}` : ''}</p>` : '';
+
+    const detail = scoreLine + periodTable(sides) +
+      statTable(sum.teamStats || [], sides) + leaderHtml(sum.leaders || []);
+
+    body.innerHTML = headHtml(g) +
+      (detail || '<p class="empty">No stats published for this game.</p>');
+
+    /* Same drill-through as the preview cards. */
+    body.querySelectorAll('[data-athlete]').forEach(b => {
+      if(!b.dataset.athlete) return;
+      b.onclick = () => PlayerLog.open(g.league, b.dataset.athlete, {
+        name: b.dataset.name, position: b.dataset.pos, headshot: b.dataset.shot
+      });
+    });
+  }
+
+  const close = () => { modal.hidden = true; };
+  return { open, close };
+})();
+
 /* module export: a top-level const does not become a window property in a
    classic script. */
 window.GameCard = GameCard;
 window.StandingsView = StandingsView;
 window.PlayerLog = PlayerLog;
+window.GameStats = GameStats;
