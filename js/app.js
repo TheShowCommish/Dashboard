@@ -14,6 +14,8 @@ const App = (() => {
     Themes.refresh({
       weather: Weather.current,
       games:   (window.Teams ? Teams.games : []),
+      /* Light by day, dark by night, off the real sunrise and sunset. */
+      phase:   Weather.phase(),
       hour:    now.getHours(),
       month:   now.getMonth() + 1
     });
@@ -81,7 +83,20 @@ const App = (() => {
               title="Sports AD for ${esc(t.name)}">${esc(t.abbr || t.name)}</button>`).join('');
   }
 
+  /* One switch per thing the kiosk can show. Rendered on open so it always
+     reflects what Kiosk actually believes. */
+  function renderKioskShow(){
+    const host = document.getElementById('kioskShow');
+    if(!host || !window.Kiosk) return;
+    host.innerHTML = Kiosk.rotation.map(r => `
+      <label class="fx-row"><input type="checkbox" data-show="${esc(r.name)}"${r.on ? ' checked' : ''}>
+        ${esc(r.label)}${r.tab && !r.ad ? ' <i class="hint">tab</i>' : ''}${!r.tab && r.ad ? ' <i class="hint">AD</i>' : ''}</label>`).join('');
+    host.querySelectorAll('[data-show]').forEach(b =>
+      b.addEventListener('change', () => Store.set(`kiosk.show.${b.dataset.show}`, b.checked)));
+  }
+
   function openDrawer(){
+    renderKioskShow();
     renderPreviewTeams();
     const pick = document.getElementById('k_themePick');
     pick.innerHTML = Themes.all.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
@@ -305,6 +320,10 @@ const App = (() => {
     step('kiosk', () => { if(window.Kiosk) Kiosk.boot(); });
     step('first refresh', refreshAll);
     step('weather schedule', () => Weather.scheduleNext());   // 6am, noon, 3pm, 6pm, 10pm
+
+    /* The theme follows the sun, and the sun does not wait for a data
+       refresh to set. Cheap: recheckTheme is a compare, not a repaint. */
+    setInterval(recheckTheme, 5*60*1000);
 
     /* Quotes are a daily job, not a ticker. load() no-ops if it already
        priced today, so this hourly poke just catches the date rolling

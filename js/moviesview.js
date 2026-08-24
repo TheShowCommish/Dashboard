@@ -99,7 +99,10 @@ const MoviesView = (() => {
      this tab that is actually the user's own writing, so it gets read as a
      column rather than skimmed as a row. */
   function diaryHtml(){
-    const seen = Letterboxd.diary.slice(0, 20);
+    /* Mine and everyone I follow, in one column, newest first — the
+       username is what tells them apart. */
+    const feed = Letterboxd.feed || [];
+    const seen = feed.slice(0, 40);
     if(!seen.length){
       return `<aside class="mv-diary">
         <h3 class="pf-h3">Recently watched</h3>
@@ -114,15 +117,17 @@ const MoviesView = (() => {
     };
 
     return `<aside class="mv-diary">
-      <h3 class="pf-h3">Recently watched <span class="pf-h3-n">${Letterboxd.diary.length}</span></h3>
+      <h3 class="pf-h3">Recently watched <span class="pf-h3-n">${feed.length}</span>
+        <span class="plot-key">yours and your network</span></h3>
       <div class="mv-diary-list">${seen.map(f => `
-        <a class="mv-seen-row" href="${esc(f.link)}" target="_blank" rel="noopener">
+        <a class="mv-seen-row${f.mine ? ' is-mine' : ''}" href="${esc(f.link)}" target="_blank" rel="noopener">
           ${f.poster
             ? `<img class="mv-seen-art" src="${esc(f.poster)}" alt="" loading="lazy">`
             : '<span class="mv-seen-art mv-noart">🎬</span>'}
           <span class="mv-seen-body">
             <span class="mv-seen-title">${esc(f.title)}${f.year ? ` <i>${f.year}</i>` : ''}</span>
             <span class="mv-seen-meta">
+              <span class="mv-seen-who">${esc(f.who || 'you')}</span>
               <span class="mv-seen-when">${esc(when(f))}</span>
               ${f.rated != null
                 ? `<span class="mv-stars">${STAR.repeat(Math.round(f.rated))}${

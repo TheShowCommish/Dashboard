@@ -234,6 +234,7 @@ const Calendar = (() => {
 /* ---------------- Gmail ---------------- */
 const Mail = (() => {
   let unread = [];        // [{subject, from, important, bucket}]
+  let counts = {important:0, normal:0, spam:0};
 
   /* Buckets, checked in order. First match wins. */
   const BUCKETS = [
@@ -244,9 +245,28 @@ const Mail = (() => {
     { key:'Everything else', test:() => true }
   ];
 
+  /* Gmail answers a search with an estimate of how many matched, which is
+     all three of these need — a count, not the messages themselves. Spam
+     needs its own query: is:unread excludes the spam folder by default,
+     which is why it never showed up here before. */
+  async function tally(){
+    const ask = async q => {
+      try{
+        const d = await Google.api('https://gmail.googleapis.com/gmail/v1/users/me/messages' +
+          `?q=${encodeURIComponent(q)}&maxResults=1`);
+        return d.resultSizeEstimate || 0;
+      }catch(e){ return 0; }
+    };
+    const [all, important, spam] = await Promise.all([
+      ask('is:unread'), ask('is:unread is:important'), ask('in:spam is:unread')
+    ]);
+    counts = {important, normal: Math.max(0, all - important), spam};
+  }
+
   async function load(){
     if(!Google.ready) return;
     try{
+      tally().then(push);
       const list = await Google.api(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=25');
       const ids = (list.messages||[]).map(m => m.id);
@@ -279,7 +299,9 @@ const Mail = (() => {
   return {
     load,
     get unread(){ return unread; },
-    get count(){ return unread.length; }
+    get count(){ return unread.length; },
+    /* Unread by category, for the inbox ticker's three lamps. */
+    get counts(){ return counts; }
   };
 })();
 

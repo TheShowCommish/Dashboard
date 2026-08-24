@@ -143,7 +143,9 @@ pauses it. Every poster carries its genre under the title:
 - **Coming out** — upcoming theatrical releases from TMDB, the same feed that puts 🎬 pills on the
   calendar, here with room for posters. The full forward window of the endpoint is fetched, not just the
   first page.
-- **Recently watched** — your Letterboxd diary feed, with your star ratings.
+- **Recently watched** — a tall column down the left: poster, who watched it, when, the stars and the
+  review. **Yours and your whole network's**, mixed and newest first — the following list is scraped
+  once a day and each person's diary RSS every three hours. Yours are marked.
 
 Each line is capped so a lap stays watchable, and a chip on a **Coming out** poster says how many days
 until release. Films already in cinemas carry no chip — a row of identical labels is just noise over the
@@ -168,7 +170,10 @@ Its own tab, intentionally a shell for now.
 
 ### Tickers
 
-Two separate crawls along the bottom — **markets** (the day's biggest movers, by percentage) and **inbox** (unread mail). Each pauses on hover.
+Two bars along the bottom. Each has a **fixed head** that never moves and a **crawl** that takes the width left over; both pause on hover.
+
+- **Markets** — the head carries today's move across the whole portfolio, then the best name and the worst with their percentages. The crawl continues with everything else.
+- **Inbox** — three lamps: a red warning triangle for important, an envelope for ordinary, a tin for spam, each with its unread count. **Unlit is an outline**; anything unread fills the shape and colours the number. Spam gets its own Gmail query, since `is:unread` excludes the spam folder by default.
 
 Teams are managed in Settings, since following a team is a rare action and its games belong on the calendar.
 
@@ -204,6 +209,9 @@ What the ADs show:
 
 No AD ever scrolls: anything too tall for the screen is scaled down until it fits, which is why a
 40-holding portfolio and a two-team stat sheet both land on one screen.
+
+**Settings → Kiosk rotation** is one switch per thing the deck can show. Turning one off drops both its
+tab and its full-screen AD; Weather is an AD with no tab, To Do is a tab with no AD and starts off.
 
 **Settings → Kiosk previews** carries one button per followed team as well as one per AD, so a six-team
 deck can be checked a screen at a time instead of only ever showing whichever game is nearest. Any of
@@ -334,20 +342,30 @@ but it goes stale until you re-import.
 Posters are in neither payload. Titles are matched against TMDB (the key you already added in Step 3) and
 the result is cached per film, so a settled watchlist reloads without spending any API calls.
 
-**Ratings on the movie AD.** Letterboxd's site-wide average is read from the film's own page through the
-same worker, so **redeploy the worker** after this update — the `/letterboxd/film/…` path is new. Rotten
-Tomatoes has no public API at all; it comes from [OMDb](https://www.omdbapi.com/apikey.aspx) instead, a
-free key you paste into Settings → API keys. Both are cached per film forever, and either one missing
-just shows an em dash.
+**Ratings.** Letterboxd's site-wide average is read from the film's own page through the same worker,
+and your network's diaries through its following list, so **redeploy the worker** after this update —
+the `/letterboxd/film/…` and `/letterboxd/…/following/` paths are both new. Rotten Tomatoes has no
+public API at all; it comes from [OMDb](https://www.omdbapi.com/apikey.aspx) instead, a free key you
+paste into Settings → API keys. Both are cached per film forever, and either one missing just shows an
+em dash. Click any poster and the popup names each score and its scale — a bare 7.4 says nothing about
+out of what, or from whom.
+
+## Light and dark, with the sun
+
+The deck goes **light at sunrise and dark at sunset**, off the real times for your coordinates rather
+than a guess at office hours — Open-Meteo returns them, and the request URL is patched to ask for them
+even if you hand-edited it. A clear day gets **Sunshine**, warmer and brighter than the plain daylight
+theme; the forty minutes either side of sunrise and sunset get **Golden hour**. Named weather still
+outranks all of it, because rain is not a bright day.
 
 ## Weather on screen
 
 The theme has always changed colour with the weather. It now changes the screen itself:
 
-- **Snow** falls and **settles on the panels** — every card, note and calendar cell grows a lump of it
-  along its top edge over the next few minutes.
-- **Rain** falls into a **puddle across the bottom of the screen**, with the deck's own glow smeared
-  across the wet floor and rings where the drops land.
+- **Snow** falls and **settles on the panels** — every card, note, row, news item and calendar cell
+  grows a drift along its top edge over the next few minutes, tapering to nothing at both ends.
+- **Rain** falls, **runs off the bottom edge of everything it lands on** as drips, and gathers in a
+  **puddle across the bottom of the screen** with the deck's own glow smeared across the wet floor.
 - **Sun** throws a **lens flare** from off the top right, ghosts marching through the centre.
 - **Wind** leans the panels, on and off, and streaks the background.
 - **Thunderstorms** flash, with a bolt, every few seconds.
@@ -355,6 +373,11 @@ The theme has always changed colour with the weather. It now changes the screen 
 Each one follows the actual forecast. **Settings → Weather effects** has a master switch and a
 force-on box per effect, so any of them can be seen without waiting for that weather. Everything
 respects `prefers-reduced-motion`: one static pass, no loop.
+
+There are **two canvases**: the ambient one behind the deck, and a second one in front of it (under the
+popups) for the things that have to be on top of the panels to read as weather at all. Drawing the
+drifts behind the deck was the bug that made snow skip the calendar and the news list — a drift on the
+top edge of one cell is behind the cell above it.
 
 ### Game day
 

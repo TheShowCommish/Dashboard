@@ -1670,3 +1670,155 @@ span.mv-seen-art{display:grid;place-items:center;font-size:20px;}
 @media (max-width:1100px){
   #moviesBody{grid-template-columns:1fr;}
 }
+
+/* ============================================================
+   K-batch: the front weather canvas, louder tickers, one-row news,
+   the line called out on the AD, and a cursor that never lies.
+   ============================================================ */
+
+/* The second canvas: in front of the deck, behind every popup. This is
+   what lets snow settle on a calendar cell instead of behind the cell
+   above it. */
+#skyFront{
+  position:fixed;inset:0;width:100%;height:100%;
+  z-index:40;pointer-events:none;
+}
+
+/* ---- cursors ----
+   Nothing on this deck is editable except the two real inputs, so the
+   text caret is always a lie about what a click will do. */
+body{cursor:default;}
+.view, .view *, #tickers, #tickers *, #deck-head, #deck-head *, #drawer .fx-row{
+  user-select:none;
+}
+button, .row-btn, .gc-open, .car-item, .mv-card, .mv-seen-row, .subtab,
+.tab-btn, .cal-day, .plot-pt, .nw, .wx-now-btn, #gameStrip, .note .swatches span{
+  cursor:pointer;
+}
+input, textarea, .note textarea, .td-input, select{cursor:auto;user-select:text;}
+/* The one place text is worth selecting on purpose. */
+.mv-seen-review, .ad-overview, .mv-overview{user-select:text;}
+
+/* ---- tickers: a fixed head, then the crawl ---- */
+.ticker-head{
+  display:flex;align-items:center;gap:14px;
+  padding:0 14px;flex:0 0 auto;
+  border-right:1px solid var(--edge);
+}
+.ticker-head[hidden]{display:none;}
+.t-total,.t-pick{display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.t-total i,.t-pick i{
+  font-style:normal;font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;
+  color:var(--muted);
+}
+.t-total b{font-family:var(--mono);font-size:15px;font-weight:700;}
+.t-pick b{font-family:var(--display);font-size:12px;font-weight:700;}
+.t-pick em{font-style:normal;font-family:var(--mono);font-size:12px;font-weight:700;}
+.t-up b,.t-up em{color:var(--good);}
+.t-down b,.t-down em{color:var(--bad);}
+
+/* ---- inbox lamps ---- */
+.t-lamp{display:flex;align-items:center;gap:5px;}
+.t-lamp svg{width:17px;height:17px;fill:none;stroke:var(--muted);stroke-width:1.5;}
+.t-lamp svg .mk{stroke:var(--muted);}
+.t-lamp svg .dot{fill:var(--muted);stroke:none;}
+.t-lamp b{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--muted);}
+/* Unread lights it: the shape fills, the count takes the colour. */
+.t-lamp.is-lit b{color:var(--text);}
+.t-lamp.t-important.is-lit svg{fill:color-mix(in srgb,var(--bad) 82%,transparent);stroke:var(--bad);}
+.t-lamp.t-important.is-lit svg .mk{stroke:#fff;}
+.t-lamp.t-important.is-lit svg .dot{fill:#fff;}
+.t-lamp.t-important.is-lit b{color:var(--bad);}
+.t-lamp.t-normal.is-lit svg{fill:color-mix(in srgb,var(--accent) 26%,transparent);stroke:var(--accent);}
+.t-lamp.t-normal.is-lit svg .mk{stroke:var(--accent);}
+.t-lamp.t-normal.is-lit b{color:var(--accent);}
+.t-lamp.t-spam.is-lit svg{fill:color-mix(in srgb,#8a7a52 45%,transparent);stroke:#b9a06a;}
+.t-lamp.t-spam.is-lit svg .mk{stroke:#e8dcb8;}
+.t-lamp.t-spam.is-lit b{color:#b9a06a;}
+
+/* ---- sports news: one row, crawling ---- */
+.tm-news.mv-marquee{overflow:hidden;}
+.tm-news .mv-track{display:flex;align-items:stretch;}
+.tm-news .nw{
+  flex:0 0 300px;width:300px;margin-right:12px;
+  display:grid;grid-template-columns:56px 1fr;gap:9px;align-items:center;
+  padding:8px;border:1px solid var(--edge);border-radius:10px;
+  background:color-mix(in srgb,var(--panel) 80%,transparent);
+  text-decoration:none;color:var(--text);
+}
+.tm-news .nw:hover{border-color:var(--accent);}
+.tm-news .nw-img{width:56px;height:42px;object-fit:cover;border-radius:6px;}
+.tm-news .nw-body{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.tm-news .nw-head{
+  font-size:11.5px;font-weight:600;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.tm-news .nw-date{font-family:var(--mono);font-size:9.5px;color:var(--muted);}
+
+/* ---- the betting line, printed on the seam ---- */
+.ad-line-tag{
+  position:absolute;bottom:26px;left:var(--ad-split);transform:translateX(-50%);
+  z-index:3;font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:.12em;
+  padding:6px 16px;border-radius:99px;
+  background:rgba(0,0,0,.45);color:#fff;border:1px solid rgba(255,255,255,.35);
+  white-space:nowrap;
+}
+.ad-line-tag[hidden]{display:none;}
+
+/* When it is, between the two logos. */
+.ad-date{font-family:var(--mono);font-size:20px;color:var(--muted);letter-spacing:.06em;}
+
+/* Football leads with the units; the individual leaders step back. */
+.ad-tstats.is-big .ad-ts-a,.ad-tstats.is-big .ad-ts-h{font-size:38px;}
+.ad-tstats.is-big .ad-ts-l{font-size:16px;}
+.ad-tstats.is-big .ad-tstat-grid{gap:10px 30px;}
+.ad-leads.is-minor{opacity:.82;}
+.ad-leads.is-minor .ad-lead-name{font-size:19px;}
+.ad-leads.is-minor .ad-lead-val{font-size:20px;}
+.ad-leads.is-minor .ad-lead-cat{font-size:11px;}
+.ad-leads.is-minor .ad-h3{font-size:20px;}
+
+.ad-why{
+  font-family:var(--mono);font-size:15px;color:var(--muted);text-align:center;margin:0;
+}
+
+/* ---- movies: invisible scrollbars in the diary column ---- */
+.mv-diary-list{scrollbar-width:none;-ms-overflow-style:none;}
+.mv-diary-list::-webkit-scrollbar{display:none;}
+.mv-shelves{scrollbar-width:none;}
+.mv-shelves::-webkit-scrollbar{display:none;}
+.mv-seen-who{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  color:var(--accent);text-transform:lowercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px;
+}
+.mv-seen-row.is-mine{border-color:color-mix(in srgb,var(--accent) 40%,var(--edge));}
+.mv-seen-row.is-mine .mv-seen-who{color:var(--text);}
+
+/* ---- labelled ratings in the film popup ---- */
+.mv-rates{display:flex;gap:20px;margin:10px 0 12px;flex-wrap:wrap;}
+.mv-rate{display:flex;flex-direction:column;gap:1px;}
+.mv-rate i{
+  font-style:normal;font-family:var(--mono);font-size:8.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--muted);
+}
+.mv-rate b{font-family:var(--mono);font-size:17px;font-weight:700;}
+.mv-rate b em{font-style:normal;font-size:11px;font-weight:400;color:var(--muted);margin-left:1px;}
+
+/* ---- fantasy board in the focus strip's spare column ---- */
+#focusFantasy.is-wide{min-width:0;}
+#focusFantasy.is-wide .ff-board{margin-bottom:0;height:100%;}
+.ff-tops{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;
+  border-top:1px solid var(--edge);padding-top:8px;}
+.ff-tops .ff-top{display:flex;flex-direction:column;gap:3px;}
+.ff-tops .ff-p{display:flex;align-items:baseline;gap:6px;font-size:10.5px;}
+.ff-tops .ff-p b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ff-tops .ff-p i{font-style:normal;color:var(--muted);font-family:var(--mono);font-size:9px;}
+.ff-tops .ff-p em{font-style:normal;margin-left:auto;font-family:var(--mono);font-weight:700;}
+
+/* ---- a sunny day should look like one ---- */
+body.fx-sun .wx-now-card,
+body.fx-sun .gc,
+body.fx-sun .pf-card{
+  box-shadow:0 6px 26px -12px rgba(255,190,90,.55);
+}

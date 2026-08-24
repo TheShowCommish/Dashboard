@@ -259,6 +259,16 @@ const Movies = (() => {
     if(!f) return;
     const d0 = f.date ? new Date(f.date+'T12:00:00') : null;
 
+    /* The bare number on a poster is meaningless — 7.4 out of what, from
+       whom. Here it gets its name and its scale, alongside whatever the
+       other two sources know. */
+    const rateRow = `
+      <div class="mv-rates">
+        <span class="mv-rate"><i>TMDB</i><b>${f.score ? `${f.score.toFixed(1)}<em>/10</em>` : '—'}</b></span>
+        <span class="mv-rate" data-rate="rt"><i>Rotten Tomatoes</i><b>—</b></span>
+        <span class="mv-rate" data-rate="lb"><i>Letterboxd</i><b>—</b></span>
+      </div>`;
+
     mBody.innerHTML = `
       <div class="mv-detail">
         ${f.poster ? `<img src="${IMG}${esc(f.poster)}" alt="" class="mv-detail-art">` : ''}
@@ -267,12 +277,44 @@ const Movies = (() => {
           <p class="mv-line">${d0 ? d0.toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}) : 'Release date unknown'}${
             f.runtime ? ` · ${Math.floor(f.runtime/60)}h ${f.runtime%60}m` : ''}${
             f.genres.length ? ` · ${esc(f.genres.join(', '))}` : ''}</p>
+          ${rateRow}
           ${f.director ? `<p class="mv-line"><i>Director</i> ${esc(f.director)}</p>` : ''}
           ${f.cast.length ? `<p class="mv-line"><i>Cast</i> ${esc(f.cast.join(', '))}</p>` : ''}
           <p class="mv-overview">${esc(f.overview) || 'No synopsis available yet.'}</p>
         </div>
       </div>`;
     modal.hidden = false;
+
+    /* The two outside scores arrive later than the card does. */
+    fillRates(f);
+  }
+
+  /* Rotten Tomatoes through OMDb, the Letterboxd average off the film's
+     own page. Either can be missing — the label stays, the value becomes
+     an em dash, so the row never changes shape. */
+  async function fillRates(f){
+    const set = (which, val) => {
+      const el = mBody.querySelector(`[data-rate="${which}"] b`);
+      if(el) el.innerHTML = val;
+    };
+
+    try{
+      const imdb = f.imdb || (await detail(f.id))?.imdb;
+      if(imdb){
+        const r = await ratings(imdb);
+        if(r && r.rt) set('rt', esc(r.rt));
+      }
+    }catch(e){ console.error('RT lookup failed:', e.message); }
+
+    try{
+      if(window.Letterboxd){
+        const year = (f.date || '').slice(0,4);
+        for(const slug of Letterboxd.filmSlug(f.title, year)){
+          const v = await Letterboxd.rating(slug);
+          if(v != null){ set('lb', `${v.toFixed(1)}<em>/5</em>`); break; }
+        }
+      }
+    }catch(e){ console.error('Letterboxd rating lookup failed:', e.message); }
   }
 
   const close = () => { modal.hidden = true; };

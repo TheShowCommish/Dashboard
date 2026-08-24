@@ -23,6 +23,7 @@ const Weather = (() => {
   const mBody = document.getElementById('wxModalBody');
 
   let current = null;      // { main, desc, temp, feels, wind, isDay }
+  let sun = null;          // { rise:Date, set:Date } for today
   let hourly  = [];        // [{ t:Date, temp, main, desc, pop }]
   let fetchedAt = null;    // Date of the last successful fetch
 
@@ -127,6 +128,14 @@ const Weather = (() => {
       };
     });
 
+    /* Today's sunrise and sunset, when the payload carries them. */
+    const dl = d.daily || {};
+    const todayKey = new Date().toDateString();
+    const idx = (dl.time || []).findIndex(x => new Date(x + 'T12:00:00').toDateString() === todayKey);
+    sun = (idx >= 0 && dl.sunrise?.[idx] && dl.sunset?.[idx])
+      ? {rise: new Date(dl.sunrise[idx]), set: new Date(dl.sunset[idx])}
+      : null;
+
     /* The current block carries no "feels like" or wind, so borrow them
        from the hourly row nearest to now. */
     const nowRow = nearest(new Date());
@@ -139,7 +148,11 @@ const Weather = (() => {
       wind:  nowRow ? nowRow.wind : 0,
       humidity: d.current?.relative_humidity_2m ?? null,
       place: `${(+d.latitude).toFixed(2)}, ${(+d.longitude).toFixed(2)}`,
-      isDay: d.current?.is_day != null ? !!d.current.is_day : (hour >= 7 && hour < 20)
+      isDay: d.current?.is_day != null ? !!d.current.is_day
+           : sun ? (Date.now() > sun.rise && Date.now() < sun.set)
+           : (hour >= 7 && hour < 20),
+      sunrise: sun ? sun.rise.toISOString() : null,
+      sunset:  sun ? sun.set.toISOString()  : null
     };
   }
 
@@ -170,12 +183,18 @@ const Weather = (() => {
     let u;
     try{ u = new URL(raw); }catch{ return raw; }
     for(const [param, needed] of [['hourly', ['temperature_2m','weather_code']],
-                                  ['current', ['temperature_2m','weather_code']]]){
+                                  ['current', ['temperature_2m','weather_code','is_day']]]){
       const have = (u.searchParams.get(param) || '').split(',').map(v => v.trim()).filter(Boolean);
       if(!have.length) continue;                       // user dropped the block entirely
       const missing = needed.filter(f => !have.includes(f));
       if(missing.length) u.searchParams.set(param, [...have, ...missing].join(','));
     }
+    /* The theme goes light at sunrise and dark at sunset, so the real
+       times have to be in the payload. Added rather than assumed: a
+       hand-edited URL will not have thought to ask for them. */
+    const daily = (u.searchParams.get('daily') || '').split(',').map(v => v.trim()).filter(Boolean);
+    for(const f of ['sunrise','sunset']) if(!daily.includes(f)) daily.push(f);
+    u.searchParams.set('daily', daily.join(','));
     return u.toString();
   }
 
@@ -427,6 +446,29 @@ const Weather = (() => {
     closeModal,
     paintNow,
     DEFAULT_URL,
+    get sun(){
+      if(sun) return sun;
+      /* Restored from cache: the Dates went through JSON as strings. */
+      if(current?.sunrise && current?.sunset)
+        return {rise:new Date(current.sunrise), set:new Date(current.sunset)};
+      return null;
+    },
+    /* Where the day is, for the theme engine. Falls back to clock hours
+       when no payload has arrived yet, so the deck is never mid-grey. */
+    phase(){
+      const s = this.sun;
+      const now = Date.now();
+      if(!s){
+        const h = new Date().getHours();
+        return (h >= 7 && h < 19) ? 'day' : 'night';
+      }
+      const EDGE = 50 * 60 * 1000;          // the hour or so either side
+      const rise = +s.rise, set = +s.set;
+      if(Math.abs(now - rise) <= EDGE) return 'dawn';
+      if(Math.abs(now - set)  <= EDGE) return 'dusk';
+      return (now > rise && now < set) ? 'day' : 'night';
+    },
+    isDaylight(){ return this.phase() !== 'night'; },
     /* For the kiosk's weather AD. */
     daily,
     restOfToday,

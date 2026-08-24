@@ -11,6 +11,8 @@
               | fog | stars | confetti | none
      when(ctx) return true to activate. ctx is:
                 ctx.weather  { main, desc, temp, isDay }  (may be null)
+                ctx.phase    'night' | 'dawn' | 'day' | 'dusk', from the
+                             real sunrise and sunset for your location
                 ctx.games    [{ league, name, abbr, state, result, kickoff }]
                 ctx.hour     0-23
                 ctx.month    1-12
@@ -32,13 +34,38 @@ const THEMES = [
       '--good':'#4CC9A7','--bad':'#E5484D','--rail':'#F2B705'
     }
   },
+  /* The baseline goes light when the sun is up and dark when it is down,
+     off the real sunrise and sunset rather than a guess at office hours.
+     Named weather still outranks it — rain is not a bright day. */
   {
     id:'daylight', label:'Daylight', priority:5, sky:'clear',
-    when: c => c.weather && c.weather.isDay && ['Clear'].includes(c.weather.main),
+    when: c => c.phase === 'day',
     tokens:{
       '--ink':'#EEF1F5','--panel':'#FFFFFF','--panel-2':'#F3F6FA','--edge':'#D5DCE6',
       '--text':'#141A22','--muted':'#5D6B7C','--accent':'#1F6FEB','--accent-ink':'#FFFFFF',
       '--good':'#12855F','--bad':'#C42B31','--rail':'#1F6FEB'
+    }
+  },
+  /* A clear day is not the same as a day, and it should not look like
+     one: warmer, brighter, and the accent goes to the sun itself. */
+  {
+    id:'sunshine', label:'Sunshine', priority:17, sky:'clear',
+    when: c => c.phase === 'day' && c.weather && c.weather.main === 'Clear',
+    tokens:{
+      '--ink':'#FFF8E9','--panel':'#FFFFFF','--panel-2':'#FFF3D6','--edge':'#EBD9AE',
+      '--text':'#241A08','--muted':'#8A7448','--accent':'#E8880C','--accent-ink':'#FFFFFF',
+      '--good':'#0F8A56','--bad':'#C93A22','--rail':'#F5A623'
+    }
+  },
+  /* The forty minutes either side of sunrise and sunset, which look like
+     nothing else in the day. */
+  {
+    id:'goldenhour', label:'Golden hour', priority:19, sky:'clear',
+    when: c => c.phase === 'dawn' || c.phase === 'dusk',
+    tokens:{
+      '--ink':'#2A1206','--panel':'#3A1D0C','--panel-2':'#4A2711','--edge':'#653A1B',
+      '--text':'#FFE9D2','--muted':'#C09070','--accent':'#FF9E3D','--accent-ink':'#2A1206',
+      '--good':'#6FC49A','--bad':'#FF5F52','--rail':'#FF9E3D'
     }
   },
 
@@ -151,7 +178,7 @@ const THEMES = [
   /* ---------- time / season ---------- */
   {
     id:'latenight', label:'Late', priority:8, sky:'stars',
-    when: c => c.hour >= 23 || c.hour < 5,
+    when: c => (c.hour >= 23 || c.hour < 5) && c.phase === 'night',
     tokens:{
       '--ink':'#07080C','--panel':'#0E1016','--panel-2':'#12151C','--edge':'#1E2229',
       '--text':'#C9CFDA','--muted':'#5F6875','--accent':'#6C7FE0','--accent-ink':'#07080C',

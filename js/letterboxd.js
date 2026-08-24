@@ -28,7 +28,8 @@ const Letterboxd = (() => {
   const artCache = () => Store.get('movies.art', {});
 
   let watchlist = [];      // [{slug, title, year, poster, tmdbId}]
-  let diary     = [];      // [{title, year, rated, watchedAt, link}]
+  let diary     = [];      // own log: [{title, year, rated, watchedAt, link}]
+  let network   = [];      // everyone followed, same shape plus `who`
   let lastError = '';
 
   /* Used as a cache key when the export carries no film URL. Accents are
@@ -40,13 +41,16 @@ const Letterboxd = (() => {
     .replace(/['’.]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 
   /* ---- fetching through the worker ---- */
-  async function viaProxy(path){
+  async function viaProxyUser(who, path){
     const p = proxy();
     if(!p) throw new Error('no proxy configured');
-    const res = await fetch(`${p}/letterboxd/${user()}${path}`);
+    const res = await fetch(`${p}/letterboxd/${who}${path}`);
     if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.text();
   }
+
+  /* The common case: a page belonging to the configured account. */
+  const viaProxy = path => viaProxyUser(user(), path);
 
   /* ---- watchlist scrape ----
      Letterboxd's current grid renders each film as a lazy-poster component
@@ -320,7 +324,7 @@ const Letterboxd = (() => {
 
     if(rss.status === 'fulfilled'){
       try{
-        diary = parseRss(rss.value);
+        diary = parseRss(rss.value).map(f => ({...f, who: user(), mine:true}));
         Store.set('movies.diary', {at:new Date().toISOString(), films:diary});
       }catch(e){ console.error('Letterboxd RSS parse failed:', e.message); }
     }else{
@@ -329,9 +333,76 @@ const Letterboxd = (() => {
 
     await decorate();
     paint();
+
+    /* The network is a request per person, so it runs after the tab has
+       already painted rather than holding it up. */
+    loadNetwork(force).then(paint);
   }
 
   function paint(){ if(window.MoviesView) MoviesView.render(); }
+
+  /* ---- the people you follow ----
+     Letterboxd publishes a diary RSS per member and a following list per
+     profile, so "my network" is that list joined to those feeds. One
+     request each, capped, and cached for three hours — this is a wall
+     display, not a social client. */
+  const FOLLOW_CAP = 12;
+  const NET_TTL = 3 * 60 * 60 * 1000;
+
+  function parseFollowing(html){
+    const slugs = [...html.matchAll(/href="\/([a-z0-9_-]+)\/"\s+class="name"/g)].map(m => m[1]);
+    const names = [...html.matchAll(/data-username="([^"]+)"/g)].map(m => m[1]);
+    const out = [];
+    for(let i = 0; i < slugs.length; i++){
+      if(out.some(x => x.slug === slugs[i])) continue;
+      out.push({slug: slugs[i], name: names[i] || slugs[i]});
+    }
+    return out;
+  }
+
+  async function following(force){
+    const cached = Store.get('movies.following', null);
+    if(!force && cached && Date.now() - (cached.at || 0) < 24*60*60*1000)
+      return cached.people || [];
+    try{
+      const html = await viaProxy('/following/');
+      const people = parseFollowing(html).slice(0, FOLLOW_CAP);
+      Store.set('movies.following', {at:Date.now(), people});
+      return people;
+    }catch(e){
+      console.error('Letterboxd following list failed:', e.message);
+      return (cached && cached.people) || [];
+    }
+  }
+
+  async function loadNetwork(force){
+    if(!proxy()) return;
+
+    const cached = Store.get('movies.network', null);
+    if(!force && cached && Date.now() - (cached.at || 0) < NET_TTL){
+      network = cached.films || [];
+      return;
+    }
+
+    const people = await following(force);
+    if(!people.length) return;
+
+    /* One slow or private profile must not cost the rest of the feed. */
+    const feeds = await Promise.allSettled(people.map(p => viaProxyUser(p.slug, '/rss/')));
+
+    const films = [];
+    people.forEach((p, i) => {
+      const r = feeds[i];
+      if(r.status !== 'fulfilled') return;
+      try{
+        for(const f of parseRss(r.value).slice(0, 8))
+          films.push({...f, who: p.name, mine:false});
+      }catch(e){ console.error('Diary parse failed for', p.slug, e.message); }
+    });
+
+    network = films;
+    Store.set('movies.network', {at:Date.now(), films});
+  }
 
   /* ---- one film's Letterboxd average ----
      The film page carries the site-wide average in a twitter:data2 meta
@@ -389,8 +460,16 @@ const Letterboxd = (() => {
   }
 
   return {
-    load, ingestCsv, decorated, rating, filmSlug,
+    load, ingestCsv, decorated, rating, filmSlug, loadNetwork,
     get diary(){ return diary; },
+    get network(){ return network; },
+    /* Mine and theirs in one list, newest first — what the Movies tab
+       actually renders down its left-hand column. */
+    get feed(){
+      return [...diary, ...network]
+        .filter(f => f.title)
+        .sort((a,b) => new Date(b.watchedAt) - new Date(a.watchedAt));
+    },
     get count(){ return watchlist.length; },
     get error(){ return lastError; },
     get hasProxy(){ return !!proxy(); },

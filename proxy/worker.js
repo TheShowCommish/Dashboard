@@ -46,7 +46,7 @@ export default {
 
       // Only public read-only surfaces: a profile's own pages, and a film
       // page (for its site-wide average rating). No account or settings paths.
-      const PROFILE = /^\/[A-Za-z0-9_-]+\/(rss\/?|watchlist\/(page\/\d+\/?)?|films\/(diary\/)?(page\/\d+\/?)?)?$/;
+      const PROFILE = /^\/[A-Za-z0-9_-]+\/(rss\/?|watchlist\/(page\/\d+\/?)?|films\/(diary\/)?(page\/\d+\/?)?|following\/(page\/\d+\/?)?)?$/;
       const FILM    = /^\/film\/[A-Za-z0-9-]+\/$/;
       if (!PROFILE.test(path) && !FILM.test(path))
         return new Response('That Letterboxd path is not proxied.', { status: 400, headers: cors });

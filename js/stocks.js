@@ -949,6 +949,12 @@ const Stocks = (() => {
 
   return {
     load, ingest, parse, coverage, refresh: () => load(true),
+    /* Today's move across the whole portfolio, weighted by position size —
+       the ticker's headline number. Null when nothing can be priced. */
+    today(){
+      const st = windowStats(WINDOWS[0]);
+      return st ? st.pct : null;
+    },
     get earnings(){ return earnings; },
     /* Biggest absolute movers today, for the ticker. */
     get movers(){

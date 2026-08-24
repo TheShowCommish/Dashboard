@@ -1,17 +1,19 @@
 /* ============================================================
-   sky.js — the ambient backdrop canvas.
+   sky.js — the weather on screen.
 
-   Two layers, one animation loop:
+   TWO canvases, one animation loop:
 
-     the AMBIENT, named by the active theme (stars, clouds, confetti…),
-     and the WEATHER EFFECTS, derived from the actual forecast and
-     overridable from Settings for testing.
+     #sky        sits BEHIND the deck and draws the theme's ambient —
+                 stars, clouds, confetti and the rest.
+     #skyFront   sits IN FRONT of it (under the popups) and draws the
+                 things that have to be on top of the panels to read as
+                 weather at all: falling snow and the drifts it leaves on
+                 every card, rain and the drips running off their bottom
+                 edges, the puddle, the lens flare, the lightning.
 
-   The effects are the reason the canvas sits behind everything: snow
-   settles on the top edge of every panel on screen, rain leaves a puddle
-   with a reflection along the bottom, sun throws a lens flare, wind leans
-   the whole page (that part is CSS, switched from here), and a storm
-   flashes.
+   Drawing the drifts behind the deck was the bug that made snow skip the
+   calendar and the news list: a drift sitting on the top edge of one cell
+   is behind the cell above it.
 
    Respects prefers-reduced-motion: one static pass and no loop.
    ============================================================ */
@@ -20,9 +22,22 @@ const Sky = (() => {
   const cv = document.getElementById('sky');
   const cx = cv.getContext('2d');
 
+  /* The front canvas is created here rather than in the markup so this
+     file owns both layers and nothing else has to know about the second. */
+  const fv = (() => {
+    let el = document.getElementById('skyFront');
+    if(!el){
+      el = document.createElement('canvas');
+      el.id = 'skyFront';
+      document.body.appendChild(el);
+    }
+    return el;
+  })();
+  const fx2 = fv.getContext('2d');
+
   let mode = 'none';          // theme ambient
   let fx   = new Set();       // snow | rain | sun | wind | lightning
-  let bits = [], drops = [], flakes = [], ripples = [], gusts = [];
+  let bits = [], drops = [], flakes = [], ripples = [], gusts = [], drips = [];
   let raf = null, flash = 0, nextBolt = 0, bolt = null;
   let piles = [], pilesAt = 0;
   let t = 0;
@@ -30,9 +45,11 @@ const Sky = (() => {
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function size(){
-    cv.width  = cv.clientWidth  * devicePixelRatio;
-    cv.height = cv.clientHeight * devicePixelRatio;
-    cx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    for(const [el, ctx] of [[cv, cx], [fv, fx2]]){
+      el.width  = el.clientWidth  * devicePixelRatio;
+      el.height = el.clientHeight * devicePixelRatio;
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    }
   }
   addEventListener('resize', () => { size(); seed(); seedFx(); piles = []; });
 
@@ -67,7 +84,7 @@ const Sky = (() => {
   function seedFx(){
     if(fx.has('rain') && drops.length !== 220)
       drops = Array.from({length:220}, () => ({x:rnd(0,W()), y:rnd(-H(),H()), l:rnd(10,22), v:rnd(9,16)}));
-    if(!fx.has('rain')){ drops = []; ripples = []; }
+    if(!fx.has('rain')){ drops = []; ripples = []; drips = []; }
 
     if(fx.has('snow') && flakes.length !== 170)
       flakes = Array.from({length:170}, () => ({x:rnd(0,W()), y:rnd(-H(),H()),
@@ -79,22 +96,27 @@ const Sky = (() => {
     if(!fx.has('wind')) gusts = [];
   }
 
-  /* ---- where snow settles ----
-     The top edge of everything that reads as a physical panel. Re-measured
-     a couple of times a second rather than every frame: getBoundingClientRect
-     over sixty elements is the one thing here that could cost a frame. */
-  const PILE_ON = '.gc, .pf-card, .cal-day, .ff-board, .tm-hero, .mv-card, .note, .wx-now-card, .td-row';
+  /* ---- what the weather lands on ----
+     Everything that reads as a physical thing on the deck. Measured a
+     couple of times a second rather than every frame: this is the one
+     thing here that could cost a frame. */
+  const LAND_ON = [
+    '.gc', '.pf-card', '.cal-day', '.ff-board', '.tm-hero', '.mv-card', '.note',
+    '.wx-now-card', '.td-row', '.nw', '.row-btn', '.plot-wrap', '.mv-seen-row',
+    '.subtab', '.ticker', '.wx-hour', '.mv-diary', '.tm-games', '.tm-news'
+  ].join(', ');
 
   function measurePiles(){
-    if(Date.now() - pilesAt < 700) return;
+    if(Date.now() - pilesAt < 600) return;
     pilesAt = Date.now();
 
     const seen = [];
-    const els = document.querySelectorAll(PILE_ON);
-    for(let i = 0; i < els.length && seen.length < 70; i++){
+    const els = document.querySelectorAll(LAND_ON);
+    for(let i = 0; i < els.length && seen.length < 110; i++){
       const r = els[i].getBoundingClientRect();
-      if(r.width < 40 || r.top < 0 || r.top > H()) continue;
-      seen.push({x:r.left, y:r.top, w:r.width});
+      if(r.width < 36 || r.height < 14) continue;
+      if(r.top < 0 || r.top > H() - 4) continue;
+      seen.push({x:r.left, y:r.top, w:r.width, b:r.bottom});
     }
 
     /* Depth carries across measurements by position, so a repaint of the
@@ -105,35 +127,44 @@ const Sky = (() => {
     });
   }
 
+  /* A drift, not a plank: the depth tapers to nothing at both ends and the
+     top is drawn as a run of curves rather than straight segments. */
   function drawPiles(){
+    fx2.fillStyle = 'rgba(255,255,255,.94)';
     for(const p of piles){
-      if(p.d < 7) p.d += 0.012;                 // settles over about ten minutes
-      if(p.d < .4) continue;
-      cx.fillStyle = 'rgba(255,255,255,.92)';
-      cx.beginPath();
-      cx.moveTo(p.x, p.y + 1);
-      /* A lumpy top edge, with a fixed wobble per pile so it does not
-         shimmer from frame to frame. */
-      const steps = Math.max(4, Math.round(p.w / 26));
+      if(p.d < 8) p.d += 0.012;                // settles over about ten minutes
+      if(p.d < .5) continue;
+
+      const steps = Math.max(8, Math.round(p.w / 16));
+      const pts = [];
       for(let i = 0; i <= steps; i++){
         const f = i / steps;
-        const wob = Math.sin(p.seed + f * 7.5) * (p.d * .45);
-        cx.lineTo(p.x + p.w * f, p.y - p.d - wob);
+        /* sin gives the taper; the two waves give the lumps. */
+        const taper = Math.sin(Math.PI * f);
+        const lump  = (Math.sin(p.seed + f * 9) * .30 + Math.sin(p.seed * 1.7 + f * 21) * .16);
+        pts.push({x: p.x + p.w * f, y: p.y + 1 - Math.max(0, p.d * taper * (1 + lump))});
       }
-      cx.lineTo(p.x + p.w, p.y + 1);
-      cx.closePath();
-      cx.fill();
+
+      fx2.beginPath();
+      fx2.moveTo(pts[0].x, p.y + 1);
+      for(let i = 0; i < pts.length - 1; i++){
+        const a = pts[i], b = pts[i+1];
+        fx2.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      }
+      fx2.lineTo(pts[pts.length-1].x, p.y + 1);
+      fx2.closePath();
+      fx2.fill();
     }
   }
 
-  /* ---- rain: drops, then a puddle along the floor ---- */
+  /* ---- rain ---- */
   const puddleH = () => Math.min(120, H() * .13);
 
   function drawRain(){
-    cx.strokeStyle = 'rgba(170,205,240,.42)';
-    cx.lineWidth = 1.1;
+    fx2.strokeStyle = 'rgba(170,205,240,.45)';
+    fx2.lineWidth = 1.1;
     for(const b of drops){
-      cx.beginPath(); cx.moveTo(b.x, b.y); cx.lineTo(b.x - 2, b.y + b.l); cx.stroke();
+      fx2.beginPath(); fx2.moveTo(b.x, b.y); fx2.lineTo(b.x - 2, b.y + b.l); fx2.stroke();
       b.y += b.v; b.x -= .5;
       if(b.y > H() - puddleH()){
         if(ripples.length < 40 && Math.random() < .35)
@@ -143,109 +174,159 @@ const Sky = (() => {
     }
   }
 
+  /* Water gathers on a panel and runs off its bottom edge. Spawned from
+     the same rectangles the snow settles on. */
+  function drawDrips(){
+    if(piles.length && drips.length < 60 && Math.random() < .5){
+      const p = piles[Math.floor(Math.random() * piles.length)];
+      if(p.b < H() - 4)
+        drips.push({x: p.x + rnd(6, Math.max(7, p.w - 6)), y: p.b, v: .4, r: rnd(1.3, 2.4), hang: rnd(10, 40)});
+    }
+
+    fx2.fillStyle = 'rgba(185,215,245,.75)';
+    for(let i = drips.length - 1; i >= 0; i--){
+      const d = drips[i];
+      if(d.hang > 0){ d.hang--; }              // swells on the edge first
+      else { d.v += .35; d.y += d.v; }
+
+      fx2.beginPath();
+      /* A teardrop: round at the bottom, drawn out at the top while falling. */
+      fx2.ellipse(d.x, d.y, d.r, d.r * (d.hang > 0 ? 1 : 1.9), 0, 0, 6.3);
+      fx2.fill();
+
+      if(d.y > H() - puddleH() * .4){
+        if(ripples.length < 40) ripples.push({x:d.x, y:d.y, r:1, a:.45});
+        drips.splice(i, 1);
+      }
+    }
+  }
+
   function drawPuddle(){
     const h = puddleH(), top = H() - h;
 
     /* A canvas cannot mirror live DOM, so the reflection is a gradient
        standing in for one — the ripples are what sell it as water. */
-    const g = cx.createLinearGradient(0, top, 0, H());
+    const g = fx2.createLinearGradient(0, top, 0, H());
     g.addColorStop(0, 'rgba(120,160,200,0)');
     g.addColorStop(.35, 'rgba(120,160,200,.10)');
-    g.addColorStop(1, 'rgba(150,190,230,.22)');
-    cx.fillStyle = g;
-    cx.fillRect(0, top, W(), h);
+    g.addColorStop(1, 'rgba(150,190,230,.24)');
+    fx2.fillStyle = g;
+    fx2.fillRect(0, top, W(), h);
 
-    /* The deck's own glow, smeared across the wet floor. */
-    const a = cx.createRadialGradient(W()*.5, H(), 4, W()*.5, H(), W()*.6);
+    const a = fx2.createRadialGradient(W()*.5, H(), 4, W()*.5, H(), W()*.6);
     a.addColorStop(0, accent() + '3A');
     a.addColorStop(1, 'transparent');
-    cx.fillStyle = a;
-    cx.fillRect(0, top, W(), h);
+    fx2.fillStyle = a;
+    fx2.fillRect(0, top, W(), h);
 
-    cx.strokeStyle = 'rgba(200,225,255,.35)';
-    cx.lineWidth = 1;
+    fx2.strokeStyle = 'rgba(200,225,255,.35)';
+    fx2.lineWidth = 1;
     for(let i = ripples.length - 1; i >= 0; i--){
       const r = ripples[i];
-      cx.globalAlpha = r.a;
-      cx.beginPath();
-      cx.ellipse(r.x, r.y, r.r, r.r * .28, 0, 0, 6.3);
-      cx.stroke();
+      fx2.globalAlpha = r.a;
+      fx2.beginPath();
+      fx2.ellipse(r.x, r.y, r.r, r.r * .28, 0, 0, 6.3);
+      fx2.stroke();
       r.r += .9; r.a -= .012;
       if(r.a <= 0) ripples.splice(i, 1);
     }
-    cx.globalAlpha = 1;
+    fx2.globalAlpha = 1;
   }
 
   /* ---- sun: a source off the top-right, and flares down the axis ---- */
   function drawFlare(){
-    const sx = W() * .88, sy = H() * .12;
+    const sx = W() * .88, sy = H() * .10;
     const midX = W() / 2, midY = H() / 2;
+    const pulse = 1 + Math.sin(t / 42) * .07;
 
-    const core = cx.createRadialGradient(sx, sy, 6, sx, sy, Math.max(W(), H()) * .45);
-    core.addColorStop(0, 'rgba(255,241,200,.55)');
-    core.addColorStop(.15, 'rgba(255,226,150,.16)');
-    core.addColorStop(1, 'transparent');
-    cx.fillStyle = core;
+    /* The wash goes behind the deck so it warms the whole page; the flare
+       itself goes in front, which is the part that reads as glare. */
+    const wash = cx.createRadialGradient(sx, sy, 8, sx, sy, Math.max(W(), H()) * .75);
+    wash.addColorStop(0, 'rgba(255,238,190,.85)');
+    wash.addColorStop(.18, 'rgba(255,224,150,.34)');
+    wash.addColorStop(.55, 'rgba(255,214,140,.10)');
+    wash.addColorStop(1, 'transparent');
+    cx.fillStyle = wash;
     cx.fillRect(0, 0, W(), H());
+
+    const core = fx2.createRadialGradient(sx, sy, 4, sx, sy, 190 * pulse);
+    core.addColorStop(0, 'rgba(255,252,235,.75)');
+    core.addColorStop(.35, 'rgba(255,231,160,.22)');
+    core.addColorStop(1, 'transparent');
+    fx2.fillStyle = core;
+    fx2.beginPath(); fx2.arc(sx, sy, 190 * pulse, 0, 6.3); fx2.fill();
+
+    /* Starburst spokes. */
+    fx2.save();
+    fx2.translate(sx, sy);
+    fx2.strokeStyle = 'rgba(255,244,205,.30)';
+    for(let i = 0; i < 12; i++){
+      const len = (i % 2 ? 90 : 175) * pulse;
+      fx2.lineWidth = i % 2 ? 1.2 : 2.4;
+      fx2.rotate(Math.PI / 6);
+      fx2.beginPath(); fx2.moveTo(0, 0); fx2.lineTo(len, 0); fx2.stroke();
+    }
+    fx2.restore();
 
     /* Ghosts march from the source through the centre and out the far
        side, which is what a real flare does. */
     const ghosts = [
-      {t:-0.28, r:14, a:.16, c:'255,220,160'},
-      {t: 0.30, r:34, a:.10, c:'160,220,255'},
-      {t: 0.62, r:20, a:.13, c:'255,180,140'},
-      {t: 0.95, r:58, a:.07, c:'190,255,210'},
-      {t: 1.30, r:26, a:.10, c:'255,240,190'}
+      {t:-0.30, r:20, a:.22, c:'255,220,160'},
+      {t: 0.30, r:44, a:.15, c:'160,220,255'},
+      {t: 0.62, r:26, a:.20, c:'255,180,140'},
+      {t: 0.95, r:74, a:.11, c:'190,255,210'},
+      {t: 1.30, r:34, a:.16, c:'255,240,190'},
+      {t: 1.60, r:16, a:.20, c:'255,255,240'}
     ];
-    const pulse = 1 + Math.sin(t / 42) * .06;
     for(const gh of ghosts){
       const gx = sx + (midX - sx) * gh.t * 2;
       const gy = sy + (midY - sy) * gh.t * 2;
       const rad = gh.r * pulse;
-      const g = cx.createRadialGradient(gx, gy, 0, gx, gy, rad);
+      const g = fx2.createRadialGradient(gx, gy, 0, gx, gy, rad);
       g.addColorStop(0, `rgba(${gh.c},${gh.a})`);
+      g.addColorStop(.7, `rgba(${gh.c},${gh.a * .35})`);
       g.addColorStop(1, 'transparent');
-      cx.fillStyle = g;
-      cx.beginPath(); cx.arc(gx, gy, rad, 0, 6.3); cx.fill();
+      fx2.fillStyle = g;
+      fx2.beginPath(); fx2.arc(gx, gy, rad, 0, 6.3); fx2.fill();
     }
 
     /* The anamorphic streak. */
-    const s = cx.createLinearGradient(0, sy, W(), sy);
+    const s = fx2.createLinearGradient(0, sy, W(), sy);
     s.addColorStop(0, 'transparent');
-    s.addColorStop(.5, 'rgba(255,235,190,.05)');
+    s.addColorStop(.5, 'rgba(255,235,190,.13)');
     s.addColorStop(1, 'transparent');
-    cx.fillStyle = s;
-    cx.fillRect(0, sy - 2.5, W(), 5);
+    fx2.fillStyle = s;
+    fx2.fillRect(0, sy - 4, W(), 8);
   }
 
-  /* ---- wind: streaks on the canvas, lean on the DOM ---- */
+  /* ---- wind ---- */
   function drawWind(){
-    cx.strokeStyle = 'rgba(210,225,245,.13)';
-    cx.lineWidth = 1;
+    fx2.strokeStyle = 'rgba(210,225,245,.16)';
+    fx2.lineWidth = 1;
     for(const g of gusts){
-      cx.globalAlpha = g.a;
-      cx.beginPath();
-      cx.moveTo(g.x, g.y);
-      cx.quadraticCurveTo(g.x + g.l * .5, g.y - 6, g.x + g.l, g.y);
-      cx.stroke();
+      fx2.globalAlpha = g.a;
+      fx2.beginPath();
+      fx2.moveTo(g.x, g.y);
+      fx2.quadraticCurveTo(g.x + g.l * .5, g.y - 6, g.x + g.l, g.y);
+      fx2.stroke();
       g.x += g.v;
       if(g.x > W() + g.l){ g.x = -g.l; g.y = rnd(0, H()); }
     }
-    cx.globalAlpha = 1;
+    fx2.globalAlpha = 1;
   }
 
   /* ---- lightning ---- */
   function drawLightning(){
     if(flash > 0){
-      cx.fillStyle = `rgba(226,232,255,${flash * .5})`;
-      cx.fillRect(0, 0, W(), H());
+      fx2.fillStyle = `rgba(226,232,255,${flash * .5})`;
+      fx2.fillRect(0, 0, W(), H());
       if(bolt){
-        cx.strokeStyle = `rgba(255,255,255,${Math.min(1, flash * 1.6)})`;
-        cx.lineWidth = 2.4;
-        cx.beginPath();
-        cx.moveTo(bolt[0].x, bolt[0].y);
-        for(const p of bolt.slice(1)) cx.lineTo(p.x, p.y);
-        cx.stroke();
+        fx2.strokeStyle = `rgba(255,255,255,${Math.min(1, flash * 1.6)})`;
+        fx2.lineWidth = 2.4;
+        fx2.beginPath();
+        fx2.moveTo(bolt[0].x, bolt[0].y);
+        for(const p of bolt.slice(1)) fx2.lineTo(p.x, p.y);
+        fx2.stroke();
       }
       flash -= .055;
       if(flash <= 0) bolt = null;
@@ -264,7 +345,17 @@ const Sky = (() => {
     }
   }
 
-  /* ---- ambient (unchanged behaviours) ---- */
+  function drawSnowFx(){
+    fx2.fillStyle = 'rgba(255,255,255,.88)';
+    for(const b of flakes){
+      fx2.beginPath(); fx2.arc(b.x, b.y, b.r, 0, 6.3); fx2.fill();
+      b.y += b.v; b.d += .014; b.x += Math.sin(b.d) * .7;
+      if(b.y > H()){ b.y = -8; b.x = rnd(0, W()); }
+    }
+    drawPiles();
+  }
+
+  /* ---- ambient (behind the deck) ---- */
   function drawAmbient(){
     if(mode==='rain'||mode==='storm'){
       cx.strokeStyle = 'rgba(150,190,230,.35)'; cx.lineWidth = 1;
@@ -324,20 +415,10 @@ const Sky = (() => {
     }
   }
 
-  function drawSnowFx(){
-    cx.fillStyle = 'rgba(255,255,255,.85)';
-    for(const b of flakes){
-      cx.beginPath(); cx.arc(b.x, b.y, b.r, 0, 6.3); cx.fill();
-      b.y += b.v; b.d += .014; b.x += Math.sin(b.d) * .7;
-      if(b.y > H()){ b.y = -8; b.x = rnd(0, W()); }
-    }
-    measurePiles();
-    drawPiles();
-  }
-
   function frame(){
     t++;
     cx.clearRect(0,0,W(),H());
+    fx2.clearRect(0,0,W(),H());
 
     /* An effect and the theme ambient can name the same weather; the
        effect is the better version, so the ambient stands down. */
@@ -345,10 +426,12 @@ const Sky = (() => {
                   (fx.has('snow') &&  mode==='snow');
     if(!muted) drawAmbient();
 
+    if(fx.has('snow') || fx.has('rain')) measurePiles();
+
     if(fx.has('sun'))       drawFlare();
     if(fx.has('wind'))      drawWind();
     if(fx.has('snow'))      drawSnowFx();
-    if(fx.has('rain')){     drawRain(); drawPuddle(); }
+    if(fx.has('rain')){     drawRain(); drawDrips(); drawPuddle(); }
     if(fx.has('lightning')) drawLightning();
 
     raf = requestAnimationFrame(frame);
@@ -366,6 +449,7 @@ const Sky = (() => {
     if(raf) cancelAnimationFrame(raf);
     raf = null;
     cx.clearRect(0,0,W(),H());
+    fx2.clearRect(0,0,W(),H());
     if(mode === 'none' && !fx.size) return;
     if(still){ frameOnce(); return; }
     frame();
@@ -415,6 +499,7 @@ const Sky = (() => {
       document.body.classList.toggle('fx-wind', fx.has('wind'));
       document.body.classList.toggle('fx-rain', fx.has('rain'));
       document.body.classList.toggle('fx-snow', fx.has('snow'));
+      document.body.classList.toggle('fx-sun',  fx.has('sun'));
 
       restart();
     },

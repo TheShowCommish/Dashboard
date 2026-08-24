@@ -22,11 +22,44 @@
 
 const Kiosk = (() => {
 
-  const TABS = ['calendar','sports','portfolio','movies','notes','fantasy'];
+  /* The tab order. What actually rotates is this filtered by Settings —
+     see ROTATION below. */
+  const TABS = ['calendar','sports','portfolio','movies','notes','fantasy','todo'];
 
   /* ADs are no longer one-per-tab: weather earns a full screen without
      owning a tab, and To Do is working notes nobody wants on a wall. */
   const ADS = ['calendar','sports','weather','portfolio','movies','notes','fantasy'];
+
+  /* Everything the rotation can show, and whether it is on by default.
+     Settings writes kiosk.show.<name>; both lists are filtered through it,
+     so turning off Movies drops both the tab and its AD. */
+  const ROTATION = [
+    {name:'calendar',  label:'Calendar',  tab:true,  ad:true},
+    {name:'sports',    label:'Sports',    tab:true,  ad:true},
+    {name:'weather',   label:'Weather',   tab:false, ad:true},
+    {name:'portfolio', label:'Portfolio', tab:true,  ad:true},
+    {name:'movies',    label:'Movies',    tab:true,  ad:true},
+    {name:'notes',     label:'Notes',     tab:true,  ad:true},
+    {name:'fantasy',   label:'Fantasy',   tab:true,  ad:true},
+    {name:'todo',      label:'To Do',     tab:true,  ad:false, off:true}
+  ];
+
+  const shown = name => {
+    const row = ROTATION.find(r => r.name === name);
+    return Store.get(`kiosk.show.${name}`, row ? !row.off : true);
+  };
+
+  /* The live lists. Everything switched off in Settings is simply not in
+     them, so no index arithmetic has to know about it. An empty list would
+     stall the machine, so the deck falls back to the calendar. */
+  function tabs(){
+    const list = ROTATION.filter(r => r.tab && shown(r.name)).map(r => r.name);
+    return list.length ? list : ['calendar'];
+  }
+  function ads(){
+    const list = ROTATION.filter(r => r.ad && shown(r.name)).map(r => r.name);
+    return list.length ? list : ['calendar'];
+  }
   const TAB_MS = 15000;
   const AD_MS  = 30000;
   const RESUME_MS = 20000;
@@ -77,14 +110,14 @@ const Kiosk = (() => {
       closeAd();
       mode = 'tab';
       tabIdx = 0;
-      adIdx = (adIdx + 1) % ADS.length;
+      adIdx = (adIdx + 1) % ads().length;
       showCurrentTab();
       schedule(TAB_MS);
       return;
     }
 
     tabIdx++;
-    if(tabIdx >= TABS.length) startAd();
+    if(tabIdx >= tabs().length) startAd();
     else { showCurrentTab(); schedule(TAB_MS); }
   }
 
@@ -93,9 +126,11 @@ const Kiosk = (() => {
      tabs starts immediately. adIdx still advances, so an AD that is
      empty every pass cannot monopolise the following slot. */
   function startAd(){
-    const name = ADS[adIdx];
+    const list = ads();
+    if(adIdx >= list.length) adIdx = 0;
+    const name = list[adIdx];
     if(!hasContent(name)){
-      adIdx = (adIdx + 1) % ADS.length;
+      adIdx = (adIdx + 1) % list.length;
       mode = 'tab';
       tabIdx = 0;
       showCurrentTab();
@@ -120,7 +155,9 @@ const Kiosk = (() => {
   }
 
   function showCurrentTab(){
-    const name = TABS[tabIdx];
+    const list = tabs();
+    if(tabIdx >= list.length) tabIdx = 0;
+    const name = list[tabIdx];
     try{ App.showTab(name); }
     catch(e){ console.error('Kiosk showTab failed:', e); }
     /* Give the tab a paint frame before touching its sub-tabs — the sub-tab
@@ -220,6 +257,7 @@ const Kiosk = (() => {
     el.className = `ad ad-${name} is-on${preview ? ' is-preview' : ''}`;
     el.innerHTML = `${preview ? `<button id="adClose" class="ad-x" title="Close preview"
                        aria-label="Close preview">✕</button>` : ''}
+                    <span id="adLine" class="ad-line-tag" hidden></span>
                     <div class="ad-brand">${name.toUpperCase()}${preview ? ' · PREVIEW' : ''}</div>
                     <div class="ad-body" id="adBody">
                       <div class="ad-fit" id="adFit">
@@ -260,7 +298,7 @@ const Kiosk = (() => {
      on it parks the state machine until the preview is dismissed. */
   function previewAd(name, opts){
     if(!AD_RENDERERS[name]){
-      console.error(`No such AD: "${name}". Try one of: ${ADS.join(', ')}.`);
+      console.error(`No such AD: "${name}". Try one of: ${ADS.join(', ')}.`);   // eslint-disable-line
       return;
     }
     clearTimer();
@@ -308,8 +346,12 @@ const Kiosk = (() => {
       if(fn) fn(body, adOpts || {});
       else body.innerHTML = `<p class="ad-empty">Nothing to show.</p>`;
     }catch(e){
+      /* Name the failure on the screen as well as in the console: an AD
+         that silently reads "nothing to show" is indistinguishable from
+         an AD that genuinely has nothing. */
       console.error(`AD "${name}" failed:`, e);
-      body.innerHTML = `<p class="ad-empty">Nothing to show right now.</p>`;
+      body.innerHTML = `<p class="ad-empty">Nothing to show right now.</p>
+        <p class="ad-why">${esc(name)} AD failed: ${esc(e.message || String(e))}</p>`;
     }
   }
 
@@ -541,6 +583,15 @@ const Kiosk = (() => {
     }
     el.style.setProperty('--ad-split', `${(split * 100).toFixed(1)}%`);
     el.classList.add('is-tinted');
+
+    /* The seam is where the market thinks the game sits, so it says so:
+       the line itself, printed on the divider. */
+    const raw = sum.odds || g?.odds || '';
+    const tag = el.querySelector('#adLine');
+    if(tag){
+      tag.textContent = raw ? raw : '';
+      tag.hidden = !raw;
+    }
   }
 
   function adSportsHtml(g, sum){
@@ -573,13 +624,16 @@ const Kiosk = (() => {
     const tv = (sum?.broadcast?.length ? sum.broadcast : g.broadcast) || [];
     /* Everything a preview card carries, at wall-screen size: the date in
        full, the start time, where it is, who is showing it and the line. */
+    /* When it is belongs between the two logos, where the @ used to be —
+       it is the second thing anyone looks for after who is playing. The
+       line under it keeps where and how to watch. */
+    const dateLine = done ? ''
+      : `${kick.toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric'})}`;
+
     const meta = [
       esc(Sports.leagueName(g.league)),
-      esc(kick.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})),
-      done ? '' : esc(kick.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})),
       sum?.venue || g.venue ? `📍 ${esc(sum?.venue || g.venue)}` : '',
-      tv.length ? `📺 ${esc(tv.join(', '))}` : '',
-      sum?.odds ? `📈 ${esc(sum.odds)}` : ''
+      tv.length ? `📺 ${esc(tv.join(', '))}` : ''
     ].filter(Boolean).join(' · ');
 
     /* Leaders come back flat with a team abbreviation on each row. */
@@ -616,8 +670,11 @@ const Kiosk = (() => {
     /* Football's preview is about the units, not individuals: ESPN hands
        back season averages per team — yards a game, points a game, third
        down — and those say more about the matchup than one leader each. */
-    const isFootball = /football/.test(g.league);
-    const statRows = (sum?.teamStats || []).length >= 2 ? teamStatRows(sum, away, home) : '';
+    /* The league keys are short names — "nfl", not "football/nfl" — so a
+       substring test for "football" quietly matched nothing. */
+    const isFootball = ['nfl','college-football'].includes(g.league);
+    const statRows = (sum?.teamStats || []).length >= 2
+      ? teamStatRows(sum, away, home, isFootball) : '';
 
     const probables = (!done && (away.probable || home.probable))
       ? `<div class="ad-sps">
@@ -632,6 +689,7 @@ const Kiosk = (() => {
         <div class="ad-mid">
           ${score}
           <span class="ad-when${live ? ' ad-live' : ''}">${esc(when)}</span>
+          <span class="ad-date">${esc(dateLine)}</span>
         </div>
         ${side(home,'is-home')}
       </div>
@@ -639,13 +697,13 @@ const Kiosk = (() => {
       ${probables}
       ${isFootball && statRows ? statRows : ''}
       ${(sum?.leaders || []).length
-        ? `<div class="ad-leads">${column(away)}${column(home)}</div>` : ''}
+        ? `<div class="ad-leads${isFootball ? ' is-minor' : ''}">${column(away)}${column(home)}</div>` : ''}
       ${!isFootball && statRows ? statRows : ''}`;
   }
 
   /* Both teams' totals read across rather than down: the label in the
      middle, each side's number under its own logo. */
-  function teamStatRows(sum, away, home){
+  function teamStatRows(sum, away, home, big){
     const byId = id => (sum.teamStats || []).find(t => String(t.id) === String(id));
     const A = byId(away?.id), H = byId(home?.id);
     if(!A || !H) return '';
@@ -658,9 +716,9 @@ const Kiosk = (() => {
 
     const val = (t, l) => (t.stats || []).find(x => x.label === l)?.value ?? '—';
 
-    return `<div class="ad-tstats">
+    return `<div class="ad-tstats${big ? ' is-big' : ''}">
       <span class="ad-sp-head">Team stats</span>
-      <div class="ad-tstat-grid">${labels.slice(0, 8).map(l => `
+      <div class="ad-tstat-grid">${labels.slice(0, big ? 8 : 6).map(l => `
         <span class="ad-ts-a">${esc(String(val(A, l)))}</span>
         <span class="ad-ts-l">${esc(l)}</span>
         <span class="ad-ts-h">${esc(String(val(H, l)))}</span>`).join('')}</div>
@@ -970,6 +1028,8 @@ const Kiosk = (() => {
   }
 
   return { boot, start, stop, toggle, previewAd, closePreview,
+           /* Settings renders its switches from this. */
+           get rotation(){ return ROTATION.map(r => ({...r, on: shown(r.name)})); },
            get enabled(){ return enabled; },
            get previewing(){ return preview; } };
 })();

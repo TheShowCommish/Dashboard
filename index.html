@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=28">
+<link rel="stylesheet" href="css/style.css?v=32">
 </head>
 <body>
 
@@ -190,10 +190,14 @@
 <div id="tickers">
   <div class="ticker" id="tickerMarket" aria-label="Market ticker">
     <span class="ticker-tag">MARKETS</span>
+    <!-- Fixed head: today's move, best and worst. The crawl takes the rest. -->
+    <div class="ticker-head" id="headMarket" hidden></div>
     <div class="ticker-view"><div class="ticker-track" id="trackMarket"></div></div>
   </div>
   <div class="ticker" id="tickerMail" aria-label="Inbox ticker">
     <span class="ticker-tag alt">INBOX</span>
+    <!-- Three lamps: important, normal, spam — lit only when unread. -->
+    <div class="ticker-head" id="headMail"></div>
     <div class="ticker-view"><div class="ticker-track" id="trackMail"></div></div>
   </div>
 </div>
@@ -277,6 +281,12 @@
         <label class="fx-row"><input id="fx_wind" type="checkbox"> Wind</label>
         <label class="fx-row"><input id="fx_lightning" type="checkbox"> Lightning</label>
       </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Kiosk rotation</legend>
+      <p class="note-line">What AUTO cycles through. Switching one off drops both its tab and its full-screen AD; Weather is an AD only, To Do is a tab only.</p>
+      <div class="fx-grid" id="kioskShow"></div>
     </fieldset>
 
     <fieldset>
@@ -375,26 +385,26 @@
   </div>
 </div>
 
-<script src="js/store.js?v=28"></script>
-<script src="js/themes.js?v=28"></script>
-<script src="js/sky.js?v=28"></script>
-<script src="js/weather.js?v=28"></script>
-<script src="js/google.js?v=28"></script>
-<script src="js/stocks.js?v=28"></script>
-<script src="js/fantasy.js?v=28"></script>
-<script src="js/sports.js?v=28"></script>
-<script src="js/teams.js?v=28"></script>
-<script src="js/movies.js?v=28"></script>
-<script src="js/letterboxd.js?v=28"></script>
-<script src="js/moviesview.js?v=28"></script>
-<script src="js/notes.js?v=28"></script>
-<script src="js/todo.js?v=28"></script>
-<script src="js/gamestrip.js?v=28"></script>
-<script src="js/gamecard.js?v=28"></script>
-<script src="js/sportsview.js?v=28"></script>
-<script src="js/calendarview.js?v=28"></script>
-<script src="js/ticker.js?v=28"></script>
-<script src="js/app.js?v=28"></script>
-<script src="js/kiosk.js?v=28"></script>
+<script src="js/store.js?v=32"></script>
+<script src="js/themes.js?v=32"></script>
+<script src="js/sky.js?v=32"></script>
+<script src="js/weather.js?v=32"></script>
+<script src="js/google.js?v=32"></script>
+<script src="js/stocks.js?v=32"></script>
+<script src="js/fantasy.js?v=32"></script>
+<script src="js/sports.js?v=32"></script>
+<script src="js/teams.js?v=32"></script>
+<script src="js/movies.js?v=32"></script>
+<script src="js/letterboxd.js?v=32"></script>
+<script src="js/moviesview.js?v=32"></script>
+<script src="js/notes.js?v=32"></script>
+<script src="js/todo.js?v=32"></script>
+<script src="js/gamestrip.js?v=32"></script>
+<script src="js/gamecard.js?v=32"></script>
+<script src="js/sportsview.js?v=32"></script>
+<script src="js/calendarview.js?v=32"></script>
+<script src="js/ticker.js?v=32"></script>
+<script src="js/app.js?v=32"></script>
+<script src="js/kiosk.js?v=32"></script>
 </body>
 </html>

@@ -216,18 +216,33 @@ const CalendarView = (() => {
       ? `Today · ${focus.toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric'})}`
       : focus.toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric'});
 
-    renderFantasy();
+    /* Games and films first: whether the right-hand slot is empty is what
+       decides how much room the fantasy board gets. */
     renderGames();
     renderMovies();
+    renderFantasy(!fMovies.childElementCount);
 
     const anything = !fFant.hidden || fGames.childElementCount || fMovies.childElementCount;
     if(fEmpty) fEmpty.hidden = !!anything;
   }
 
-  /* Sundays and Mondays get the fantasy scoreboard. */
-  function renderFantasy(){
+  /* Sundays and Mondays get the fantasy scoreboard.
+
+     Two shapes. When there are films for this day the board is a strip
+     above them and shows the two scores only. When the right-hand slot is
+     empty the board moves into it and, with a column to itself, shows each
+     side's top three as well. */
+  function renderFantasy(wide){
     const dayNo = focus.getDay();
     const show = (dayNo === 0 || dayNo === 1) && window.Fantasy && Store.get('fantasy.league','');
+
+    const split = document.querySelector('.focus-split');
+    if(split){
+      if(wide && fFant.parentElement !== split) split.appendChild(fFant);
+      else if(!wide && fFant.parentElement === split) split.parentElement.insertBefore(fFant, split);
+    }
+    fFant.classList.toggle('is-wide', !!wide);
+
     if(!show){ fFant.hidden = true; fFant.innerHTML = ''; return; }
 
     fFant.hidden = false;
@@ -248,6 +263,10 @@ const CalendarView = (() => {
           <div class="ff-board">
             <div class="ff-head">Week ${m.week} matchup</div>
             <div class="ff-vs">${side(m.away)}<span class="ff-dash">vs</span>${side(m.home)}</div>
+            ${wide ? `<div class="ff-tops">${[m.away, m.home].map(t => `
+              <div class="ff-top">${(t.top || []).map(p => `
+                <span class="ff-p"><b>${esc(p.name)}</b><i>${esc(p.pos)}</i><em>${p.points.toFixed(1)}</em></span>`).join('')}
+              </div>`).join('')}</div>` : ''}
           </div>`;
       })
       .catch(e => {

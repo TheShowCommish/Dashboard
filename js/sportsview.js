@@ -105,15 +105,22 @@ const SportsView = (() => {
           </button>`).join('')}</div>` : ''}
 
       <h3 class="pf-h3">Latest news</h3>
-      <div class="tm-news">${news.length ? news.map(n => `
-        <a class="nw" href="${esc(n.link)}" target="_blank" rel="noopener">
-          ${n.image ? `<img class="nw-img" src="${esc(n.image)}" alt="" loading="lazy">` : ''}
-          <span class="nw-body">
-            <span class="nw-head">${esc(n.headline)}</span>
-            <span class="nw-desc">${esc(n.description)}</span>
-            <span class="nw-date">${n.published ? new Date(n.published).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : ''}</span>
-          </span>
-        </a>`).join('') : '<p class="empty">No recent stories.</p>'}</div>`;
+      ${news.length ? (() => {
+        /* One row, crawling, like the tickers at the bottom of the deck:
+           the news is the least urgent thing on this tab and it was taking
+           three rows of it. Two copies of the row so the loop is seamless. */
+        const row = news.map(n => `
+          <a class="nw" href="${esc(n.link)}" target="_blank" rel="noopener">
+            ${n.image ? `<img class="nw-img" src="${esc(n.image)}" alt="" loading="lazy">` : ''}
+            <span class="nw-body">
+              <span class="nw-head">${esc(n.headline)}</span>
+              <span class="nw-date">${n.published ? new Date(n.published).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : ''}</span>
+            </span>
+          </a>`).join('');
+        return `<div class="tm-news mv-marquee">
+          <div class="mv-track" style="animation:crawl ${Math.max(30, news.length * 9)}s linear infinite">${row}${row}</div>
+        </div>`;
+      })() : '<p class="empty">No recent stories.</p>'}`;
 
     const holder = body.querySelector('#tmGames');
     if(upcoming.length) upcoming.forEach(g => holder.appendChild(GameCard.shell(g)));
