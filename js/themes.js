@@ -15,6 +15,9 @@
                 ctx.hour     0-23
                 ctx.month    1-12
      tokens   any CSS custom property from style.css
+     dynamic  optional (ctx) => extra tokens, merged over `tokens`.
+              Used by game day, which paints itself in the colours of
+              whichever followed team is actually playing.
    ============================================================ */
 
 const THEMES = [
@@ -98,11 +101,32 @@ const THEMES = [
   /* ---------- sports (outrank weather on game day) ---------- */
   {
     id:'gameday', label:'Game day', priority:60, sky:'none',
-    when: c => c.games.some(g => g.state === 'pre' || g.state === 'in'),
+    when: c => c.games.some(g => isToday(g.kickoff) && (g.state === 'pre' || g.state === 'in')),
     tokens:{
       '--ink':'#0C0E13','--panel':'#151922','--panel-2':'#1B212C','--edge':'#2A3340',
       '--text':'#F0F3F8','--muted':'#828FA3','--accent':'#00E08A','--accent-ink':'#0C0E13',
       '--good':'#00E08A','--bad':'#FF4D4D','--rail':'#00E08A'
+    },
+    /* The team playing today owns the deck: its primary colour becomes the
+       accent, and the panels take a wash of it. A colour too dark to read
+       against falls back to the alternate, then to the static accent. */
+    dynamic(c){
+      const g = c.games.find(x => isToday(x.kickoff) && (x.state === 'pre' || x.state === 'in'));
+      const col = pickReadable(g?.me?.color, g?.me?.altColor);
+      if(!col) return null;
+      return {
+        '--accent': col,
+        '--accent-ink': inkFor(col),
+        '--rail': col,
+        '--panel':   mix(col, '#151922', .10),
+        '--panel-2': mix(col, '#1B212C', .13),
+        '--edge':    mix(col, '#2A3340', .22),
+        '--ink':     mix(col, '#0C0E13', .06)
+      };
+    },
+    labelFor(c){
+      const g = c.games.find(x => isToday(x.kickoff) && (x.state === 'pre' || x.state === 'in'));
+      return g ? `${g.abbr || g.name} day` : 'Game day';
     }
   },
   {
@@ -145,8 +169,53 @@ const THEMES = [
   }
 ];
 
+/* ---- helpers the dynamic themes need ---- */
+const isToday = d => {
+  if(!d) return false;
+  const x = new Date(d);
+  return x.toDateString() === new Date().toDateString();
+};
+
+const hexBits = h => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(h || ''));
+  if(!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+
+/* Relative luminance, the same measure the WCAG contrast ratio uses. */
+const lum = rgb => {
+  const f = v => { v /= 255; return v <= .03928 ? v/12.92 : Math.pow((v+.055)/1.055, 2.4); };
+  return .2126*f(rgb[0]) + .7152*f(rgb[1]) + .0722*f(rgb[2]);
+};
+
+/* A team's primary is sometimes near-black (navy, midnight) and would
+   vanish as an accent on a dark deck. Take the alternate when that
+   happens, and give up rather than ship something unreadable. */
+function pickReadable(primary, alt){
+  for(const c of [primary, alt]){
+    const bits = hexBits(c);
+    if(bits && lum(bits) > .06) return c.startsWith('#') ? c : `#${c}`;
+  }
+  return null;
+}
+
+const inkFor = c => {
+  const bits = hexBits(c);
+  return bits && lum(bits) > .45 ? '#0C0E13' : '#FFFFFF';
+};
+
+/* k parts colour into a base, as a hex string. */
+function mix(colour, base, k){
+  const a = hexBits(colour), b = hexBits(base);
+  if(!a || !b) return base;
+  const out = a.map((v,i) => Math.round(b[i] + (v - b[i]) * k));
+  return `#${out.map(v => v.toString(16).padStart(2,'0')).join('')}`;
+}
+
 const Themes = (() => {
   let current = null;
+  let signature = '';
 
   function pickAuto(ctx){
     return THEMES
@@ -154,13 +223,28 @@ const Themes = (() => {
       .sort((a,b) => b.priority - a.priority)[0] || THEMES[0];
   }
 
-  function apply(theme){
-    if(!theme || (current && current.id === theme.id)) return;
+  function apply(theme, ctx){
+    if(!theme) return;
+
+    /* A dynamic theme can change without its id changing — game day
+       repaints when a different team is playing — so the guard compares
+       the tokens actually about to be set, not just the name. */
+    let tokens = theme.tokens;
+    if(theme.dynamic && ctx){
+      const extra = (() => { try { return theme.dynamic(ctx); } catch { return null; } })();
+      if(extra) tokens = {...tokens, ...extra};
+    }
+    const sig = theme.id + JSON.stringify(tokens);
+    if(sig === signature) return;
+    signature = sig;
     current = theme;
+
     const root = document.documentElement;
-    for(const [prop,val] of Object.entries(theme.tokens)) root.style.setProperty(prop,val);
+    for(const [prop,val] of Object.entries(tokens)) root.style.setProperty(prop,val);
+
     const label = document.getElementById('railLabel');
-    if(label) label.textContent = theme.label;
+    if(label) label.textContent =
+      (theme.labelFor && ctx ? theme.labelFor(ctx) : theme.label) || theme.label;
     if(window.Sky) Sky.set(theme.sky);
   }
 
@@ -172,10 +256,13 @@ const Themes = (() => {
       const mode = Store.get('theme.mode','auto');
       if(mode === 'manual'){
         const id = Store.get('theme.pick','nightops');
-        apply(THEMES.find(t => t.id === id) || THEMES[0]);
+        apply(THEMES.find(t => t.id === id) || THEMES[0], ctx);
       }else{
-        apply(pickAuto(ctx));
+        apply(pickAuto(ctx), ctx);
       }
+      /* The screen effects follow the same weather this theme was picked
+         from, plus whatever is forced on in Settings. */
+      if(window.Sky) Sky.fx(ctx);
     }
   };
 })();

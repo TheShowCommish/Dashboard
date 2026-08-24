@@ -236,14 +236,13 @@ const CalendarView = (() => {
     Fantasy.matchup()
       .then(m => {
         if(!m){ fFant.hidden = true; return; }
+        /* Score only. The lineup is a full screen's worth of reading and
+           it has one — the fantasy AD — while this panel shares its height
+           with a game preview and a poster row. */
         const side = s => `
           <div class="ff-side${s.mine ? ' is-mine' : ''}">
             <span class="ff-team">${esc(s.name)}</span>
             <span class="ff-score">${s.score.toFixed(1)}</span>
-            <div class="ff-top">
-              ${s.top.map(p => `<span class="ff-p">
-                <b>${esc(p.name)}</b><i>${esc(p.pos)}</i><em>${p.points.toFixed(1)}</em></span>`).join('')}
-            </div>
           </div>`;
         fFant.innerHTML = `
           <div class="ff-board">

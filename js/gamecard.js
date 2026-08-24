@@ -134,7 +134,13 @@ const GameCard = (() => {
 
     const tv = (sum?.broadcast?.length ? sum.broadcast : g.broadcast) || [];
 
-    const split = splitLeaders(sum?.leaders || [], away, home);
+    /* Baseball before the last out is a pitching matchup and nothing else:
+       the probables carry the card and the season leaders wait for the
+       popup. Once it is final, those leaders are that game's box score,
+       which is exactly what a recent result should show. */
+    const holdLeaders = g.league === 'mlb' && !done;
+    const split = holdLeaders ? {away:[], home:[]}
+                              : splitLeaders(sum?.leaders || [], away, home);
     const anyLeaders = split.away.length || split.home.length;
 
     return `

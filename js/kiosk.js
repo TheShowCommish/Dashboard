@@ -23,6 +23,10 @@
 const Kiosk = (() => {
 
   const TABS = ['calendar','sports','portfolio','movies','notes','fantasy'];
+
+  /* ADs are no longer one-per-tab: weather earns a full screen without
+     owning a tab, and To Do is working notes nobody wants on a wall. */
+  const ADS = ['calendar','sports','weather','portfolio','movies','notes','fantasy'];
   const TAB_MS = 15000;
   const AD_MS  = 30000;
   const RESUME_MS = 20000;
@@ -73,7 +77,7 @@ const Kiosk = (() => {
       closeAd();
       mode = 'tab';
       tabIdx = 0;
-      adIdx = (adIdx + 1) % TABS.length;
+      adIdx = (adIdx + 1) % ADS.length;
       showCurrentTab();
       schedule(TAB_MS);
       return;
@@ -89,9 +93,9 @@ const Kiosk = (() => {
      tabs starts immediately. adIdx still advances, so an AD that is
      empty every pass cannot monopolise the following slot. */
   function startAd(){
-    const name = TABS[adIdx];
+    const name = ADS[adIdx];
     if(!hasContent(name)){
-      adIdx = (adIdx + 1) % TABS.length;
+      adIdx = (adIdx + 1) % ADS.length;
       mode = 'tab';
       tabIdx = 0;
       showCurrentTab();
@@ -218,11 +222,24 @@ const Kiosk = (() => {
                        aria-label="Close preview">✕</button>` : ''}
                     <div class="ad-brand">${name.toUpperCase()}${preview ? ' · PREVIEW' : ''}</div>
                     <div class="ad-body" id="adBody">
-                      <p class="ad-empty">Loading…</p>
+                      <div class="ad-fit" id="adFit">
+                        <p class="ad-empty">Loading…</p>
+                      </div>
                     </div>`;
     const x = el.querySelector('#adClose');
     if(x) x.addEventListener('click', closePreview);
+
+    /* Half these renderers finish asynchronously, so the fit pass cannot
+       be a one-shot after render — it watches the AD instead. */
+    const fit = el.querySelector('#adFit');
+    if(fitWatch) fitWatch.disconnect();
+    if(fit && window.MutationObserver){
+      fitWatch = new MutationObserver(() => { clearTimeout(fitTimer); fitTimer = setTimeout(fitAd, 60); });
+      fitWatch.observe(fit, {childList:true, subtree:true});
+    }
+
     renderAd(name);
+    setTimeout(fitAd, 80);
   }
 
   function closeAd(){
@@ -243,7 +260,7 @@ const Kiosk = (() => {
      on it parks the state machine until the preview is dismissed. */
   function previewAd(name, opts){
     if(!AD_RENDERERS[name]){
-      console.error(`No such AD: "${name}". Try one of: ${TABS.join(', ')}.`);
+      console.error(`No such AD: "${name}". Try one of: ${ADS.join(', ')}.`);
       return;
     }
     clearTimer();
@@ -261,8 +278,30 @@ const Kiosk = (() => {
     if(enabled){ mode = 'tab'; schedule(TAB_MS); }
   }
 
+  /* ---- fit to the screen ----
+     An AD never scrolls: a wall display has no scrollbar and nobody to
+     use it. Anything too tall is scaled down until it fits, in small
+     steps, with a floor so it cannot shrink into nothing. */
+  let fitWatch = null, fitTimer = null;
+
+  function fitAd(){
+    const host = document.getElementById('adBody');
+    const fit  = document.getElementById('adFit');
+    if(!host || !fit) return;
+
+    fit.style.zoom = '';
+    const room = host.clientHeight;
+    if(!room) return;
+
+    let z = 1;
+    while(fit.getBoundingClientRect().height > room - 2 && z > 0.5){
+      z -= 0.04;
+      fit.style.zoom = z.toFixed(2);
+    }
+  }
+
   function renderAd(name){
-    const body = document.getElementById('adBody');
+    const body = document.getElementById('adFit');
     if(!body) return;
     try{
       const fn = AD_RENDERERS[name];
@@ -282,6 +321,7 @@ const Kiosk = (() => {
 
   const AD_RENDERERS = {
     calendar: adCalendar,
+    weather:  adWeather,
     sports:   adSports,
     portfolio:adPortfolio,
     movies:   adMovies,
@@ -292,7 +332,9 @@ const Kiosk = (() => {
   /* Only ADs that can be genuinely blank need an entry; everything else
      defaults to "show it". A false return burns the slot — see startAd. */
   const AD_CONTENT_CHECKS = {
-    calendar: () => !!calendarWindow()
+    calendar: () => !!calendarWindow(),
+    /* No reading yet means no forecast to put on a full screen. */
+    weather:  () => !!(window.Weather && Weather.current)
   };
 
   const sameDay = (a,b) => a && b &&
@@ -356,6 +398,63 @@ const Kiosk = (() => {
      baseball the two probable starters, given the room they deserve.
      The schedule payload alone cannot fill a screen this size, so the
      summary is fetched and the AD upgrades itself when it lands. */
+  /* ---- weather AD ----
+     The rest of today hour by hour, then the week. This is the forecast
+     that used to be squeezed into a tile under the calendar grid. */
+  function adWeather(host){
+    const w = window.Weather;
+    if(!w || !w.current){
+      host.innerHTML = `<p class="ad-empty ad-big">No weather reading yet.</p>`;
+      return;
+    }
+
+    const c = w.current;
+    const rain = w.rainToday();
+    const hours = w.restOfToday();
+    const days = w.daily(8).slice(1);          // tomorrow onward
+
+    const temps = hours.map(h => h.temp);
+    const lo = temps.length ? Math.min(...temps) : 0;
+    const hi = temps.length ? Math.max(...temps) : 1;
+    const span = Math.max(1, hi - lo);
+
+    host.innerHTML = `
+      <div class="ad-wx-now">
+        <span class="ad-wx-glyph">${w.glyph(c.main)}</span>
+        <div class="ad-wx-id">
+          <h1 class="ad-h1">${c.temp}&deg;</h1>
+          <p class="ad-sub">${esc(c.desc)} &middot; feels ${c.feels}&deg; &middot; wind ${c.wind} mph${
+            c.humidity != null ? ` &middot; ${c.humidity}% humidity` : ''}</p>
+          <p class="ad-wx-rain${rain && !rain.dry ? ' is-wet' : ''}">${
+            !rain ? ''
+            : rain.dry ? `Rain unlikely today &mdash; peaks at ${rain.peak}%`
+            : `Rain ${rain.peak}% today &middot; ${esc(rain.window)}`}</p>
+        </div>
+        <div class="ad-wx-place">${esc(c.place || '')}</div>
+      </div>
+
+      <div class="ad-wx-hours">
+        ${hours.map((h,i) => `
+          <div class="ad-wx-hour">
+            <span class="ad-wx-h-t">${i === 0 ? 'now' : esc(w.hourLabel(h.t))}</span>
+            <span class="ad-wx-h-g">${w.glyph(h.main)}</span>
+            <span class="ad-wx-h-bar"><i style="height:${(14 + (h.temp - lo) / span * 54).toFixed(0)}px"></i></span>
+            <span class="ad-wx-h-n">${h.temp}&deg;</span>
+            <span class="ad-wx-h-p${(h.pop || 0) >= 30 ? ' is-wet' : ''}">${h.pop ? h.pop + '%' : ''}</span>
+          </div>`).join('')}
+      </div>
+
+      <div class="ad-wx-days">
+        ${days.map(d => `
+          <div class="ad-wx-day">
+            <b>${d.date.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase()}</b>
+            <span class="ad-wx-d-g">${w.glyph(d.noon.main)}</span>
+            <span class="ad-wx-d-t">${d.hi}&deg;<i>${d.lo}&deg;</i></span>
+            <span class="ad-wx-d-p${d.pop >= 30 ? ' is-wet' : ''}">${d.pop ? d.pop + '%' : ''}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
   function adSports(host, opts = {}){
     let games = (window.Teams ? Teams.games : []) || [];
 
@@ -390,21 +489,57 @@ const Kiosk = (() => {
         /* The AD may have been closed or replaced while this was away. */
         if(!host.isConnected) return;
         host.innerHTML = adSportsHtml(g, sum);
-        tint(sum);
+        tint(sum, g);
       })
       .catch(e => console.error('Sports AD summary failed:', e.message));
   }
 
-  /* Paint the overlay with the two teams' own colours. Cleared by closeAd
-     so the next AD does not inherit them. */
-  function tint(sum){
+  /* ---- reading the line ----
+     ESPN writes it as "GT -6.5" for a spread and "BOS -124" for a
+     moneyline. Both say the same thing — how sure the market is — so both
+     collapse to one number: the favourite's share of the screen. */
+  function favouriteShare(odds){
+    const m = /([A-Z]{2,5})\s*([+-]\d+(?:\.\d+)?)/.exec(String(odds || ''));
+    if(!m) return null;
+    const abbr = m[1];
+    const n = Math.abs(parseFloat(m[2]));
+    if(!Number.isFinite(n)) return null;
+
+    /* A moneyline already IS an implied probability. A spread is not, so
+       it is mapped: a point and a half of spread is worth a few points of
+       screen, and a two-touchdown favourite owns nearly all of it. */
+    const share = n >= 100
+      ? n / (n + 100)
+      : 0.5 + Math.min(0.42, n * 0.035);
+
+    /* The underdog always keeps a strip of its own colour — a screen in a
+       single colour reads as a bug, not as a mismatch. */
+    return {abbr, share: Math.min(0.92, Math.max(0.55, share))};
+  }
+
+  /* Paint the overlay with the two teams' own colours, split by who the
+     market likes. Cleared by closeAd so the next AD does not inherit it. */
+  function tint(sum, g){
     const el = overlay();
     if(!el) return;
     const away = sum.sides?.find(s => !s.home);
     const home = sum.sides?.find(s =>  s.home);
     if(!away?.color && !home?.color) return;
+
     el.style.setProperty('--ad-a', away?.color || home?.color);
     el.style.setProperty('--ad-h', home?.color || away?.color);
+
+    /* --ad-split is where the away colour hands over to the home colour,
+       measured from the left, so the favourite's side is the wider one. */
+    const fav = favouriteShare(sum.odds || g?.odds);
+    let split = 0.5;
+    if(fav){
+      const isAway = away?.abbr && fav.abbr.toUpperCase() === away.abbr.toUpperCase();
+      const isHome = home?.abbr && fav.abbr.toUpperCase() === home.abbr.toUpperCase();
+      if(isAway) split = fav.share;
+      else if(isHome) split = 1 - fav.share;
+    }
+    el.style.setProperty('--ad-split', `${(split * 100).toFixed(1)}%`);
     el.classList.add('is-tinted');
   }
 
@@ -478,6 +613,12 @@ const Kiosk = (() => {
       </div>`;
     };
 
+    /* Football's preview is about the units, not individuals: ESPN hands
+       back season averages per team — yards a game, points a game, third
+       down — and those say more about the matchup than one leader each. */
+    const isFootball = /football/.test(g.league);
+    const statRows = (sum?.teamStats || []).length >= 2 ? teamStatRows(sum, away, home) : '';
+
     const probables = (!done && (away.probable || home.probable))
       ? `<div class="ad-sps">
            <span class="ad-sp-head">Probable starters</span>
@@ -496,8 +637,34 @@ const Kiosk = (() => {
       </div>
       <p class="ad-sub ad-gmeta">${meta}</p>
       ${probables}
+      ${isFootball && statRows ? statRows : ''}
       ${(sum?.leaders || []).length
-        ? `<div class="ad-leads">${column(away)}${column(home)}</div>` : ''}`;
+        ? `<div class="ad-leads">${column(away)}${column(home)}</div>` : ''}
+      ${!isFootball && statRows ? statRows : ''}`;
+  }
+
+  /* Both teams' totals read across rather than down: the label in the
+     middle, each side's number under its own logo. */
+  function teamStatRows(sum, away, home){
+    const byId = id => (sum.teamStats || []).find(t => String(t.id) === String(id));
+    const A = byId(away?.id), H = byId(home?.id);
+    if(!A || !H) return '';
+
+    const labels = [];
+    for(const t of [A, H])
+      for(const st of (t.stats || []))
+        if(st.label && !labels.includes(st.label)) labels.push(st.label);
+    if(!labels.length) return '';
+
+    const val = (t, l) => (t.stats || []).find(x => x.label === l)?.value ?? '—';
+
+    return `<div class="ad-tstats">
+      <span class="ad-sp-head">Team stats</span>
+      <div class="ad-tstat-grid">${labels.slice(0, 8).map(l => `
+        <span class="ad-ts-a">${esc(String(val(A, l)))}</span>
+        <span class="ad-ts-l">${esc(l)}</span>
+        <span class="ad-ts-h">${esc(String(val(H, l)))}</span>`).join('')}</div>
+    </div>`;
   }
 
   function adPortfolio(host){
@@ -731,13 +898,27 @@ const Kiosk = (() => {
     Fantasy.matchup({weekOffset: isFuture ? 1 : 0})
       .then(m => {
         if(!m){ host.innerHTML = `<p class="ad-empty ad-big">No matchup this week.</p>`; return; }
+
+        /* Every starter, not the top three: on a full screen the whole
+           lineup is the interesting part — who is carrying it and who has
+           not played yet. */
         const side = s => `
           <div class="ad-ff-side${s.mine ? ' is-mine' : ''}">
-            <p class="ad-ff-team">${esc(s.name)}</p>
-            <p class="ad-ff-score">${(s.score || 0).toFixed(1)}</p>
-            <ul class="ad-ff-top">${(s.top || []).map(p => `
-              <li><b>${esc(p.name)}</b> <i>${esc(p.pos)}</i> — ${p.points.toFixed(1)}</li>`).join('')}</ul>
+            <div class="ad-ff-head">
+              ${s.logo ? `<img class="ad-ff-logo" src="${esc(s.logo)}" alt="">` : ''}
+              <div>
+                <p class="ad-ff-team">${esc(s.name)}</p>
+                <p class="ad-ff-score">${(s.score || 0).toFixed(1)}</p>
+              </div>
+            </div>
+            <ul class="ad-ff-line">${(s.starters || s.top || []).map(p => `
+              <li>
+                <span class="ad-ff-pos">${esc(p.pos)}</span>
+                <span class="ad-ff-name">${esc(p.name)}</span>
+                <span class="ad-ff-pts">${p.points.toFixed(1)}</span>
+              </li>`).join('')}</ul>
           </div>`;
+
         host.innerHTML = `
           <div class="ad-hero">
             <h1 class="ad-h1">Week ${m.week}${isFuture ? ' · Preview' : ''}</h1>
@@ -748,15 +929,6 @@ const Kiosk = (() => {
       .catch(e => {
         host.innerHTML = `<p class="ad-empty ad-big">Matchup unavailable (${esc(e.message)}).</p>`;
       });
-  }
-
-  /* Whole days from today to a YYYY-MM-DD date, counted midday to midday
-     so neither a timezone nor a DST boundary can shift the answer. */
-  function daysUntil(date){
-    const t = new Date();
-    const today = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12);
-    const then  = new Date(date + 'T12:00:00');
-    return Math.round((then - today) / 864e5);
   }
 
   const keyOf = d => {

@@ -97,13 +97,19 @@ Everything that needs room renders in the **focus strip below the grid** for whi
 - **Movie crawl** — posters for that day's releases with genre and director, **crawling like the market ticker** below. Click one for the synopsis. Every line of text is clipped to the width of the poster above it.
 
 The game preview and the poster crawl sit **side by side**, with the fantasy board above them, so the whole panel fits its height without scrolling.
-- **Fantasy scoreboard** — on Sundays and Mondays only, showing the week's matchup score and each side's top three scorers.
+- **Fantasy scoreboard** — on Sundays and Mondays only: the week's matchup and the two scores, nothing else. The lineup is a screen's worth of reading and it has one — the fantasy AD.
 
 Click any day to focus it; double-click for a summary dialog.
 
-- **Weather tile** — under the grid: the current conditions, an hour-by-hour strip, and a seven-day outlook with rain chance. Click **Open detail** (or the weather button in the header) for 24 hours and two weeks at full size.
+**Weather** is called out at the **top right of the page**: the glyph, the temperature at full size, today's high and low, what it feels like, and — the part worth acting on — whether it rains today and roughly when. Click it, or the temperature pill in the header, for 24 hours and two weeks at full size. The detailed forecast otherwise lives in its own kiosk AD; the tile that used to sit under the grid is gone.
 
 **Sticky notes.** The tray that used to sit under the calendar is gone; **+ Add Note** in the calendar header creates a note pinned to whichever day is in focus. Notes still drag between days, and the Notes tab has an un-pin control (⇱) on any pinned note. Completing a note never deletes it.
+
+### Live score strip
+
+When a followed team is playing — from an hour before first pitch until the final — the score sits in
+the **header**, between the tabs and the clock, whatever tab is up. While the game is live it refreshes
+on its own timer rather than waiting for the fifteen-minute schedule poll. Click it for the game popup.
 
 ### Sports
 
@@ -111,7 +117,7 @@ One sub-tab per followed team, showing the team's record and conference standing
 
 The **whole remaining season** is listed, not a fixed handful of games. The next three get preview cards; the rest are compact rows, because each preview card costs a summary request to enrich and a 162-game baseball season would fire one per game.
 
-A preview card carries only what you read at a glance: the two teams, their records, when it starts, where to watch, the venue and the line — plus both **probable starting pitchers** for baseball. Everything else is one click away.
+A preview card carries what you read at a glance: the two teams, their records, when it starts, where to watch, the venue, the line, and each side's stat leaders as small buttons under its own logo. **Baseball before the last out is the exception** — the two probable starters carry the card and the season leaders wait for the popup, because that is what the matchup actually is. Once a baseball game is final those leaders are its box score, which is exactly what a recent result should show.
 
 **Every game on the tab opens the stats popup** — the preview cards, the rest-of-season rows and the recent results alike. The popup holds the final line, the per-quarter score, both teams' totals side by side, the probable starters before first pitch, and each side's leaders; click a leader for their season game log. Every popup in the app closes three ways: the × in its corner, a click on the backdrop, or Escape.
 
@@ -179,14 +185,25 @@ What the ADs show:
 - **Calendar** — today's events, or if today is empty, the next day inside a week that isn't, headed
   "In 4 days". If the whole week is empty the AD is **skipped** and the next pass starts immediately —
   the only slot that is ever skipped rather than rendered.
-- **Sports** — the next game as a full preview: both teams' logos and records, the screen tinted with
-  each team's own colours, the full date and start time, the venue, where to watch, the betting line,
-  both sides' season stat leaders, and for baseball the two probable starting pitchers at full size.
+- **Weather** — the rest of today hour by hour, then the next seven days. Rain chance called out.
+- **Sports** — the next game as a full preview: both teams' logos and records, the full date and start
+  time, the venue, where to watch, the betting line, both sides' season stat leaders, and for baseball
+  the two probable starting pitchers at full size. Football gets the team numbers instead — points and
+  yards a game, for and against.
+
+  The screen is **split into the two teams' own colours, in proportion to the line**: a one-point
+  favourite takes just over half of it, a two-touchdown favourite takes nearly all of it, and the
+  underdog always keeps a strip of its own. A moneyline is read the same way, as the implied
+  probability it already is.
 - **Portfolio** — today's move, with the day's top gainers and top losers.
 - **Movies** — a coming release or a watchlist pick, with its synopsis (fetched on demand for films past
   the detail cap), the exact release date and a countdown, and three ratings: Rotten Tomatoes, Letterboxd
   and TMDB. A rating that cannot be reached shows an em dash rather than disappearing.
-- **Notes**, **Fantasy** — the nearest open note, and the current (or, midweek, the coming) matchup.
+- **Fantasy** — the matchup with **every starter** on both sides, their points and the team logos.
+- **Notes** — the nearest open note.
+
+No AD ever scrolls: anything too tall for the screen is scaled down until it fits, which is why a
+40-holding portfolio and a two-team stat sheet both land on one screen.
 
 **Settings → Kiosk previews** carries one button per followed team as well as one per AD, so a six-team
 deck can be checked a screen at a time instead of only ever showing whichever game is nearest. Any of
@@ -322,6 +339,29 @@ same worker, so **redeploy the worker** after this update — the `/letterboxd/f
 Tomatoes has no public API at all; it comes from [OMDb](https://www.omdbapi.com/apikey.aspx) instead, a
 free key you paste into Settings → API keys. Both are cached per film forever, and either one missing
 just shows an em dash.
+
+## Weather on screen
+
+The theme has always changed colour with the weather. It now changes the screen itself:
+
+- **Snow** falls and **settles on the panels** — every card, note and calendar cell grows a lump of it
+  along its top edge over the next few minutes.
+- **Rain** falls into a **puddle across the bottom of the screen**, with the deck's own glow smeared
+  across the wet floor and rings where the drops land.
+- **Sun** throws a **lens flare** from off the top right, ghosts marching through the centre.
+- **Wind** leans the panels, on and off, and streaks the background.
+- **Thunderstorms** flash, with a bolt, every few seconds.
+
+Each one follows the actual forecast. **Settings → Weather effects** has a master switch and a
+force-on box per effect, so any of them can be seen without waiting for that weather. Everything
+respects `prefers-reduced-motion`: one static pass, no loop.
+
+### Game day
+
+On a day a followed team plays, the deck paints itself in **that team's own colour** — accent, rail,
+panel wash and edges — and the status rail says whose day it is. A colour too dark to read against
+falls back to the team's alternate, and then to the standard green rather than shipping something
+illegible.
 
 ## Adding a theme
 

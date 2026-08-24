@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=24">
+<link rel="stylesheet" href="css/style.css?v=28">
 </head>
 <body>
 
@@ -30,20 +30,17 @@
     <button class="tab-btn"       data-tab="todo"      role="tab" aria-selected="false">To Do</button>
   </nav>
 
+  <!-- Live or imminent game for a followed team; empty and hidden otherwise. -->
+  <div id="gameStrip" hidden></div>
+
   <div class="head-right">
-    <button id="headSub" class="wx-pill" title="Refresh weather">
+    <button id="headSub" class="wx-pill" title="Open the forecast">
       <span id="wxIcon">·</span><span id="wxTemp">—</span>
     </button>
     <div class="clock">
       <span id="clockTime">--:--</span>
       <span id="clockDate">—</span>
     </div>
-    <button id="btnWx" class="icon-btn no-spin" aria-label="Open weather detail" title="Weather detail">
-      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.6A3.75 3.75 0 0 0 6.5 19z"></path>
-      </svg>
-    </button>
     <button id="kioskToggle" class="ghost-btn sm" title="Start rotation">AUTO</button>
     <button id="btnSettings" class="icon-btn" aria-label="Open settings" title="Settings">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
@@ -70,6 +67,9 @@
         <button id="calNext"  class="ghost-btn sm" aria-label="Next two weeks">›</button>
         <button id="btnAddNote" class="ghost-btn sm primary">+ Add Note</button>
       </div>
+      <!-- The weather headline for the day. The tile that used to sit under
+           the grid is gone; detail lives in the popup and the kiosk AD. -->
+      <section id="wxNow" class="wx-now-card"><p class="empty">Loading weather…</p></section>
     </div>
 
     <div class="cal-wrap">
@@ -95,15 +95,6 @@
         <div id="focusMovies"></div>
       </div>
       <p id="focusEmpty" class="empty" hidden>Nothing else on this day.</p>
-    </section>
-
-    <!-- fuller weather readout, directly under the grid -->
-    <section id="wxTile" class="wx-tile">
-      <div class="wx-tile-head">
-        <h3 class="pf-h3">Weather</h3>
-        <button id="wxTileMore" class="ghost-btn sm">Open detail</button>
-      </div>
-      <div id="weatherBody"><p class="empty">Loading weather…</p></div>
     </section>
 
     </div><!-- /.cal-lower -->
@@ -276,10 +267,24 @@
     </fieldset>
 
     <fieldset>
+      <legend>Weather effects</legend>
+      <label class="fx-row"><input id="fx_on" type="checkbox"> Weather effects on screen</label>
+      <p class="note-line">Snow settles on the panels, rain leaves a puddle across the bottom, sun throws a lens flare, wind leans everything on screen and a storm flashes. Each one follows the actual forecast; tick one below to force it on and see it now.</p>
+      <div class="fx-grid">
+        <label class="fx-row"><input id="fx_snow" type="checkbox"> Snow</label>
+        <label class="fx-row"><input id="fx_rain" type="checkbox"> Rain</label>
+        <label class="fx-row"><input id="fx_sun" type="checkbox"> Sun</label>
+        <label class="fx-row"><input id="fx_wind" type="checkbox"> Wind</label>
+        <label class="fx-row"><input id="fx_lightning" type="checkbox"> Lightning</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
       <legend>Kiosk previews</legend>
       <div class="preview-grid" id="previewTeams"></div>
       <div class="preview-grid">
         <button class="ghost-btn sm" data-preview="calendar">Calendar</button>
+        <button class="ghost-btn sm" data-preview="weather">Weather</button>
         <button class="ghost-btn sm" data-preview="sports">Sports</button>
         <button class="ghost-btn sm" data-preview="portfolio">Portfolio</button>
         <button class="ghost-btn sm" data-preview="movies">Movies</button>
@@ -370,25 +375,26 @@
   </div>
 </div>
 
-<script src="js/store.js?v=24"></script>
-<script src="js/themes.js?v=24"></script>
-<script src="js/sky.js?v=24"></script>
-<script src="js/weather.js?v=24"></script>
-<script src="js/google.js?v=24"></script>
-<script src="js/stocks.js?v=24"></script>
-<script src="js/fantasy.js?v=24"></script>
-<script src="js/sports.js?v=24"></script>
-<script src="js/teams.js?v=24"></script>
-<script src="js/movies.js?v=24"></script>
-<script src="js/letterboxd.js?v=24"></script>
-<script src="js/moviesview.js?v=24"></script>
-<script src="js/notes.js?v=24"></script>
-<script src="js/todo.js?v=24"></script>
-<script src="js/gamecard.js?v=24"></script>
-<script src="js/sportsview.js?v=24"></script>
-<script src="js/calendarview.js?v=24"></script>
-<script src="js/ticker.js?v=24"></script>
-<script src="js/app.js?v=24"></script>
-<script src="js/kiosk.js?v=24"></script>
+<script src="js/store.js?v=28"></script>
+<script src="js/themes.js?v=28"></script>
+<script src="js/sky.js?v=28"></script>
+<script src="js/weather.js?v=28"></script>
+<script src="js/google.js?v=28"></script>
+<script src="js/stocks.js?v=28"></script>
+<script src="js/fantasy.js?v=28"></script>
+<script src="js/sports.js?v=28"></script>
+<script src="js/teams.js?v=28"></script>
+<script src="js/movies.js?v=28"></script>
+<script src="js/letterboxd.js?v=28"></script>
+<script src="js/moviesview.js?v=28"></script>
+<script src="js/notes.js?v=28"></script>
+<script src="js/todo.js?v=28"></script>
+<script src="js/gamestrip.js?v=28"></script>
+<script src="js/gamecard.js?v=28"></script>
+<script src="js/sportsview.js?v=28"></script>
+<script src="js/calendarview.js?v=28"></script>
+<script src="js/ticker.js?v=28"></script>
+<script src="js/app.js?v=28"></script>
+<script src="js/kiosk.js?v=28"></script>
 </body>
 </html>

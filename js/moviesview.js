@@ -94,21 +94,45 @@ const MoviesView = (() => {
     })), {cap:20, note:'in cinemas this week, most popular first'});
   }
 
+  /* The diary as a tall narrow column down the left: poster, when it was
+     watched, the stars, and what was said about it. It is the only part of
+     this tab that is actually the user's own writing, so it gets read as a
+     column rather than skimmed as a row. */
   function diaryHtml(){
-    const seen = Letterboxd.diary.slice(0, 12);
-    if(!seen.length) return '';
-    return `<section class="mv-strip">
-      <div class="car-head"><h3 class="pf-h3">Recently watched</h3>
-        <span class="plot-key">from the Letterboxd diary feed</span></div>
-      <div class="mv-seen">${seen.map(f => `
+    const seen = Letterboxd.diary.slice(0, 20);
+    if(!seen.length){
+      return `<aside class="mv-diary">
+        <h3 class="pf-h3">Recently watched</h3>
+        <p class="empty">Nothing logged yet — this comes from the Letterboxd diary feed.</p>
+      </aside>`;
+    }
+
+    const when = f => {
+      const d = new Date(f.watchedAt);
+      return Number.isNaN(+d) ? ''
+        : d.toLocaleDateString(undefined,{month:'short', day:'numeric'});
+    };
+
+    return `<aside class="mv-diary">
+      <h3 class="pf-h3">Recently watched <span class="pf-h3-n">${Letterboxd.diary.length}</span></h3>
+      <div class="mv-diary-list">${seen.map(f => `
         <a class="mv-seen-row" href="${esc(f.link)}" target="_blank" rel="noopener">
-          <span class="row-title">${esc(f.title)}${f.year ? ` <i>${f.year}</i>` : ''}</span>
-          <span class="row-side">${f.rated != null
-            ? `<span class="mv-stars">${STAR.repeat(Math.round(f.rated))}${
-                 HOLLOW.repeat(Math.max(0, 5 - Math.round(f.rated)))}</span>`
-            : ''}</span>
+          ${f.poster
+            ? `<img class="mv-seen-art" src="${esc(f.poster)}" alt="" loading="lazy">`
+            : '<span class="mv-seen-art mv-noart">🎬</span>'}
+          <span class="mv-seen-body">
+            <span class="mv-seen-title">${esc(f.title)}${f.year ? ` <i>${f.year}</i>` : ''}</span>
+            <span class="mv-seen-meta">
+              <span class="mv-seen-when">${esc(when(f))}</span>
+              ${f.rated != null
+                ? `<span class="mv-stars">${STAR.repeat(Math.round(f.rated))}${
+                     HOLLOW.repeat(Math.max(0, 5 - Math.round(f.rated)))}</span>`
+                : ''}
+            </span>
+            ${f.review ? `<span class="mv-seen-review">${esc(f.review)}</span>` : ''}
+          </span>
         </a>`).join('')}</div>
-    </section>`;
+    </aside>`;
   }
 
   function upcomingHtml(){
@@ -150,7 +174,13 @@ const MoviesView = (() => {
       count.textContent = n ? `${n} to watch` : '—';
     }
 
-    body.innerHTML = watchlistHtml() + playingHtml() + upcomingHtml() + diaryHtml();
+    /* Diary down the left, the crawling shelves in the remaining two
+       thirds — they need the width, it needs the height. */
+    body.innerHTML = `
+      ${diaryHtml()}
+      <div class="mv-shelves">
+        ${watchlistHtml()}${playingHtml()}${upcomingHtml()}
+      </div>`;
 
     /* A TMDB id opens the existing detail modal; a watchlist film with no
        match falls back to its Letterboxd page. */

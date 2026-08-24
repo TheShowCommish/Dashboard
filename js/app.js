@@ -119,7 +119,8 @@ const App = (() => {
     run('Movies',   () => Movies.load());
     run('Letterboxd', () => Letterboxd.load());
     run('Stocks',   () => Stocks.load());
-    run('Teams',    () => Teams.load());
+    await run('Teams', () => Teams.load());
+    run('Score strip', () => GameStrip.refresh());
     run('Schedules',() => CalendarView.loadGames());
     run('Sports',   () => SportsView.render());
     run('Ticker',   () => Ticker.render());
@@ -170,17 +171,15 @@ const App = (() => {
     on('calToday','click', () => CalendarView.today());
     on('dayClose','click', () => CalendarView.close());
 
-    on('headSub','click',      () => Weather.refresh().then(recheckTheme));
+    /* The temperature pill IS the weather control now — the separate icon
+       button next to it was a second door to the same room. */
+    on('headSub','click',      () => Weather.openModal());
     on('btnPfRefresh','click', () => Stocks.refresh());
     on('mvClose','click',      () => Movies.close());
     on('standClose','click',   () => StandingsView.close());
     on('playerClose','click',  () => PlayerLog.close());
     on('gameClose','click',    () => GameStats.close());
     on('wxClose','click',      () => Weather.closeModal());
-
-    /* The weather popout, reachable from the header and from the tile. */
-    on('btnWx','click',      () => Weather.openModal());
-    on('wxTileMore','click', () => Weather.openModal());
 
     /* The calendar's Add Note pins to whichever day is in focus — an
        unscheduled note would have nowhere to appear on this tab now that
@@ -287,6 +286,22 @@ const App = (() => {
       Google.resume().then(ok => { if(ok) refreshAll(); });
     });
 
+    /* Force-on switches for the screen effects, so each can be seen
+       without waiting for that weather. */
+    step('weather effects', () => {
+      const FX = ['on','snow','rain','sun','wind','lightning'];
+      for(const k of FX){
+        const box = document.getElementById(`fx_${k}`);
+        if(!box) continue;
+        box.checked = Store.get(`fx.${k}`, k === 'on');
+        box.addEventListener('change', () => {
+          Store.set(`fx.${k}`, box.checked);
+          recheckTheme();          // re-derives the effect list
+        });
+      }
+    });
+
+    step('score strip', () => { if(window.GameStrip) GameStrip.boot(); });
     step('kiosk', () => { if(window.Kiosk) Kiosk.boot(); });
     step('first refresh', refreshAll);
     step('weather schedule', () => Weather.scheduleNext());   // 6am, noon, 3pm, 6pm, 10pm
@@ -295,7 +310,7 @@ const App = (() => {
        priced today, so this hourly poke just catches the date rolling
        over on a dashboard left running. */
     setInterval(() => { Stocks.load(); }, 60*60*1000);
-    setInterval(() => { Teams.load(); }, 15*60*1000);
+    setInterval(() => { Teams.load().then(() => GameStrip.refresh()); }, 15*60*1000);
     setInterval(() => { if(Google.ready){ Calendar.load(); Mail.load(); } }, 5*60*1000);
 
     /* Live games move; re-pull schedules and repaint the focus strip. */

@@ -287,8 +287,77 @@ const Weather = (() => {
                    : `${fetchedAt.toLocaleDateString(undefined,{month:'short',day:'numeric'})} ${time}`;
   }
 
+  /* ---- today's rain ----
+     One sentence a person can act on: whether it rains today at all, how
+     likely at its worst, and roughly when. */
+  function rainToday(){
+    const t = new Date();
+    const rest = hourly.filter(h => h.t.toDateString() === t.toDateString() &&
+                                    h.t.getHours() >= t.getHours());
+    const rows = rest.length ? rest
+               : hourly.filter(h => h.t.toDateString() === t.toDateString());
+    if(!rows.length) return null;
+
+    const peak = Math.max(...rows.map(h => h.pop || 0));
+    const wet  = rows.filter(h => (h.pop || 0) >= 30);
+    if(!wet.length) return {peak, dry:true};
+
+    const from = wet[0].t, to = wet[wet.length-1].t;
+    const label = t => t.toLocaleTimeString(undefined,{hour:'numeric'}).replace(/\s/g,'').toLowerCase();
+    return {
+      peak, dry:false,
+      window: from === to ? label(from) : `${label(from)}–${label(to)}`,
+      when: from
+    };
+  }
+
+  /* Every remaining hour of today, for the weather AD. Falls back to the
+     next twelve hours late at night, when "the rest of today" is nothing. */
+  function restOfToday(){
+    const t = new Date();
+    const rows = hourly.filter(h => h.t.toDateString() === t.toDateString() &&
+                                    h.t.getTime() >= Date.now() - 30*60*1000);
+    return rows.length >= 3 ? rows : nextHours(12);
+  }
+
+  /* ---- the big current-conditions block on the calendar ----
+     The tile under the grid used to be the whole weather story; it is now
+     one glanceable readout at the top of the page, with the detail behind
+     the popup and the AD. */
+  function paintNow(){
+    const host = document.getElementById('wxNow');
+    if(!host) return;
+    if(!current){
+      host.innerHTML = '<p class="empty">Loading weather…</p>';
+      return;
+    }
+    const rain = rainToday();
+    const d0 = daily(1)[0];
+
+    host.innerHTML = `
+      <button class="wx-now-btn" id="wxNowBtn" title="Open the full forecast">
+        <span class="wx-now-glyph">${glyph(current.main)}</span>
+        <span class="wx-now-main">
+          <span class="wx-now-temp">${current.temp}°</span>
+          <span class="wx-now-desc">${esc(current.desc)}</span>
+        </span>
+        <span class="wx-now-side">
+          ${d0 ? `<span class="wx-now-hilo">${d0.hi}° <i>${d0.lo}°</i></span>` : ''}
+          <span class="wx-now-feels">Feels ${current.feels}° · ${current.wind} mph</span>
+          <span class="wx-now-rain${rain && !rain.dry ? ' is-wet' : ''}">${
+            !rain ? '—'
+            : rain.dry ? `Rain unlikely · ${rain.peak}%`
+            : `Rain ${rain.peak}% · ${esc(rain.window)}`}</span>
+        </span>
+      </button>`;
+
+    const b = document.getElementById('wxNowBtn');
+    if(b) b.onclick = openModal;
+  }
+
   function paint(){
     if(!current) return;
+    paintNow();
 
     if(body) body.innerHTML = `
       <div class="wx-tile-grid">
@@ -356,7 +425,13 @@ const Weather = (() => {
     scheduleNext,
     openModal,
     closeModal,
+    paintNow,
     DEFAULT_URL,
+    /* For the kiosk's weather AD. */
+    daily,
+    restOfToday,
+    rainToday,
+    hourLabel: t => t.toLocaleTimeString(undefined,{hour:'numeric'}).replace(/\s/g,'').toLowerCase(),
     get current(){ return current; },
     get updatedAt(){ return fetchedAt; },
     /* Per-day summary for a calendar cell: hi/lo, the midday condition and

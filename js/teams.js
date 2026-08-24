@@ -238,7 +238,11 @@ const Teams = (() => {
     for(const t of teams){
       try{
         const d = await getJSON(espn(`/apis/site/v2/sports/${PATH[t.league]}/teams/${t.id}/schedule`));
-        const evs = (d.events||[]).map(e => normalise(e, t)).filter(Boolean);
+        /* The schedule payload carries no team colours, and the game-day
+           theme is painted in them, so they are looked up once per team
+           and cached — Sports.info is memoised on the URL. */
+        const colour = await teamColour(t);
+        const evs = (d.events||[]).map(e => normalise(e, t, colour)).filter(Boolean);
         const now = Date.now();
         const next = evs.filter(g => new Date(g.kickoff).getTime() > now - 4*36e5)
                         .sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff))[0];
@@ -260,7 +264,24 @@ const Teams = (() => {
     App.recheckTheme();
   }
 
-  function normalise(e, t){
+  /* The followed team's own colour, cached in storage so a reload does not
+     spend a request on something that changes once a decade. */
+  async function teamColour(t){
+    const key = `${t.league}|${t.id}`;
+    const saved = Store.get('teams.colors', {});
+    if(saved[key] !== undefined) return saved[key];
+    try{
+      const info = await Sports.info(t);
+      saved[key] = info.color || '';
+      Store.set('teams.colors', saved);
+      return saved[key];
+    }catch(e){
+      console.error('Team colour lookup failed for', t.name, e.message);
+      return '';
+    }
+  }
+
+  function normalise(e, t, colour){
     const comp = e.competitions?.[0];
     if(!comp) return null;
     const me  = comp.competitors.find(c => String(c.id) === String(t.id));
@@ -275,11 +296,18 @@ const Teams = (() => {
     /* Both sides in full, and the event id: the kiosk's sports AD fetches
        the summary for this game, and a tile row that only knows "us and a
        name" cannot ask for it or draw the other team's logo. */
+    const hex = v => {
+      const x = String(v || '').replace(/^#/,'').trim();
+      return /^[0-9a-f]{6}$/i.test(x) ? `#${x}` : '';
+    };
+
     const side = c => ({
       id: c.team?.id,
       name: c.team?.displayName || c.team?.name || 'TBD',
       abbr: c.team?.abbreviation || '',
       logo: c.team?.logos?.[0]?.href || c.team?.logo || '',
+      color: hex(c.team?.color),
+      altColor: hex(c.team?.alternateColor),
       record: c.records?.find(r => /total|overall/i.test(r.name || r.type || ''))?.summary
            || c.records?.[0]?.summary || '',
       score: c.score?.displayValue ?? c.score ?? '',
@@ -297,7 +325,9 @@ const Teams = (() => {
       state, result,
       score: state !== 'pre'
         ? `${me.score?.displayValue ?? me.score ?? ''}–${opp.score?.displayValue ?? opp.score ?? ''}` : '',
-      me: side(me),
+      /* The schedule gives no colours, so the followed team's own is
+         patched in from the teams endpoint — the game-day theme reads it. */
+      me: {...side(me), color: side(me).color || colour || ''},
       opp: side(opp),
       id: String(t.id)
     };

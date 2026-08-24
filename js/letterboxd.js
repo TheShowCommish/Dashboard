@@ -163,12 +163,30 @@ const Letterboxd = (() => {
                     (text('title') || '').replace(/\s*-\s*\d{4}.*$/,'');
       const year  = text('letterboxd:filmYear');
       const rated = text('letterboxd:memberRating');
+      const link  = text('link');
+
+      /* The description is the review, wrapped in HTML and led by the
+         poster image Letterboxd embeds. Take both: the tall column on the
+         Movies tab wants the art and the words, not a link to them. */
+      const html = text('description');
+      const poster = (html.match(/<img[^>]+src="([^"]+)"/) || [])[1] || '';
+      const review = html
+        .replace(/<p><img[\s\S]*?<\/p>/i, '')          // drop the poster paragraph
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&#(\d+);/g, (m,n) => String.fromCharCode(+n))
+        .replace(/\s+/g, ' ')
+        .trim();
+
       return {
         title: title.trim(),
         year: year ? +year : null,
         rated: rated ? +rated : null,
         watchedAt: text('letterboxd:watchedDate') || text('pubDate'),
-        link: text('link')
+        /* "letterboxd.com/user/film/the-thing/" → "the-thing" */
+        slug: (link.match(/\/film\/([^/]+)\//) || [])[1] || '',
+        poster,
+        review,
+        link
       };
     }).filter(f => f.title);
   }

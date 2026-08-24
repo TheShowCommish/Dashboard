@@ -842,8 +842,8 @@ body{
 
 .cal-lower{
   flex:0 0 auto;
-  display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);
-  gap:var(--gap);margin-top:var(--gap);
+  display:block;                     /* the weather tile that shared this row is gone */
+  margin-top:var(--gap);
   max-height:38vh;
 }
 .cal-lower > *{min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;}
@@ -1241,12 +1241,7 @@ body.kiosk-on #adOverlay.is-on ~ *{}
 .wx-foot{flex:0 0 auto;}
 
 /* ---- sports AD ---- */
-#adOverlay.is-tinted{
-  background:
-    radial-gradient(58% 78% at 6% 46%, color-mix(in srgb,var(--ad-a) 40%,transparent), transparent 72%),
-    radial-gradient(58% 78% at 94% 46%, color-mix(in srgb,var(--ad-h) 40%,transparent), transparent 72%),
-    var(--ink);
-}
+/* (the tint is defined with the split gradient further down) */
 .ad-matchup{
   display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:40px;
 }
@@ -1463,4 +1458,215 @@ body.kiosk-on #adOverlay.is-on ~ *{}
 
 @media (max-width:1100px){
   .focus-split{grid-template-columns:1fr;}
+}
+
+/* ============================================================
+   J-batch: weather headline + weather AD, split-tinted sports AD,
+   live score strip, screen effects, diary column.
+   ============================================================ */
+
+/* ---- the weather headline on the calendar ---- */
+.wx-now-card{margin-left:auto;}
+.wx-now-btn{
+  display:flex;align-items:center;gap:14px;
+  background:color-mix(in srgb,var(--panel) 82%,transparent);
+  border:1px solid var(--edge);border-radius:var(--r);
+  padding:8px 14px;color:var(--text);font:inherit;cursor:pointer;text-align:left;
+  transition:border-color .16s var(--ease);
+}
+.wx-now-btn:hover{border-color:var(--accent);}
+.wx-now-glyph{font-size:38px;line-height:1;}
+.wx-now-main{display:flex;flex-direction:column;}
+.wx-now-temp{font-family:var(--mono);font-size:40px;font-weight:700;line-height:1;}
+.wx-now-desc{font-size:12px;color:var(--muted);text-transform:capitalize;}
+.wx-now-side{display:flex;flex-direction:column;gap:2px;padding-left:12px;border-left:1px solid var(--edge);}
+.wx-now-hilo{font-family:var(--mono);font-size:14px;}
+.wx-now-hilo i{color:var(--muted);font-style:normal;}
+.wx-now-feels,.wx-now-rain{font-size:11px;color:var(--muted);font-family:var(--mono);}
+.wx-now-rain.is-wet{color:var(--accent);font-weight:700;}
+
+/* The calendar head now carries three things, so it wraps as a row. */
+#view-calendar .view-head{display:flex;align-items:center;gap:var(--gap);flex-wrap:wrap;}
+
+/* ---- live score strip in the header ---- */
+#gameStrip{
+  display:flex;align-items:center;gap:10px;
+  padding:4px 12px;border:1px solid var(--edge);border-radius:99px;
+  background:color-mix(in srgb,var(--panel-2) 80%,transparent);
+  cursor:pointer;margin:0 8px;
+}
+#gameStrip[hidden]{display:none;}
+#gameStrip:hover{border-color:var(--accent);}
+#gameStrip.is-live{border-color:var(--bad);}
+#gameStrip .gs-side{display:flex;align-items:center;gap:5px;}
+#gameStrip .gs-side img{width:22px;height:22px;object-fit:contain;}
+#gameStrip .gs-side b{font-family:var(--display);font-size:13px;font-weight:600;}
+#gameStrip .gs-num{font-family:var(--mono);font-size:17px;font-weight:700;letter-spacing:.02em;}
+#gameStrip .gs-num i{font-style:normal;color:var(--muted);margin:0 3px;}
+#gameStrip .gs-at{font-family:var(--mono);font-size:12px;color:var(--muted);}
+#gameStrip .gs-when{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
+#gameStrip .gs-dot{
+  font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.12em;
+  background:var(--bad);color:#fff;padding:2px 6px;border-radius:99px;
+  animation:railPulse 1.8s ease-in-out infinite;
+}
+
+/* ---- screen effects that are not the canvas ---- */
+/* Wind leans the panels rather than the page: a whole-document transform
+   would blur text and break the fixed header. */
+@keyframes leanWind{
+  0%,100%{transform:rotate(-.22deg) translateX(-1px);}
+  35%{transform:rotate(.16deg) translateX(2px);}
+  70%{transform:rotate(-.1deg) translateX(0);}
+}
+body.fx-wind .gc,
+body.fx-wind .pf-card,
+body.fx-wind .note,
+body.fx-wind .mv-card,
+body.fx-wind .ff-board,
+body.fx-wind .wx-now-card{
+  animation:leanWind 3.6s ease-in-out infinite;
+  transform-origin:50% 100%;
+}
+body.fx-wind .pf-card:nth-child(2n){animation-delay:-1.2s;}
+body.fx-wind .mv-card:nth-child(3n){animation-delay:-2.1s;}
+
+/* Rain wets the panels: a cooler edge and a faint sheen down the glass. */
+body.fx-rain .gc,
+body.fx-rain .pf-card,
+body.fx-rain .wx-now-card{
+  border-color:color-mix(in srgb,#8fc0ea 30%,var(--edge));
+}
+/* Snow settles ON the panels from the canvas, so the panels themselves
+   only need to read colder. */
+body.fx-snow .gc,
+body.fx-snow .pf-card,
+body.fx-snow .wx-now-card{
+  border-color:color-mix(in srgb,#dbe9f7 34%,var(--edge));
+}
+
+.fx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;}
+.fx-row{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);margin-bottom:6px;}
+.fx-row input{margin:0;}
+
+/* ---- AD: never scroll ---- */
+.ad-fit{
+  display:flex;flex-direction:column;gap:24px;
+  min-height:0;transform-origin:top left;
+}
+
+/* ---- sports AD: the line decides how much colour each side gets ---- */
+#adOverlay.is-tinted{
+  --ad-split:50%;
+  background:
+    linear-gradient(97deg,
+      color-mix(in srgb, var(--ad-a) 68%, var(--ink)) 0%,
+      color-mix(in srgb, var(--ad-a) 52%, var(--ink)) calc(var(--ad-split) - 14%),
+      color-mix(in srgb, var(--ad-h) 52%, var(--ink)) calc(var(--ad-split) + 14%),
+      color-mix(in srgb, var(--ad-h) 68%, var(--ink)) 100%),
+    var(--ink);
+}
+/* The seam itself, so the split is a thing you can see and not just feel. */
+#adOverlay.is-tinted::after{
+  content:'';position:absolute;top:0;bottom:0;left:var(--ad-split);width:2px;
+  background:linear-gradient(180deg,transparent,rgba(255,255,255,.35),transparent);
+  pointer-events:none;
+}
+
+/* ---- sports AD: team stats ---- */
+.ad-tstats{margin-top:4px;}
+.ad-tstat-grid{
+  display:grid;grid-template-columns:1fr auto 1fr;gap:6px 22px;align-items:baseline;
+}
+.ad-ts-a,.ad-ts-h{font-family:var(--mono);font-size:26px;font-weight:700;}
+.ad-ts-a{text-align:right;}
+.ad-ts-h{text-align:left;}
+.ad-ts-l{
+  font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);text-align:center;white-space:nowrap;
+}
+
+/* ---- fantasy AD: the whole lineup ---- */
+.ad-ff-head{display:flex;align-items:center;gap:14px;margin-bottom:10px;}
+.ad-ff-logo{width:64px;height:64px;object-fit:contain;border-radius:10px;background:rgba(0,0,0,.2);}
+.ad-ff-line{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px;}
+.ad-ff-line li{
+  display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:baseline;
+  border-bottom:1px solid color-mix(in srgb,var(--muted) 20%,transparent);padding-bottom:3px;
+}
+.ad-ff-pos{
+  font-family:var(--mono);font-size:13px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;
+}
+.ad-ff-name{font-size:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ad-ff-pts{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent);}
+
+/* ---- weather AD ---- */
+.ad-wx-now{display:flex;align-items:center;gap:28px;}
+.ad-wx-glyph{font-size:110px;line-height:1;}
+.ad-wx-id{flex:1;min-width:0;}
+.ad-wx-id .ad-h1{margin-bottom:2px;}
+.ad-wx-place{font-family:var(--mono);font-size:18px;color:var(--muted);text-align:right;}
+.ad-wx-rain{font-size:26px;margin:6px 0 0;color:var(--muted);}
+.ad-wx-rain.is-wet{color:var(--accent);font-weight:600;}
+
+.ad-wx-hours{display:flex;gap:6px;}
+.ad-wx-hour{
+  flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:10px 4px;border-radius:12px;
+  background:color-mix(in srgb,var(--panel-2) 45%,transparent);
+}
+.ad-wx-h-t{font-family:var(--mono);font-size:14px;color:var(--muted);}
+.ad-wx-h-g{font-size:26px;line-height:1;}
+.ad-wx-h-bar{display:flex;align-items:flex-end;height:70px;}
+.ad-wx-h-bar i{display:block;width:8px;border-radius:99px;background:var(--accent);opacity:.75;}
+.ad-wx-h-n{font-family:var(--mono);font-size:22px;font-weight:700;}
+.ad-wx-h-p{font-family:var(--mono);font-size:14px;color:var(--muted);}
+.ad-wx-h-p.is-wet{color:var(--accent);}
+
+.ad-wx-days{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+.ad-wx-day{
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:14px 6px;border-radius:14px;
+  border:1px solid color-mix(in srgb,var(--muted) 26%,transparent);
+}
+.ad-wx-day b{font-family:var(--mono);font-size:16px;letter-spacing:.1em;color:var(--muted);}
+.ad-wx-d-g{font-size:38px;line-height:1;}
+.ad-wx-d-t{font-family:var(--mono);font-size:24px;font-weight:700;}
+.ad-wx-d-t i{font-style:normal;color:var(--muted);font-weight:400;margin-left:6px;}
+.ad-wx-d-p{font-family:var(--mono);font-size:15px;color:var(--muted);}
+.ad-wx-d-p.is-wet{color:var(--accent);}
+
+/* ---- movies tab: diary column beside the shelves ---- */
+/* Diary in a narrow column that scrolls on its own; the shelves take the
+   rest and scroll on theirs, so neither can push the page taller. */
+#moviesBody{
+  display:grid;grid-template-columns:minmax(205px,.8fr) minmax(0,3fr);
+  gap:var(--gap);align-items:stretch;overflow:hidden;
+}
+.mv-diary{min-width:0;display:flex;flex-direction:column;min-height:0;}
+.mv-diary .pf-h3{margin-top:0;flex:0 0 auto;}
+.mv-diary-list{
+  flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;
+  overflow-y:auto;scrollbar-width:thin;padding-right:4px;
+}
+.mv-shelves{min-width:0;min-height:0;overflow-y:auto;scrollbar-width:thin;}
+.mv-seen-row{
+  display:grid;grid-template-columns:52px 1fr;gap:10px;align-items:start;
+  padding:8px;border:1px solid var(--edge);border-radius:10px;
+  background:color-mix(in srgb,var(--panel) 70%,transparent);
+  text-decoration:none;color:var(--text);
+  transition:border-color .15s var(--ease);
+}
+.mv-seen-row:hover{border-color:var(--accent);}
+.mv-seen-art{width:52px;aspect-ratio:2/3;object-fit:cover;border-radius:6px;background:var(--panel-2);}
+span.mv-seen-art{display:grid;place-items:center;font-size:20px;}
+.mv-seen-body{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.mv-seen-title{font-size:12.5px;font-weight:600;line-height:1.25;}
+.mv-seen-title i{font-style:normal;color:var(--muted);font-family:var(--mono);font-size:10px;}
+.mv-seen-meta{display:flex;align-items:center;gap:8px;}
+.mv-seen-when{font-family:var(--mono);font-size:10px;color:var(--muted);}
+.mv-seen-review{font-size:11px;color:var(--muted);line-height:1.4;}
+
+@media (max-width:1100px){
+  #moviesBody{grid-template-columns:1fr;}
 }

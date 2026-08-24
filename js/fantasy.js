@@ -257,31 +257,41 @@ const Fantasy = (() => {
     const week = cur + (opts.weekOffset || 0);
     const names = Object.fromEntries((lg.teams || []).map(t =>
       [t.id, t.name || `${t.location || ''} ${t.nickname || ''}`.trim() || `Team ${t.id}`]));
+    /* ESPN carries a team logo per franchise; the AD uses it, the compact
+       board in the calendar does not. */
+    const logos = Object.fromEntries((lg.teams || []).map(t => [t.id, t.logo || '']));
 
     const bouts = (lg.schedule || []).filter(m => m.matchupPeriodId === week);
     const mine = bouts.find(m => m.home?.teamId === myTeam || m.away?.teamId === myTeam)
               || bouts[0];
     if(!mine) return null;
 
-    /* Only starters count toward the score; the bench sits on slot 20/21. */
+    /* Only starters count toward the score; the bench sits on slot 20/21.
+       The whole starting lineup comes back — the calendar board takes the
+       top three, the AD shows all of them. */
     const BENCH = new Set([20, 21]);
     const scorers = entry => (entry?.rosterForCurrentScoringPeriod?.entries || [])
       .filter(e => !BENCH.has(e.lineupSlotId))
       .map(e => ({
         name: e.playerPoolEntry?.player?.fullName || '—',
         pos: POS[e.playerPoolEntry?.player?.defaultPositionId] || '?',
+        slot: e.lineupSlotId,
         points: e.playerPoolEntry?.player?.stats?.find(x => x.scoringPeriodId === week
                   && x.statSourceId === 0)?.appliedTotal ?? 0
       }))
-      .sort((a,b) => b.points - a.points)
-      .slice(0,3);
+      .sort((a,b) => b.points - a.points);
 
-    const side = (e, which) => ({
-      name: names[e?.teamId] || which,
-      score: e?.totalPoints ?? 0,
-      mine: e?.teamId === myTeam,
-      top: scorers(e)
-    });
+    const side = (e, which) => {
+      const all = scorers(e);
+      return {
+        name: names[e?.teamId] || which,
+        logo: logos[e?.teamId] || '',
+        score: e?.totalPoints ?? 0,
+        mine: e?.teamId === myTeam,
+        starters: all,
+        top: all.slice(0,3)
+      };
+    };
 
     return {week, home: side(mine.home,'Home'), away: side(mine.away,'Away')};
   }
