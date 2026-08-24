@@ -475,9 +475,18 @@ const Sky = (() => {
   /* ---- which effects are running ----
      Forced from Settings for testing, otherwise read off the same weather
      the theme was picked from. */
+  const ALL_FX = ['snow','rain','sun','wind','lightning'];
+
   function effectsFor(ctx){
     const on = new Set();
     if(!Store.get('fx.on', true)) return on;
+
+    /* Ticking a box in Settings is TESTING that effect, so the forced set
+       replaces the forecast rather than joining it. Adding to it meant
+       switching on rain in the middle of a clear afternoon left the sun
+       blazing through the storm. */
+    const forced = ALL_FX.filter(k => Store.get(`fx.${k}`, false));
+    if(forced.length) return new Set(forced);
 
     const w = ctx && ctx.weather;
     if(w){
@@ -487,10 +496,6 @@ const Sky = (() => {
       if(w.main === 'Clear' && w.isDay) on.add('sun');
       if((w.wind || 0) >= 18) on.add('wind');
     }
-
-    for(const k of ['snow','rain','sun','wind','lightning'])
-      if(Store.get(`fx.${k}`, false)) on.add(k);
-
     return on;
   }
 

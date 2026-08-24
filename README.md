@@ -389,7 +389,10 @@ The theme has always changed colour with the weather. It now changes the screen 
 - **Thunderstorms** flash, with a bolt, every few seconds.
 
 Each one follows the actual forecast. **Settings → Weather effects** has a master switch and a
-force-on box per effect, so any of them can be seen without waiting for that weather. Everything
+force-on box per effect, so any of them can be seen without waiting for that weather. Ticking a box is
+testing that effect, so the forced set **replaces** the forecast rather than joining it — otherwise
+switching on a storm in the middle of a clear afternoon left the sun blazing through it. Untick them
+all to go back to the real weather. Everything
 respects `prefers-reduced-motion`: one static pass, no loop.
 
 There are **two canvases**: the ambient one behind the deck, and a second one in front of it (under the
