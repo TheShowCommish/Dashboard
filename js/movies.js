@@ -254,28 +254,37 @@ const Movies = (() => {
     }
   }
 
-  /* If this film is in the diary — yours or the network's — what was
-     said about it belongs above the studio's synopsis. */
+  /* Every diary entry for this film — yours and the network's — above
+     the studio's synopsis. A film four people have seen is four rows;
+     that IS the interesting part of a watchlist. */
   function saidHtml(f){
     if(!window.Letterboxd) return '';
-    const said = Letterboxd.reviewFor(f.title, (f.date || '').slice(0,4), f.slug);
-    if(!said) return '';
+    const said = Letterboxd.reviewsFor(f.title, (f.date || '').slice(0,4), f.slug);
+    if(!said.length) return '';
+
     /* Letterboxd rates in halves and so does this: rounding 4.5 up to
        five stars misreports what someone actually gave a film. */
-    const stars = said.rated != null ? (() => {
-      const full = Math.floor(said.rated);
-      const half = said.rated - full >= .5;
+    const stars = n => {
+      if(n == null) return '';
+      const full = Math.floor(n), half = n - full >= .5;
       return '★'.repeat(full) + (half ? '½' : '') +
              '☆'.repeat(Math.max(0, 5 - full - (half ? 1 : 0)));
-    })() : '';
-    const when = said.watchedAt && !Number.isNaN(+new Date(said.watchedAt))
-      ? new Date(said.watchedAt).toLocaleDateString(undefined,{month:'short', day:'numeric'})
+    };
+    const when = f2 => f2.watchedAt && !Number.isNaN(+new Date(f2.watchedAt))
+      ? new Date(f2.watchedAt).toLocaleDateString(undefined,{month:'short', day:'numeric'})
       : '';
-    return `<blockquote class="mv-said">
-      <span class="mv-said-head">${esc(said.who || 'you')}${
-        stars ? ` <em>${stars}</em>` : ''}${when ? ` <i>${esc(when)}</i>` : ''}</span>
-      ${said.review ? `<span class="mv-said-text">${esc(said.review)}</span>` : ''}
-    </blockquote>`;
+
+    return `<div class="mv-saids">
+      <span class="mv-saids-head">Letterboxd${
+        said.length > 1 ? ` <i>${said.length}</i>` : ''}</span>
+      ${said.map(r => `
+        <blockquote class="mv-said${r.mine ? ' is-mine' : ''}">
+          <span class="mv-said-head">${esc(r.who || 'you')}${
+            r.rated != null ? ` <em>${stars(r.rated)}</em>` : ''}${
+            when(r) ? ` <i>${esc(when(r))}</i>` : ''}</span>
+          ${r.review ? `<span class="mv-said-text">${esc(r.review)}</span>` : ''}
+        </blockquote>`).join('')}
+    </div>`;
   }
 
   function open(id){

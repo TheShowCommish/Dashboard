@@ -15,6 +15,11 @@
  *      wrangler secret put ESPN_SWID    (paste the cookie value, braces included)
  *      wrangler secret put ALLOW_ORIGIN (e.g. https://yourname.github.io)
  *   5. Put the worker URL in the dashboard's Settings → Fantasy → Proxy URL.
+ *
+ * It also forwards two things that have nothing to do with ESPN cookies and
+ * everything to do with CORS: Letterboxd pages, and Fantasy Football
+ * Calculator's mock-draft ADP feed. Each gets its own branch so the ESPN
+ * cookies are never attached to a third-party request.
  */
 
 export default {
@@ -65,6 +70,44 @@ export default {
           ...cors,
           'Content-Type': 'text/plain; charset=utf-8',
           // Letterboxd is not a live feed; an hour of cache spares them the load.
+          'Cache-Control': 'public, max-age=3600'
+        }
+      });
+    }
+
+    // ---- Fantasy Football Calculator: mock-draft ADP ----
+    // FFC publishes the consensus of every mock draft run on their site in
+    // the last week, filtered to an exact format — for a 12-team PPR league
+    // that is thousands of real drafts, with the high pick, the low pick and
+    // the standard deviation for each player, not just a mean.
+    //
+    // It has to come through here because FFC sends no CORS header at all,
+    // so the browser cannot read the response no matter which origin asks.
+    //
+    // Its own branch, before the ESPN block, so the ESPN cookies below never
+    // travel to a third party.
+    if (url.pathname === '/ffc/adp') {
+      const teams  = url.searchParams.get('teams')  || '12';
+      const year   = url.searchParams.get('year')   || String(new Date().getFullYear());
+      const format = url.searchParams.get('format') || 'ppr';
+
+      // Whitelist rather than forward: these are the only shapes FFC serves,
+      // and it keeps a crafted query from turning this into an open proxy.
+      const FORMATS = ['ppr', 'half-ppr', 'standard', '2qb', 'dynasty', 'rookie'];
+      if (!FORMATS.includes(format) || !/^(8|10|12|14)$/.test(teams) || !/^20dd$/.test(year))
+        return new Response('Unsupported ADP format.', { status: 400, headers: cors });
+
+      const ffc = await fetch(
+        `https://fantasyfootballcalculator.com/api/v1/adp/${format}?teams=${teams}&year=${year}`,
+        { headers: { 'Accept': 'application/json', 'User-Agent': 'control-deck (personal dashboard)' } });
+
+      return new Response(await ffc.text(), {
+        status: ffc.status,
+        headers: {
+          ...cors,
+          'Content-Type': 'application/json',
+          // ADP is a rolling seven-day window; it does not move minute to
+          // minute, and an hour of cache spares them a hit per page load.
           'Cache-Control': 'public, max-age=3600'
         }
       });

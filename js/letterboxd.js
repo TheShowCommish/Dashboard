@@ -409,17 +409,25 @@ const Letterboxd = (() => {
      title otherwise, because a TMDB record and a Letterboxd entry only
      ever agree on the words. Yours wins over the network's, and an entry
      with actual words wins over a bare star rating. */
-  function reviewFor(title, year, slug){
+  function reviewsFor(title, year, slug){
     const want = new Set([slug, slugify(title)].filter(Boolean));
     if(year) want.add(`${slugify(title)}-${year}`);
 
     const rows = [...diary, ...network].filter(f =>
       (f.slug && want.has(f.slug)) || slugify(f.title) === slugify(title));
-    if(!rows.length) return null;
 
-    const withText = rows.filter(f => f.review);
-    return withText.find(f => f.mine) || withText[0]
-        || rows.find(f => f.mine) || rows[0];
+    /* Yours first, then whoever wrote something, then by when they saw
+       it. The same person logging a rewatch shows up twice on purpose —
+       that is two viewings, not a duplicate. */
+    return rows.sort((a,b) =>
+      (b.mine ? 1 : 0) - (a.mine ? 1 : 0) ||
+      (b.review ? 1 : 0) - (a.review ? 1 : 0) ||
+      new Date(b.watchedAt) - new Date(a.watchedAt));
+  }
+
+  /* The one worth a single slot — the movie AD has room for one. */
+  function reviewFor(title, year, slug){
+    return reviewsFor(title, year, slug)[0] || null;
   }
 
   /* ---- one film's Letterboxd average ----
@@ -517,7 +525,8 @@ const Letterboxd = (() => {
   }
 
   return {
-    load, ingestCsv, decorated, rating, ratingFor, filmSlug, loadNetwork, reviewFor,
+    load, ingestCsv, decorated, rating, ratingFor, filmSlug, loadNetwork,
+    reviewFor, reviewsFor,
     get diary(){ return diary; },
     get network(){ return network; },
     /* Mine and theirs in one list, newest first — what the Movies tab

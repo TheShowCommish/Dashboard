@@ -180,9 +180,34 @@ const GameBalls = (() => {
       </svg>`
   };
 
-  const isToday = d => d && new Date(d).toDateString() === new Date().toDateString();
+  const sameDay = (a,b) => a && b && new Date(a).toDateString() === new Date(b).toDateString();
 
-  /* One entry per followed team with a game today — not per game, so a
+  /* The theme engine already knows how to turn a team's two colours into
+     one that reads on a dark panel; borrow it rather than repeat it. */
+  const readable = (primary, alt) => {
+    if(typeof pickReadable === 'function'){
+      const c = pickReadable(primary, alt);
+      if(c) return c;
+    }
+    return primary || alt || '';
+  };
+
+  /* Whichever day the calendar is looking at, which starts as today and
+     follows the user from there. */
+  const day = () => (window.CalendarView && CalendarView.focusDay) || new Date();
+
+  /* The calendar holds every followed team's whole schedule; Teams.games
+     holds only each team's next one, so it cannot answer "who plays on
+     the 13th". Fall back to it when the schedules have not landed. */
+  function gamesOnDay(d){
+    if(window.CalendarView && CalendarView.gamesOn){
+      const list = CalendarView.gamesOn(d);
+      if(list.length) return list;
+    }
+    return ((window.Teams ? Teams.games : []) || []).filter(g => sameDay(g.kickoff, d));
+  }
+
+  /* One entry per followed team playing that day — not per game, so a
      doubleheader is still one ball. */
   function playing(){
     const forced = Store.get('theme.gamedayTest','');
@@ -196,15 +221,26 @@ const GameBalls = (() => {
       return [{league, name: t.name, abbr: t.abbr, colour: col}];
     }
 
+    const colours = Store.get('teams.colors', {});
     const seen = new Set();
     const out = [];
-    for(const g of ((window.Teams ? Teams.games : []) || [])){
-      if(!isToday(g.kickoff)) continue;
-      const key = `${g.league}|${g.id}`;
+    for(const g of gamesOnDay(day())){
+      /* Teams rows call it id, Sports.schedule rows call it teamId. */
+      const key = `${g.league}|${g.id || g.teamId}`;
       if(seen.has(key)) continue;
       seen.add(key);
-      out.push({league: g.league, name: g.name || g.abbr, abbr: g.abbr,
-                colour: g.me?.color || g.me?.altColor || ''});
+      const cached = colours[key];
+      const c = typeof cached === 'string' ? {c:cached, a:''} : (cached || {c:'', a:''});
+      out.push({
+        league: g.league,
+        name: g.teamName || g.name || g.abbr,
+        abbr: g.abbr,
+        /* The calendar's schedule rows carry no colour, so the cache the
+           game-day theme fills is what paints these — through the same
+           readability pass, or the Raiders get a black ball on a black
+           deck. */
+        colour: readable(g.me?.color || c.c, g.me?.altColor || c.a)
+      });
     }
     return out;
   }
@@ -221,7 +257,7 @@ const GameBalls = (() => {
       /* The team's own colour, falling back to the deck's accent so a ball
          is never invisible. */
       const c = t.colour || 'var(--accent)';
-      return `<span class="gb" title="${esc(t.name || '')} play today">${BALL[shape](c)}</span>`;
+      return `<span class="gb" title="${esc(t.name || '')}">${BALL[shape](c)}</span>`;
     }).join('');
   }
 

@@ -69,6 +69,9 @@ const CalendarView = (() => {
     gameIdx = 0;
     render();
     renderFocus();
+    /* The balls at the top of the screen belong to the day being looked
+       at, not to today. */
+    if(window.GameBalls) GameBalls.render();
   }
 
   /* ---- game schedules ---- */
@@ -82,6 +85,9 @@ const CalendarView = (() => {
     allGames = out;
     render();
     renderFocus();
+    /* The schedules land after boot, so the balls are drawn again once
+       there is something to draw. */
+    if(window.GameBalls) GameBalls.render();
   }
 
   const gamesOn = d => allGames.filter(g => key(new Date(g.kickoff)) === key(d))
@@ -399,6 +405,9 @@ const CalendarView = (() => {
   const close = () => { modal.hidden = true; };
 
   return { render, renderFocus, shift, today, select, loadGames, close,
+           /* Every followed team's game on a given day — the full
+              schedules, which Teams.games (next game only) cannot answer. */
+           gamesOn: d => gamesOn(d),
            get focusDay(){ return focus; } };
 })();
 

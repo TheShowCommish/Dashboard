@@ -360,9 +360,11 @@ Konchalovsky film at 3.2 and Nolan's is `/film/the-odyssey-2026/` at 4.4. The ye
 tried first and a page whose year disagrees is refused outright — a missing rating is better than
 another film's.
 
-**If anyone has written about the film**, that goes above the studio's synopsis, in the movie AD and in
-the popup: who said it, what they gave it, and their words. Yours wins over the network's, and an entry
-with actual writing wins over a bare star rating.
+**If anyone has written about the film**, that goes above the studio's synopsis. The popup shows **every**
+diary entry for it — yours and each person's from your network, with their stars and their words; a film
+four people have seen is four rows, which is the interesting part of a watchlist. The AD has room for
+one, so it takes yours, or failing that whoever actually wrote something. Stars are drawn in halves,
+because rounding 4.5 up to five misreports what someone gave a film.
 
 ## Light and dark, with the sun
 
@@ -405,9 +407,11 @@ team stays navy — the Sixers and the Giants both have navy primaries that a fl
 to push onto their red alternates. Only an actually black primary falls through, which is the Raiders,
 and they go silver.
 
-A small **ball sits at the top of the screen for each team playing that day**, in that team's colour and
-in the shape of its sport — four teams out on the same day reads as two footballs, a basketball and a
-baseball.
+A small **ball sits at the top of the screen for each team playing on the day the calendar is showing**,
+in that team's colour and in the shape of its sport — four teams out on the same day reads as two
+footballs, a basketball and a baseball. It starts on today and follows you as you click through the
+grid, so a week ahead shows who is out that day. A colour too dark to read gets the same treatment the
+theme gives it, or the Raiders would be a black ball on a black deck.
 
 **When two teams play at once**, a game already in progress beats one that has not started, and among
 those that have not, the one kicking off soonest wins. A genuine tie — two kickoffs at the same minute —

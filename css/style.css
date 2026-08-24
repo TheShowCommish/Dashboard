@@ -2056,3 +2056,15 @@ body.fx-sun .pf-card{
 .mv-said-head em{font-style:normal;color:var(--text);letter-spacing:0;margin-left:5px;}
 .mv-said-head i{font-style:normal;color:var(--muted);margin-left:5px;}
 .mv-said-text{font-size:12.5px;line-height:1.45;font-style:italic;color:var(--text);}
+
+/* ---- every review for a film, in its popup ---- */
+.mv-saids{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;}
+.mv-saids-head{
+  font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);
+}
+.mv-saids-head i{font-style:normal;color:var(--accent);margin-left:4px;}
+.mv-saids .mv-said{margin:0;border-left-color:color-mix(in srgb,var(--good) 55%,transparent);}
+.mv-saids .mv-said.is-mine{border-left-color:var(--accent);}
+.mv-saids .mv-said .mv-said-head{color:var(--good);}
+.mv-saids .mv-said.is-mine .mv-said-head{color:var(--accent);}
