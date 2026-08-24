@@ -107,6 +107,7 @@ const App = (() => {
     });
 
     on('btnWxRefresh','click', () => Weather.refresh().then(recheckTheme));
+    on('btnPfRefresh','click', () => Stocks.refresh());
     on('mvClose','click',      () => Movies.close());
     on('btnAddNote','click',     () => StickyNotes.add());
     on('btnSettings','click',    openDrawer);
@@ -140,7 +141,10 @@ const App = (() => {
 
     step('first refresh', refreshAll);
     step('weather schedule', () => Weather.scheduleNext());   // 6am, noon, 3pm, 6pm, 10pm
-    setInterval(() => { Stocks.load(); }, 5*60*1000);                       // quotes: 5 min
+    /* Quotes are a daily job, not a ticker. load() no-ops if it already
+       priced today, so this hourly poke just catches the date rolling
+       over on a dashboard left running. */
+    setInterval(() => { Stocks.load(); }, 60*60*1000);
     setInterval(() => { Teams.load(); }, 15*60*1000);                       // scores: 15 min
     setInterval(() => { if(Google.ready){ Calendar.load(); Mail.load(); } }, 5*60*1000);
   }

@@ -89,7 +89,13 @@ Both scopes are read-only. The dashboard cannot send mail or change your calenda
 
 ## Step 5 — Portfolio
 
-Make a CSV with a header row. Column order doesn't matter; the names do.
+The CSV is an **occasional import, not a live feed.** It is read once to learn *what* you hold — symbol, share count, cost basis — and Finnhub prices those holdings daily from then on. Re-import only when your positions actually change; every few months is fine.
+
+Two formats are accepted.
+
+**A Schwab positions export** (the easy path). In Schwab: **Accounts → Positions → Export**. Multiple account sections, `$`/`%` formatting and the `Positions Total` row are all handled. A holding you own in two accounts is merged into one line, tagged `×2 accts`, and costs one quote lookup rather than two. Cash balances are read per account and added to the total.
+
+**A plain sheet**, if you'd rather keep the list by hand:
 
 ```csv
 symbol,shares,cost
@@ -97,9 +103,17 @@ AAPL,25,142.30
 VTI,40,215.10
 ```
 
-`symbol` and `shares` are required. `cost` is the per-share basis and is optional — include it and you get total gain/loss as well as the daily move.
+`symbol` and `shares` are required; `cost` is the optional per-share basis. `sample-holdings.csv` is included as a template.
 
-Click **Upload CSV** on the Portfolio tile. It's stored in your browser, so you only do this once. `sample-holdings.csv` is included as a template.
+> Note the difference: a Schwab export's `Cost Basis` column is the **total dollars** in a position, while `cost` in the plain format is **per share**. Both are normalised to a total internally.
+
+Click **Import** on the Portfolio tile. Holdings live in your browser only.
+
+### Daily pricing
+
+Quotes refresh **once a day** from Finnhub, on first load of the day, and cache until the date rolls over — so reopening the dashboard repeatedly costs nothing. **Refresh** forces an update.
+
+A symbol Finnhub won't quote falls back to its import-time price, is marked `stale`, and still counts toward total value — but is left out of the day's change so that figure stays honest. Ticker punctuation is translated for you (`BRK/B` → `BRK.B`). Funds and ETFs are excluded from the earnings tile, since they don't report.
 
 This reads public market prices only. It never touches Schwab, Vanguard, or your bank — no login, no credentials, nothing to leak.
 

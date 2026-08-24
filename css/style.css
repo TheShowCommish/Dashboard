@@ -335,3 +335,9 @@ fieldset label input,fieldset label select{margin-top:4px;}
   .mv-detail{flex-direction:column;}
   .mv-detail-art{width:120px;}
 }
+
+/* ---- portfolio footer ---- */
+.pf-foot{
+  margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--edge);
+  font-size:11px;color:var(--muted);font-family:var(--mono);
+}

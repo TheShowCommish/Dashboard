@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -57,9 +57,11 @@
 
   <section class="tile tile-port" id="tilePortfolio">
     <div class="tile-head"><h2>Portfolio</h2>
-      <label class="ghost-btn sm file-btn">Upload CSV<input id="csvInput" type="file" accept=".csv,.txt" hidden></label>
+      <span class="chip" id="pfUpdated" title="Quotes last refreshed">—</span>
+      <button id="btnPfRefresh" class="ghost-btn sm" aria-label="Refresh quotes now">Refresh</button>
+      <label class="ghost-btn sm file-btn">Import<input id="csvInput" type="file" accept=".csv,.txt" hidden></label>
     </div>
-    <div class="tile-body" id="portBody"><p class="empty">Upload a CSV with columns: symbol, shares, cost.</p></div>
+    <div class="tile-body" id="portBody"><p class="empty">Import your positions CSV once — quotes refresh daily from then on.</p></div>
   </section>
 
   <section class="tile tile-earn" id="tileEarnings">
@@ -185,16 +187,16 @@
   </div>
 </div>
 
-<script src="js/store.js?v=3"></script>
-<script src="js/themes.js?v=3"></script>
-<script src="js/sky.js?v=3"></script>
-<script src="js/weather.js?v=3"></script>
-<script src="js/google.js?v=3"></script>
-<script src="js/stocks.js?v=3"></script>
-<script src="js/fantasy.js?v=3"></script>
-<script src="js/teams.js?v=3"></script>
-<script src="js/movies.js?v=3"></script>
-<script src="js/notes.js?v=3"></script>
-<script src="js/app.js?v=3"></script>
+<script src="js/store.js?v=4"></script>
+<script src="js/themes.js?v=4"></script>
+<script src="js/sky.js?v=4"></script>
+<script src="js/weather.js?v=4"></script>
+<script src="js/google.js?v=4"></script>
+<script src="js/stocks.js?v=4"></script>
+<script src="js/fantasy.js?v=4"></script>
+<script src="js/teams.js?v=4"></script>
+<script src="js/movies.js?v=4"></script>
+<script src="js/notes.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
 </body>
 </html>
