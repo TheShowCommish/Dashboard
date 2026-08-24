@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=19">
+<link rel="stylesheet" href="css/style.css?v=24">
 </head>
 <body>
 
@@ -27,6 +27,7 @@
     <button class="tab-btn"       data-tab="movies"    role="tab" aria-selected="false">Movies</button>
     <button class="tab-btn"       data-tab="notes"     role="tab" aria-selected="false">Notes</button>
     <button class="tab-btn"       data-tab="fantasy"   role="tab" aria-selected="false">Fantasy</button>
+    <button class="tab-btn"       data-tab="todo"      role="tab" aria-selected="false">To Do</button>
   </nav>
 
   <div class="head-right">
@@ -87,8 +88,12 @@
         <span class="focus-hint">Click any day above</span>
       </div>
       <div id="focusFantasy" hidden></div>
-      <div id="focusGames"></div>
-      <div id="focusMovies"></div>
+      <!-- Game preview and poster row sit side by side: stacked, the three
+           blocks in this panel could not fit its height without scrolling. -->
+      <div class="focus-split">
+        <div id="focusGames"></div>
+        <div id="focusMovies"></div>
+      </div>
       <p id="focusEmpty" class="empty" hidden>Nothing else on this day.</p>
     </section>
 
@@ -172,6 +177,22 @@
     <div id="ffBody" class="pf-body"><p class="empty">Add your league ID in Settings.</p></div>
   </section>
 
+  <!-- ===================== To Do ===================== -->
+  <section class="view" id="view-todo" role="tabpanel" hidden>
+    <div class="view-head slim">
+      <div class="view-title">
+        <h2>Improvement ideas</h2>
+        <span class="chip" id="todoCount">—</span>
+      </div>
+      <div class="view-tools">
+        <input id="todoInput" type="text" class="td-input" placeholder="Something to improve…" autocomplete="off">
+        <button id="todoAdd" class="ghost-btn sm primary">Add</button>
+        <button id="todoFilter" class="ghost-btn sm" data-mode="open">Showing: open</button>
+      </div>
+    </div>
+    <div id="todoBody" class="td-body"></div>
+  </section>
+
 </main>
 
 <!-- ===================== Bottom tickers ===================== -->
@@ -208,6 +229,7 @@
       <label>Finnhub <span class="hint">daily quotes</span><input id="k_finnhub" type="password" autocomplete="off"></label>
       <label>Twelve Data <span class="hint">price history</span><input id="k_twelve" type="password" autocomplete="off"></label>
       <label>TMDB <span class="hint">movies</span><input id="k_tmdb" type="password" autocomplete="off"></label>
+      <label>OMDb <span class="hint">Rotten Tomatoes scores</span><input id="k_omdb" type="password" autocomplete="off"></label>
       <label>Google OAuth Client ID<input id="k_gclient" type="text" autocomplete="off"></label>
       <p class="note-line">A free Twelve Data key powers the weekly, monthly, 6-month and 1-year returns — Finnhub's free tier only gives today's move. Grab one at <a href="https://twelvedata.com/pricing" target="_blank" rel="noopener">twelvedata.com</a>. Sports data needs no key.</p>
       <button id="btnGoogle" class="ghost-btn sm">Connect Google</button>
@@ -223,6 +245,7 @@
       <legend>Movies</legend>
       <label>Letterboxd username<input id="k_lbUser" type="text" autocomplete="off" placeholder="ijustwannabox"></label>
       <label>Scrape proxy URL<input id="k_lbProxy" type="text" autocomplete="off" placeholder="https://your-worker.workers.dev"></label>
+      <p class="note-line">Rotten Tomatoes has no public API. The movie AD reads its score from <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">OMDb</a> instead — a free key, 1,000 lookups a day, cached per film forever. Without it the AD shows one fewer rating rather than an error. Letterboxd's own average comes through the scrape proxy below.</p>
       <p class="note-line">Letterboxd publishes no watchlist API and GitHub Pages cannot read letterboxd.com directly — the browser blocks it. Point this at the same Cloudflare Worker as Fantasy (redeploy it after this update; it now forwards <code>/letterboxd/*</code>) and the watchlist and recent-diary feed are both read server-side. With no proxy set, use <b>Import watchlist CSV</b> on the Movies tab instead: Letterboxd → Settings → Data → Export.</p>
     </fieldset>
 
@@ -254,6 +277,7 @@
 
     <fieldset>
       <legend>Kiosk previews</legend>
+      <div class="preview-grid" id="previewTeams"></div>
       <div class="preview-grid">
         <button class="ghost-btn sm" data-preview="calendar">Calendar</button>
         <button class="ghost-btn sm" data-preview="sports">Sports</button>
@@ -346,24 +370,25 @@
   </div>
 </div>
 
-<script src="js/store.js?v=19"></script>
-<script src="js/themes.js?v=19"></script>
-<script src="js/sky.js?v=19"></script>
-<script src="js/weather.js?v=19"></script>
-<script src="js/google.js?v=19"></script>
-<script src="js/stocks.js?v=19"></script>
-<script src="js/fantasy.js?v=19"></script>
-<script src="js/sports.js?v=19"></script>
-<script src="js/teams.js?v=19"></script>
-<script src="js/movies.js?v=19"></script>
-<script src="js/letterboxd.js?v=19"></script>
-<script src="js/moviesview.js?v=19"></script>
-<script src="js/notes.js?v=19"></script>
-<script src="js/gamecard.js?v=19"></script>
-<script src="js/sportsview.js?v=19"></script>
-<script src="js/calendarview.js?v=19"></script>
-<script src="js/ticker.js?v=19"></script>
-<script src="js/app.js?v=19"></script>
-<script src="js/kiosk.js?v=19"></script>
+<script src="js/store.js?v=24"></script>
+<script src="js/themes.js?v=24"></script>
+<script src="js/sky.js?v=24"></script>
+<script src="js/weather.js?v=24"></script>
+<script src="js/google.js?v=24"></script>
+<script src="js/stocks.js?v=24"></script>
+<script src="js/fantasy.js?v=24"></script>
+<script src="js/sports.js?v=24"></script>
+<script src="js/teams.js?v=24"></script>
+<script src="js/movies.js?v=24"></script>
+<script src="js/letterboxd.js?v=24"></script>
+<script src="js/moviesview.js?v=24"></script>
+<script src="js/notes.js?v=24"></script>
+<script src="js/todo.js?v=24"></script>
+<script src="js/gamecard.js?v=24"></script>
+<script src="js/sportsview.js?v=24"></script>
+<script src="js/calendarview.js?v=24"></script>
+<script src="js/ticker.js?v=24"></script>
+<script src="js/app.js?v=24"></script>
+<script src="js/kiosk.js?v=24"></script>
 </body>
 </html>

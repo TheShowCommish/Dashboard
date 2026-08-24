@@ -36,6 +36,9 @@ const Kiosk = (() => {
   /* Preview holds a single AD on screen indefinitely: no timer, no
      advance, and independent of whether rotation is even enabled. */
   let preview  = false;
+  /* Per-AD arguments — currently only which team the sports AD should be
+     about. Cleared with the overlay. */
+  let adOpts   = null;
 
   /* One cursor per sub-selecting tab. Read modulo current list length so a
      team added or removed at runtime wraps cleanly rather than throwing or
@@ -206,7 +209,8 @@ const Kiosk = (() => {
   }
 
   /* ---- AD overlay ---- */
-  function openAd(name){
+  function openAd(name, opts){
+    adOpts = opts || null;
     const el = overlay();
     if(!el) return;
     el.className = `ad ad-${name} is-on${preview ? ' is-preview' : ''}`;
@@ -223,6 +227,7 @@ const Kiosk = (() => {
 
   function closeAd(){
     preview = false;
+    adOpts = null;
     updateToggleUi();
     const el = overlay();
     if(!el) return;
@@ -236,7 +241,7 @@ const Kiosk = (() => {
   /* ---- preview ----
      Open one AD and leave it there. Works with rotation off, and with it
      on it parks the state machine until the preview is dismissed. */
-  function previewAd(name){
+  function previewAd(name, opts){
     if(!AD_RENDERERS[name]){
       console.error(`No such AD: "${name}". Try one of: ${TABS.join(', ')}.`);
       return;
@@ -244,7 +249,7 @@ const Kiosk = (() => {
     clearTimer();
     preview = true;
     updateToggleUi();
-    openAd(name);
+    openAd(name, opts);
   }
 
   /* Back to whatever tab was showing. Rotation, if it was on, picks up
@@ -261,7 +266,7 @@ const Kiosk = (() => {
     if(!body) return;
     try{
       const fn = AD_RENDERERS[name];
-      if(fn) fn(body);
+      if(fn) fn(body, adOpts || {});
       else body.innerHTML = `<p class="ad-empty">Nothing to show.</p>`;
     }catch(e){
       console.error(`AD "${name}" failed:`, e);
@@ -351,8 +356,16 @@ const Kiosk = (() => {
      baseball the two probable starters, given the room they deserve.
      The schedule payload alone cannot fill a screen this size, so the
      summary is fetched and the AD upgrades itself when it lands. */
-  function adSports(host){
-    const games = (window.Teams ? Teams.games : []) || [];
+  function adSports(host, opts = {}){
+    let games = (window.Teams ? Teams.games : []) || [];
+
+    /* A preview button names one followed team; rotation names none and
+       takes whichever game is nearest across all of them. */
+    if(opts.team){
+      const only = games.filter(g => `${g.league}|${g.id}` === opts.team);
+      if(only.length) games = only;
+    }
+
     if(!games.length){
       host.innerHTML = `<p class="ad-empty ad-big">No games scheduled for followed teams.</p>`;
       return;
@@ -402,11 +415,13 @@ const Kiosk = (() => {
     const kick = new Date(g.kickoff);
     const live = (sum?.state || g.state) === 'in';
     const done = (sum?.state || g.state) === 'post';
+    /* The big line under the score says how far off it is; the meta line
+       below carries the exact date and time. */
     const when = live ? `LIVE · ${sum?.status || g.status || ''}`
                : done ? `Final ${g.score || ''}`
-               : kick.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
-    const day = sameDay(kick, new Date()) ? 'Today'
-              : kick.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
+               : sameDay(kick, new Date())
+                 ? `Today · ${kick.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}`
+                 : kick.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
 
     const logoOf = s => s.logo || Sports.logoFor({league:g.league, id:s.id});
     const score = (live || done)
@@ -421,11 +436,15 @@ const Kiosk = (() => {
       </div>`;
 
     const tv = (sum?.broadcast?.length ? sum.broadcast : g.broadcast) || [];
+    /* Everything a preview card carries, at wall-screen size: the date in
+       full, the start time, where it is, who is showing it and the line. */
     const meta = [
       esc(Sports.leagueName(g.league)),
-      esc(day),
-      sum?.venue || g.venue ? esc(sum?.venue || g.venue) : '',
-      tv.length ? `📺 ${esc(tv.join(', '))}` : ''
+      esc(kick.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})),
+      done ? '' : esc(kick.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})),
+      sum?.venue || g.venue ? `📍 ${esc(sum?.venue || g.venue)}` : '',
+      tv.length ? `📺 ${esc(tv.join(', '))}` : '',
+      sum?.odds ? `📈 ${esc(sum.odds)}` : ''
     ].filter(Boolean).join(' · ');
 
     /* Leaders come back flat with a team abbreviation on each row. */
@@ -523,9 +542,13 @@ const Kiosk = (() => {
       </div>`;
   }
 
+  /* 80% next-two-weeks upcoming, 20% Letterboxd watchlist. Pick fresh each
+     AD so a long uptime cycles through the shelf.
+
+     Painted twice: once from whatever is already cached so the screen is
+     never empty, then again once the synopsis and the outside ratings have
+     been fetched for the film that was picked. */
   function adMovies(host){
-    /* 80% next-two-weeks upcoming, 20% Letterboxd watchlist. Pick fresh
-       each AD so a long uptime cycles through the shelf. */
     const now = Date.now();
     const soon = ((window.Movies ? Movies.upcoming : []) || [])
       .filter(f => f.date && (new Date(f.date + 'T12:00:00').getTime() - now) < 14*864e5 &&
@@ -540,38 +563,128 @@ const Kiosk = (() => {
       return;
     }
 
-    let title, year, overview, cast, director, poster;
+    let film;
     if(pool === 'soon'){
       const pick = soon[Math.floor(Math.random() * soon.length)];
       const full = window.Movies ? Movies.byId(pick.id) : null;
-      title = pick.title;
-      year  = (pick.date || '').slice(0,4);
-      poster = pick.poster ? `https://image.tmdb.org/t/p/w500${pick.poster}`
-                           : (full?.poster ? `https://image.tmdb.org/t/p/w500${full.poster}` : '');
-      overview = full?.overview || '';
-      cast = full?.cast || [];
-      director = full?.director || '';
+      film = {
+        id: pick.id,
+        slug: '',
+        title: pick.title,
+        date: pick.date || '',
+        year: (pick.date || '').slice(0,4),
+        poster: pick.poster ? `https://image.tmdb.org/t/p/w500${pick.poster}`
+                            : (full?.poster ? `https://image.tmdb.org/t/p/w500${full.poster}` : ''),
+        overview: full?.overview || '',
+        cast: full?.cast || [],
+        director: full?.director || '',
+        genres: full?.genres || pick.genres || [],
+        tmdbScore: full?.score ?? pick.score ?? null,
+        imdb: full?.imdb || '',
+        upcoming: true
+      };
     } else {
       const pick = watch[Math.floor(Math.random() * watch.length)];
-      title = pick.title;
-      year  = pick.year || '';
-      poster = pick.poster || '';
-      overview = pick.overview || '';
-      cast = [];
-      director = '';
+      film = {
+        id: pick.tmdbId || null,
+        slug: pick.slug || '',
+        title: pick.title,
+        date: '',
+        year: pick.year || '',
+        poster: pick.poster || '',
+        overview: pick.overview || '',
+        cast: [], director: '',
+        genres: pick.genres || [],
+        tmdbScore: pick.score ?? null,
+        imdb: '',
+        upcoming: false
+      };
     }
 
-    host.innerHTML = `
+    host.innerHTML = adMovieHtml(film, null);
+    enrichMovie(host, film);
+  }
+
+  /* Everything the first paint could not know: the synopsis for a film past
+     the detail cap, and the two outside scores. */
+  async function enrichMovie(host, film){
+    try{
+      if(film.id && !film.overview && window.Movies){
+        const full = await Movies.detail(film.id);
+        if(full){
+          film.overview = full.overview || film.overview;
+          film.director = full.director || film.director;
+          film.cast     = full.cast?.length ? full.cast : film.cast;
+          film.genres   = full.genres?.length ? full.genres : film.genres;
+          film.imdb     = full.imdb || film.imdb;
+          film.tmdbScore = film.tmdbScore ?? full.score ?? null;
+          if(!film.poster && full.poster) film.poster = `https://image.tmdb.org/t/p/w500${full.poster}`;
+          if(host.isConnected) host.innerHTML = adMovieHtml(film, null);
+        }
+      }
+
+      const rates = {rt:'', lb:null, tmdb:film.tmdbScore};
+
+      /* Letterboxd knows the film by slug; a watchlist pick already has one,
+         a TMDB pick gets the title slugified and both spellings tried. */
+      if(window.Letterboxd){
+        const slugs = film.slug ? [film.slug]
+                    : Letterboxd.filmSlug(film.title, film.year);
+        for(const s of slugs){
+          const r = await Letterboxd.rating(s);
+          if(r != null){ rates.lb = r; break; }
+        }
+      }
+
+      if(window.Movies && film.imdb){
+        const o = await Movies.ratings(film.imdb);
+        if(o){ rates.rt = o.rt || ''; }
+      }
+
+      if(host.isConnected) host.innerHTML = adMovieHtml(film, rates);
+    }catch(e){
+      console.error('Movie AD enrich failed:', e.message);
+    }
+  }
+
+  function adMovieHtml(f, rates){
+    const relDate = f.date
+      ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined,
+          {weekday:'long', month:'long', day:'numeric', year:'numeric'})
+      : '';
+    /* Both sides at midday, so the difference is a whole number of days
+       and "five days out" cannot round to six. */
+    const days = f.date ? daysUntil(f.date) : null;
+    const countdown = days == null ? ''
+      : days <= 0 ? 'Out now'
+      : days === 1 ? 'Out tomorrow'
+      : `Out in ${days} days`;
+
+    /* All three always render — an em dash reads as "not scored yet", a
+       missing row reads as a bug. */
+    const rate = (label, val) => `
+      <span class="ad-rate"><i>${label}</i><b>${val || '&mdash;'}</b></span>`;
+
+    return `
       <div class="ad-movie">
-        ${poster
-          ? `<img class="ad-poster" src="${esc(poster)}" alt="">`
+        ${f.poster
+          ? `<img class="ad-poster" src="${esc(f.poster)}" alt="">`
           : `<div class="ad-poster ad-noart">🎬</div>`}
         <div class="ad-movie-info">
-          <h1 class="ad-h1">${esc(title)}</h1>
-          <p class="ad-sub">${esc(String(year))}${pool === 'soon' ? ' · Coming soon' : ' · Watchlist'}</p>
-          ${director ? `<p class="ad-line"><i>Directed by</i> ${esc(director)}</p>` : ''}
-          ${cast.length ? `<p class="ad-line"><i>Starring</i> ${esc(cast.join(', '))}</p>` : ''}
-          <p class="ad-overview">${esc(overview) || 'No synopsis available.'}</p>
+          <h1 class="ad-h1">${esc(f.title)}</h1>
+          <p class="ad-sub">${esc(String(f.year || ''))}${
+            f.genres?.length ? ` · ${esc(f.genres.join(', '))}` : ''}${
+            f.upcoming ? '' : ' · Watchlist'}</p>
+          ${f.upcoming && relDate
+            ? `<p class="ad-release"><b>${esc(countdown)}</b> · ${esc(relDate)}</p>` : ''}
+          <div class="ad-rates">
+            ${rate('Rotten Tomatoes', rates?.rt)}
+            ${rate('Letterboxd', rates?.lb != null ? `${rates.lb.toFixed(1)}/5` : '')}
+            ${rate('TMDB', f.tmdbScore ? f.tmdbScore.toFixed(1) : '')}
+          </div>
+          ${f.director ? `<p class="ad-line"><i>Directed by</i> ${esc(f.director)}</p>` : ''}
+          ${f.cast?.length ? `<p class="ad-line"><i>Starring</i> ${esc(f.cast.join(', '))}</p>` : ''}
+          <p class="ad-overview">${esc(f.overview) || 'No synopsis published for this film yet.'}</p>
         </div>
       </div>`;
   }
@@ -635,6 +748,15 @@ const Kiosk = (() => {
       .catch(e => {
         host.innerHTML = `<p class="ad-empty ad-big">Matchup unavailable (${esc(e.message)}).</p>`;
       });
+  }
+
+  /* Whole days from today to a YYYY-MM-DD date, counted midday to midday
+     so neither a timezone nor a DST boundary can shift the answer. */
+  function daysUntil(date){
+    const t = new Date();
+    const today = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12);
+    const then  = new Date(date + 'T12:00:00');
+    return Math.round((then - today) / 864e5);
   }
 
   const keyOf = d => {

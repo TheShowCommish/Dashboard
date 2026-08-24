@@ -1191,17 +1191,7 @@ body.kiosk-on #adOverlay.is-on ~ *{}
 .gc-pitch-line{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
 .gs-pitches{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-bottom:14px;}
 
-/* ---- movie grids (no side-scrolling) ---- */
-.mv-grid{
-  display:grid;gap:12px;
-  grid-template-columns:repeat(auto-fill,minmax(118px,1fr));
-  margin-top:10px;
-}
-.mv-card{
-  position:relative;display:flex;flex-direction:column;gap:3px;text-align:left;
-  background:transparent;border:0;padding:0;cursor:pointer;color:var(--text);font:inherit;
-  min-width:0;
-}
+/* ---- movie poster cards (laid out by the crawl below) ---- */
 .mv-poster{
   width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:9px;
   border:1px solid var(--edge);transition:transform .18s var(--ease),border-color .18s var(--ease);
@@ -1309,3 +1299,168 @@ body.kiosk-on #adOverlay.is-on ~ *{}
 .ad-lead-val{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--accent);}
 
 .ad-cols.is-two{grid-template-columns:1fr 1fr;}
+
+/* ============================================================
+   I-batch: poster crawls, compact leaders, To Do tab,
+   full-width hour strip, smaller fantasy board.
+   ============================================================ */
+
+/* ---- poster crawls (same mechanism as the market ticker) ---- */
+.mv-marquee{overflow:hidden;width:100%;}
+.mv-track{display:flex;width:max-content;will-change:transform;}
+.mv-marquee:hover .mv-track{animation-play-state:paused;}
+/* Margin, not gap: the two copies have to add up to exactly twice one
+   copy or the -50% translate lands mid-poster and the loop visibly jumps. */
+.mv-track > *{margin-right:12px;}
+
+/* Every line of text is clamped to the poster above it. */
+.mv-card{
+  flex:0 0 118px;width:118px;
+  position:relative;display:flex;flex-direction:column;gap:3px;text-align:left;
+  background:transparent;border:0;padding:0;cursor:pointer;color:var(--text);font:inherit;
+}
+.mv-card .mv-info{display:flex;flex-direction:column;gap:1px;width:118px;min-width:0;}
+.mv-title,.mv-line,.mv-genre{
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mv-title{font-size:11.5px;font-weight:600;}
+.mv-line{font-size:10.5px;color:var(--muted);font-family:var(--mono);}
+
+/* The calendar focus row uses the same crawl with its own card size. */
+.car-item{flex:0 0 140px;width:140px;}
+.car-title,.car-sub{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.car-art{width:140px;}
+
+/* ---- compact stat leaders on a preview card ---- */
+/* Capped and centred under the logo: the side is a 1fr grid column, so
+   without a ceiling these stretch to half the card and stop reading as
+   small buttons. */
+.gc-sidestats{
+  display:flex;flex-direction:column;gap:3px;margin-top:6px;
+  width:100%;max-width:210px;margin-left:auto;margin-right:auto;
+}
+/* The calendar's focus strip is a fixed-height panel shared with the
+   fantasy board and the poster row, so a card there shows the top two
+   leaders a side rather than four. */
+.focus .gc-sidestats .gc-player:nth-child(n+3){display:none;}
+.focus .gc-logo{width:42px;height:42px;}
+.focus .gc-pitch-shot{width:28px;height:28px;}
+.focus .gc-probables{margin-top:8px;padding-top:7px;}
+.gc-player{
+  display:grid;grid-template-columns:1fr auto;gap:0 6px;align-items:baseline;
+  background:color-mix(in srgb,var(--panel-2) 60%,transparent);
+  border:1px solid var(--edge);border-radius:6px;padding:3px 6px;
+  color:inherit;font:inherit;cursor:pointer;text-align:left;min-width:0;
+  transition:border-color .14s var(--ease);
+}
+.gc-player:hover{border-color:var(--accent);}
+.gc-pcat{
+  grid-column:1 / -1;font-family:var(--mono);font-size:8px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.gc-pname{font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.gc-pname i{font-style:normal;color:var(--muted);font-size:9px;}
+.gc-pval{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);}
+.gc-side{min-width:0;}
+
+/* Leaders in the game popup, one column per team, in the same order as
+   the score line above them. */
+.gs-leads{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.gs-lead-col{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.gs-lead-col .gc-lab{margin-bottom:2px;}
+.gs-lead-col .gc-player{padding:5px 8px;}
+.gs-lead-col .gc-pname{font-size:12px;}
+.gs-lead-col .gc-pval{font-size:13px;}
+
+/* ---- fantasy board in the calendar focus strip ---- */
+/* Half the size it was: the focus strip holds this, a game preview and a
+   poster row, and this was the block pushing the other two into a scroll. */
+.focus .ff-board{padding:8px 10px;margin-bottom:8px;}
+.focus .ff-head{font-size:8.5px;margin-bottom:6px;}
+.focus .ff-team{font-size:11px;}
+.focus .ff-score{font-size:19px;}
+.focus .ff-top{gap:1px;}
+.focus .ff-p{font-size:10px;}
+.focus .ff-p i{font-size:9px;}
+.focus .ff-dash{font-size:10px;}
+
+/* ---- weather: the hour strip fills the tile ---- */
+.wx-hours{display:flex;gap:4px;width:100%;}
+.wx-hour{flex:1 1 0;width:auto;min-width:0;}
+.wx-h-time,.wx-h-temp,.wx-h-pop{white-space:nowrap;}
+
+/* ---- To Do tab ---- */
+.td-input{
+  background:var(--panel-2);border:1px solid var(--edge);border-radius:var(--r);
+  color:var(--text);font:inherit;font-size:12px;padding:5px 9px;min-width:260px;
+}
+.td-input:focus{outline:none;border-color:var(--accent);}
+.td-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;}
+.td-list{display:flex;flex-direction:column;}
+.td-row{
+  display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;
+  padding:9px 6px;border-bottom:1px solid var(--edge);
+}
+.td-row.is-done .td-text{color:var(--muted);text-decoration:line-through;}
+.td-check{
+  width:18px;height:18px;border-radius:5px;border:1px solid var(--edge);
+  background:var(--panel-2);color:var(--accent);font-size:12px;line-height:1;
+  cursor:pointer;display:grid;place-items:center;
+}
+.td-check:hover{border-color:var(--accent);}
+.td-row.is-done .td-check{background:color-mix(in srgb,var(--accent) 20%,transparent);border-color:var(--accent);}
+.td-text{font-size:13px;min-width:0;overflow-wrap:anywhere;}
+.td-when{font-family:var(--mono);font-size:10px;color:var(--muted);}
+.td-x{
+  background:none;border:0;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;
+}
+.td-x:hover{color:var(--bad);}
+
+/* ---- movie AD: release date and the ratings row ---- */
+.ad-release{font-size:26px;margin:2px 0 4px;color:var(--text);}
+.ad-release b{color:var(--accent);}
+.ad-rates{display:flex;gap:28px;margin:8px 0 4px;flex-wrap:wrap;}
+.ad-rate{display:flex;flex-direction:column;gap:2px;}
+.ad-rate i{
+  font-style:normal;font-family:var(--mono);font-size:13px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);
+}
+.ad-rate b{font-family:var(--mono);font-size:32px;font-weight:700;}
+
+/* ---- focus strip: fantasy on top, game and posters side by side ---- */
+.focus-split{
+  display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);
+  gap:12px;align-items:start;min-height:0;
+}
+.focus-split > *{min-width:0;}
+.focus .car{margin-top:0;}
+.focus .car-item{flex:0 0 104px;width:104px;}
+.focus .car-art{width:104px;}
+.focus .car-title,.focus .car-sub{max-width:104px;}
+
+/* The game card gets one more size down inside the strip: it shares the
+   panel with the fantasy board above it and has a fixed height to live in. */
+.focus .gc{padding:9px 11px;}
+.focus .gc-logo{width:36px;height:36px;}
+.focus .gc-name{font-size:13px;}
+.focus .gc-rec{font-size:10px;}
+.focus .gc-score{font-size:22px;}
+.focus .gc-top{margin-bottom:8px;}
+.focus .gc-matchup{gap:8px;}
+.focus .gc-sidestats{max-width:150px;gap:2px;}
+.focus .gc-pcat{font-size:7.5px;}
+.focus .gc-pname{font-size:9.5px;}
+.focus .gc-pval{font-size:10px;}
+.focus .gc-pitch{padding:4px 6px;}
+.focus .gc-pitch-name{font-size:11px;}
+.focus .gc-pitch-line{font-size:9.5px;}
+.focus .gc-meta{margin-top:8px;padding-top:8px;font-size:10px;}
+
+/* A little more room for the whole lower band, since it now carries the
+   fantasy board, a game and a poster row. */
+.cal-lower{max-height:42vh;}
+
+@media (max-width:1100px){
+  .focus-split{grid-template-columns:1fr;}
+}

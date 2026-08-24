@@ -362,10 +362,31 @@ const Stocks = (() => {
       return;
     }
 
+    /* A full walk costs one credit per holding and the free tier allows
+       eight a minute, so 41 holdings take about five minutes. Reloading
+       the page in the middle of that used to throw the progress away and
+       start over — which is why the count crept up a batch at a time and
+       then stalled. Anything already fetched TODAY is kept and skipped. */
+    const today = keyOfDay(new Date());
+    if(cached && cached.day === today) anchors = {...(cached.anchors || {}), ...anchors};
+    const fetchedToday = new Set(
+      (cached && cached.day === today) ? (cached.fetched || []) : []);
+
     const bySym = new Map(hold.map(h => [h.ticker, h.symbol]));
-    const tickers = [...bySym.keys()];
+    const tickers = [...bySym.keys()].filter(t => !fetchedToday.has(t));
     const next = {};
     let complete = true;
+
+    /* Attempted, not necessarily returned: a symbol Twelve Data simply does
+       not carry must not be asked for again on the next reload. */
+    const attempted = new Set(fetchedToday);
+
+    const save = done => Store.set('portfolio.history', {
+      at: done ? new Date().toISOString() : null,
+      day: today,
+      fetched: [...attempted],
+      anchors
+    });
 
     for(let i = 0; i < tickers.length; i += 8){
       const batch = tickers.slice(i, i+8);
@@ -382,8 +403,15 @@ const Stocks = (() => {
            keyed by symbol. */
         const series = batch.length === 1 ? {[batch[0]]: d} : d;
         for(const t of batch){
+          attempted.add(t);
           const s = series[t];
-          if(!s || !s.values) continue;
+          if(!s || !s.values){
+            /* Named, so a symbol missing from the windows can be traced to
+               a provider gap rather than to this walk. */
+            if(s && (s.status === 'error' || s.message))
+              console.warn('No history for', t, '—', s.message || s.status);
+            continue;
+          }
           const a = toAnchors(s.values);
           if(a) next[bySym.get(t)] = a;
         }
@@ -405,13 +433,46 @@ const Stocks = (() => {
         /* No timestamp until the walk finishes: a reload part-way through
            keeps the anchors it already has and picks the walk back up,
            rather than treating a half-filled cache as today's answer. */
-        Store.set('portfolio.history', {at:null, anchors});
+        save(false);
         if(Store.get('holdings',[]).length) render();
+      } else {
+        save(false);
       }
     }
 
-    if(complete) Store.set('portfolio.history', {at:new Date().toISOString(), anchors});
+    /* Some symbols come back empty inside a batch but answer perfectly well
+       on their own — an eight-symbol request is all-or-nothing on the far
+       side more often than the docs admit. Retry the stragglers singly,
+       capped so a genuinely uncovered portfolio cannot spin. */
+    const missing = [...bySym.keys()].filter(t => !anchors[bySym.get(t)] && !next[bySym.get(t)]);
+    for(const t of missing.slice(0, 12)){
+      await tdBudget(1);
+      try{
+        const d = await getJSON('https://api.twelvedata.com/time_series' +
+          `?symbol=${encodeURIComponent(t)}&interval=1day&outputsize=300&apikey=${key}`);
+        if(d && d.values){
+          const a = toAnchors(d.values);
+          if(a){
+            anchors[bySym.get(t)] = a;
+            save(false);
+            if(Store.get('holdings',[]).length) render();
+          }
+        } else if(d && d.message){
+          console.warn('No history for', t, '—', d.message);
+        }
+      }catch(e){
+        console.error('History retry failed for', t, e.message);
+        complete = false;
+      }
+    }
+
+    save(complete);
   }
+
+  const keyOfDay = d => {
+    const x = new Date(d);
+    return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+  };
 
   /* values arrive newest-first; pick the last close at or before each mark. */
   function toAnchors(values){
@@ -509,6 +570,7 @@ const Stocks = (() => {
     const hold = Store.get('holdings',[]).filter(inView);
     let nowVal = 0, thenVal = 0;
     const movers = [];
+    const missing = [];
 
     for(const h of hold){
       const now = priceNow(h);
@@ -516,7 +578,7 @@ const Stocks = (() => {
       const then = win.id === 'd1' && quotes[h.symbol]
         ? quotes[h.symbol].c - quotes[h.symbol].d     // Finnhub gives today live
         : (a ? a[win.id] : null);
-      if(now == null || then == null || !then) continue;
+      if(now == null || then == null || !then){ missing.push(h.symbol); continue; }
 
       const sh = sharesOf(h);
       nowVal  += now * sh;
@@ -535,6 +597,7 @@ const Stocks = (() => {
       pct: (nowVal/thenVal - 1) * 100,
       dollars: nowVal - thenVal,
       counted: movers.length,
+      missing,
       top, bottom
     };
   }
@@ -754,7 +817,9 @@ const Stocks = (() => {
           ${moverList(st.top,'Best')}
           ${moverList(st.bottom,'Worst')}
         </div>
-        <span class="pf-count">${st.counted} of ${hold.length} counted</span>
+        <span class="pf-count"${st.missing.length
+          ? ` title="No ${w.id === 'd1' ? 'quote' : 'history'} for: ${esc(st.missing.join(', '))}"` : ''
+        }>${st.counted} of ${hold.length} counted</span>
       </button>`;
     }).join('');
 

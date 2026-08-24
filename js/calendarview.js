@@ -30,27 +30,10 @@ const CalendarView = (() => {
   let gameIdx  = 0;             // which game of the focus day is showing
 
   /* The focus strip runs unattended on a wall screen: the game previews
-     advance themselves and the poster rail drifts back and forth. Both
-     handles live here so a repaint always clears the old timer. */
+     advance themselves on this timer, and the poster row crawls on a CSS
+     animation. The handle lives here so a repaint clears the old timer. */
   let gameTimer  = null;
-  let filmTimer  = null;
   const GAME_MS  = 12000;
-  const FILM_MS  = 4500;
-
-  /* Scrolling a rail smoothly, without relying on scroll-behavior or
-     scrollBy({behavior:'smooth'}) — both are silently dropped when the
-     window is not compositing, which is exactly the unattended case this
-     deck is built for. A plain interval tween always runs. */
-  function glide(rail, to, ms = 600){
-    clearInterval(rail._glide);
-    const from = rail.scrollLeft, delta = to - from, t0 = Date.now();
-    if(!delta) return;
-    rail._glide = setInterval(() => {
-      const k = Math.min(1, (Date.now() - t0) / ms);
-      rail.scrollLeft = from + delta * (0.5 - Math.cos(Math.PI * k) / 2);
-      if(k >= 1) clearInterval(rail._glide);
-    }, 16);
-  }
 
   /* Nothing animates while the calendar is not the visible tab. */
   const calVisible = () => {
@@ -319,60 +302,53 @@ const CalendarView = (() => {
     fGames.appendChild(wrap);
   }
 
-  /* Poster carousel for the focus day. */
+  /* Poster crawl for the focus day. Same mechanism as the market ticker
+     below it: two identical copies of the row translated by exactly half
+     their width, so the loop never seams and nothing has to be measured.
+     A CSS animation also keeps running when a timer-driven scroll would
+     not, which matters on a screen nobody is sitting in front of. */
   function renderMovies(){
-    if(filmTimer){ clearInterval(filmTimer); filmTimer = null; }
     const films = moviesOn(focus);
     fMovies.innerHTML = '';
     if(!films.length) return;
+
+    const card = f => {
+      const full = Movies.byId(f.id);
+      const art = full?.poster
+        ? `<img class="car-art" src="https://image.tmdb.org/t/p/w342${esc(full.poster)}" alt="" loading="lazy">`
+        : '<div class="car-art car-noart">🎬</div>';
+      const genres = (full?.genres || []).join(' · ');
+      return `<button class="car-item" data-film="${esc(f.id)}" title="${esc(f.title)}">
+        ${art}
+        <span class="car-title">${esc(f.title)}</span>
+        ${genres ? `<span class="car-sub">${esc(genres)}</span>` : ''}
+        ${full?.director ? `<span class="car-sub">${esc(full.director)}</span>` : ''}
+      </button>`;
+    };
+
+    const row = films.map(card).join('');
 
     const wrap = document.createElement('div');
     wrap.className = 'car';
     wrap.innerHTML = `
       <div class="car-head">
         <span class="pf-h3">Out ${isToday(focus) ? 'today' : 'this day'}</span>
-        ${films.length > 3 ? `<span class="car-nav">
-          <button class="ghost-btn sm" data-car="-1" aria-label="Scroll left">‹</button>
-          <button class="ghost-btn sm" data-car="1" aria-label="Scroll right">›</button></span>` : ''}
       </div>
-      <div class="car-rail">${films.map(f => {
-        const full = Movies.byId(f.id);
-        const art = full?.poster
-          ? `<img class="car-art" src="https://image.tmdb.org/t/p/w342${esc(full.poster)}" alt="" loading="lazy">`
-          : '<div class="car-art car-noart">🎬</div>';
-        return `<button class="car-item" data-film="${esc(f.id)}">
-          ${art}
-          <span class="car-title">${esc(f.title)}</span>
-          ${full?.director ? `<span class="car-sub">${esc(full.director)}</span>` : ''}
-          ${full?.cast?.length ? `<span class="car-sub">${esc(full.cast.slice(0,3).join(', '))}</span>` : ''}
-        </button>`;
-      }).join('')}</div>`;
+      <div class="mv-marquee">
+        <div class="mv-track">${row}${row}</div>
+      </div>`;
+
+    /* Pace by content so two posters do not race past and twenty do not
+       crawl. Only animate when there is more than one — a single poster
+       sliding under itself looks broken. */
+    const track = wrap.querySelector('.mv-track');
+    if(films.length > 1) track.style.animation = `crawl ${Math.max(24, films.length * 7)}s linear infinite`;
+    else track.style.animation = 'none';
 
     wrap.querySelectorAll('[data-film]').forEach(b =>
       b.onclick = () => Movies.open(b.dataset.film));
-    const rail = wrap.querySelector('.car-rail');
-    wrap.querySelectorAll('[data-car]').forEach(b =>
-      b.onclick = () => glide(rail, rail.scrollLeft + (+b.dataset.car * 320)));
 
     fMovies.appendChild(wrap);
-
-    /* Drift the rail one poster at a time and turn around at each end,
-       so a day with more releases than fit still shows all of them
-       without anyone touching the screen. The scrollbar itself is hidden
-       in CSS — this is the only way to move it, so it must not stall. */
-    let held = false;
-    rail.addEventListener('pointerenter', () => { held = true; });
-    rail.addEventListener('pointerleave', () => { held = false; });
-
-    let dir = 1;
-    filmTimer = setInterval(() => {
-      if(held || !calVisible() || !rail.isConnected) return;
-      const max = rail.scrollWidth - rail.clientWidth;
-      if(max <= 4) return;                       // everything already fits
-      if(rail.scrollLeft >= max - 4) dir = -1;
-      else if(rail.scrollLeft <= 4) dir = 1;
-      glide(rail, Math.max(0, Math.min(max, rail.scrollLeft + dir * 150)));
-    }, FILM_MS);
   }
 
   /* ---- day modal (double-click) ---- */

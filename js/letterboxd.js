@@ -315,6 +315,42 @@ const Letterboxd = (() => {
 
   function paint(){ if(window.MoviesView) MoviesView.render(); }
 
+  /* ---- one film's Letterboxd average ----
+     The film page carries the site-wide average in a twitter:data2 meta
+     tag ("3.61 out of 5"). Cached forever per slug: it moves in the third
+     decimal place and every lookup is a page fetch through the worker.
+     Needs the proxy; without one this quietly returns null. */
+  const rateCache = () => Store.get('movies.lbRating', {});
+
+  async function rating(slug){
+    if(!slug) return null;
+    const cache = rateCache();
+    if(slug in cache) return cache[slug];
+    if(!proxy()) return null;
+
+    try{
+      const res = await fetch(`${proxy()}/letterboxd/film/${slug}/`);
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const m = html.match(/name="twitter:data2"\s+content="([\d.]+)\s+out of 5"/i)
+             || html.match(/"ratingValue"\s*:\s*([\d.]+)/i);
+      const val = m ? parseFloat(m[1]) : null;
+      cache[slug] = Number.isFinite(val) ? val : null;
+      Store.set('movies.lbRating', cache);
+      return cache[slug];
+    }catch(e){
+      console.error('Letterboxd rating failed for', slug, e.message);
+      return null;
+    }
+  }
+
+  /* Letterboxd film URLs are the title slugified; good enough to look up a
+     film we only know from TMDB. A miss caches as null and is not retried. */
+  const filmSlug = (title, year) => {
+    const base = slugify(title);
+    return year ? [base, `${base}-${year}`] : [base];
+  };
+
   /* Watchlist rows joined to their cached art. */
   function decorated(){
     const cache = artCache();
@@ -335,7 +371,7 @@ const Letterboxd = (() => {
   }
 
   return {
-    load, ingestCsv, decorated,
+    load, ingestCsv, decorated, rating, filmSlug,
     get diary(){ return diary; },
     get count(){ return watchlist.length; },
     get error(){ return lastError; },

@@ -40,12 +40,47 @@ const GameCard = (() => {
     return el;
   }
 
-  function sideHtml(s, g){
+  /* Each team's leaders sit under that team's own logo, so a stat is always
+     on the same side of the card as the team it belongs to. Kept small: a
+     card can carry eight of them and the matchup itself must still be the
+     thing you read first. */
+  function statsHtml(leaders){
+    if(!leaders.length) return '';
+    return `<div class="gc-sidestats">${leaders.map(l => `
+      <button class="gc-player" data-athlete="${esc(l.athleteId || '')}"
+              data-name="${esc(l.athlete)}" data-pos="${esc(l.position)}"
+              data-shot="${esc(l.headshot)}"
+              title="${esc(l.athlete)} · ${esc(l.category)} · ${esc(l.value)} — open game log">
+        <span class="gc-pcat">${esc(l.category)}</span>
+        <span class="gc-pname">${esc(shortName(l.athlete))}</span>
+        <span class="gc-pval">${esc(l.value)}</span>
+      </button>`).join('')}</div>`;
+  }
+
+  /* "Sandy Alcantara" → "S. Alcantara": the buttons are narrow now and a
+     full name is what pushed them wide. */
+  function shortName(n){
+    const parts = String(n || '').trim().split(/\s+/);
+    if(parts.length < 2) return n || '';
+    return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+  }
+
+  /* leaders[].team is an abbreviation; match it to the side. Anything that
+     matches neither side (ESPN occasionally omits the team block) is dropped
+     rather than guessed at, so a stat never lands under the wrong team. */
+  function splitLeaders(leaders, away, home){
+    const mine = (side) => leaders.filter(l =>
+      l.team && side.abbr && l.team.toUpperCase() === side.abbr.toUpperCase());
+    return {away: mine(away).slice(0,4), home: mine(home).slice(0,4)};
+  }
+
+  function sideHtml(s, g, leaders = []){
     const logo = s.logo || Sports.logoFor({league:g.league, id:s.id});
     return `<div class="gc-side">
       <img class="gc-logo" src="${esc(logo)}" alt="" loading="lazy">
       <span class="gc-name">${esc(s.abbr || s.name)}</span>
       <span class="gc-rec">${esc(s.record || '&mdash;')}</span>
+      ${statsHtml(leaders)}
     </div>`;
   }
 
@@ -74,10 +109,6 @@ const GameCard = (() => {
     </div>`;
   }
 
-  /* Deliberately thin: the matchup, when it is, both records, and where to
-     watch. Everything else — leaders, team totals, the line score — is one
-     click away in the game modal rather than crowding three of these onto
-     the top of the tab. */
   function render(g, sum){
     const state = sum?.state || g.state;
     const live  = state === 'in';
@@ -103,6 +134,9 @@ const GameCard = (() => {
 
     const tv = (sum?.broadcast?.length ? sum.broadcast : g.broadcast) || [];
 
+    const split = splitLeaders(sum?.leaders || [], away, home);
+    const anyLeaders = split.away.length || split.home.length;
+
     return `
       <div class="gc-top">
         <span class="gc-league">${esc(Sports.leagueName(g.league))}</span>
@@ -110,9 +144,12 @@ const GameCard = (() => {
         <span class="gc-when">${esc(when)}</span>
       </div>
       <div class="gc-matchup">
-        ${sideHtml(away, g)}
-        <div class="gc-mid">${scoreBlock}</div>
-        ${sideHtml(home, g)}
+        ${sideHtml(away, g, split.away)}
+        <div class="gc-mid">
+          ${scoreBlock}
+          ${anyLeaders ? `<span class="gc-lab">${live || done ? 'Leaders' : 'Watch for'}</span>` : ''}
+        </div>
+        ${sideHtml(home, g, split.home)}
       </div>
       ${done ? '' : probablesHtml(away, home)}
       <div class="gc-meta">
@@ -282,18 +319,44 @@ const GameStats = (() => {
     </table></div>`;
   }
 
-  function leaderHtml(leaders){
+  /* Two columns in the same order as the score line above them, so a
+     player's stats are always under the logo they belong to rather than
+     in one mixed grid you have to read the team prefix off. */
+  function leaderHtml(leaders, away, home){
     if(!leaders.length) return '';
+    const mine = side => leaders.filter(l =>
+      l.team && side?.abbr && l.team.toUpperCase() === side.abbr.toUpperCase());
+
+    const col = side => {
+      const rows = mine(side);
+      return `<div class="gs-lead-col">
+        <span class="gc-lab">${esc(side?.abbr || side?.name || '')}</span>
+        ${rows.length ? rows.map(l => `
+          <button class="gc-player" data-athlete="${esc(l.athleteId || '')}"
+                  data-name="${esc(l.athlete)}" data-pos="${esc(l.position)}"
+                  data-shot="${esc(l.headshot)}"
+                  title="Game log for ${esc(l.athlete)}">
+            <span class="gc-pcat">${esc(l.category)}</span>
+            <span class="gc-pname">${esc(l.athlete)}${l.position ? ` <i>${esc(l.position)}</i>` : ''}</span>
+            <span class="gc-pval">${esc(l.value)}</span>
+          </button>`).join('') : '<p class="empty">None published.</p>'}
+      </div>`;
+    };
+
+    /* A leader ESPN gave no team block to would vanish from both columns,
+       so those keep the old flat treatment underneath. */
+    const orphans = leaders.filter(l => !mine(away).includes(l) && !mine(home).includes(l));
+
     return `<h3 class="pf-h3">Leaders</h3>
-      <div class="gs-leaders">${leaders.map(l => `
+      <div class="gs-leads">${col(away)}${col(home)}</div>
+      ${orphans.length ? `<div class="gs-leaders">${orphans.map(l => `
         <button class="gc-player" data-athlete="${esc(l.athleteId || '')}"
                 data-name="${esc(l.athlete)}" data-pos="${esc(l.position)}"
-                data-shot="${esc(l.headshot)}"
-                title="Game log for ${esc(l.athlete)}">
+                data-shot="${esc(l.headshot)}">
           <span class="gc-pcat">${esc(l.team)} · ${esc(l.category)}</span>
-          <span class="gc-pname">${esc(l.athlete)}${l.position ? ` <i>${esc(l.position)}</i>` : ''}</span>
+          <span class="gc-pname">${esc(l.athlete)}</span>
           <span class="gc-pval">${esc(l.value)}</span>
-        </button>`).join('')}</div>`;
+        </button>`).join('')}</div>` : ''}`;
   }
 
   async function open(g){
@@ -344,7 +407,7 @@ const GameStats = (() => {
       : '';
 
     const detail = scoreLine + probables + periodTable(sides) +
-      statTable(sum.teamStats || [], sides) + leaderHtml(sum.leaders || []);
+      statTable(sum.teamStats || [], sides) + leaderHtml(sum.leaders || [], away, home);
 
     body.innerHTML = headHtml(g) +
       (detail || '<p class="empty">No stats published for this game.</p>');

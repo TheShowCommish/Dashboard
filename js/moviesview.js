@@ -9,18 +9,20 @@
         pills already use, here with room for posters.
      4. Recently watched — the Letterboxd diary feed, compact.
 
-   Posters wrap into a grid rather than a side-scrolling rail: the tab has
-   to be readable on a wall screen nobody is going to swipe.
+   The three poster blocks are each ONE line that crawls, on the same
+   mechanism as the market ticker: two copies of the row translated by
+   half their width. Nothing to swipe, nothing to scroll, and it keeps
+   moving on a screen nobody is touching.
    ============================================================ */
 
 const MoviesView = (() => {
   const body  = document.getElementById('moviesBody');
   const count = document.getElementById('mvCount');
 
-  /* How many posters a block shows before it stops. Two to three rows at
-     the widths this deck runs at — enough to browse, not so many that the
-     block below is pushed off the screen entirely. */
-  const CAP = 24;
+  /* A crawl is a fixed-height line, so the cap is about how long the loop
+     takes rather than how much fits: 40 posters at 6 seconds each is a
+     four-minute lap, which is about as slow as is still interesting. */
+  const CAP = 40;
 
   function posterHtml(f, badge){
     const art = f.poster
@@ -35,24 +37,26 @@ const MoviesView = (() => {
         <span class="mv-title">${esc(f.title)}</span>
         <span class="mv-line">${esc(String(f.year || ''))}${
           f.score ? ` · <i>${f.score.toFixed(1)}</i>` : ''}</span>
-        <span class="mv-genre">${esc(genres) || '—'}</span>
+        <span class="mv-genre">${esc(genres) || '&mdash;'}</span>
       </span>
     </button>`;
   }
 
-  /* One block: a heading, a capped grid, and an honest note when the cap
-     hid something. */
+  /* One block: a heading and a single crawling line of posters. */
   function block(title, films, opts = {}){
     const shown = films.slice(0, opts.cap || CAP);
-    const rest  = films.length - shown.length;
+    const row = shown.map(f => posterHtml(f, f._badge)).join('');
+    const secs = Math.max(30, shown.length * 6);
     return `<section class="mv-strip">
       <div class="car-head">
         <h3 class="pf-h3">${title}${
           films.length ? ` <span class="pf-h3-n">${films.length}</span>` : ''}</h3>
         ${opts.note ? `<span class="plot-key">${opts.note}</span>` : ''}
       </div>
-      <div class="mv-grid">${shown.map(f => posterHtml(f, f._badge)).join('')}</div>
-      ${rest > 0 ? `<p class="mv-more">+${rest} more not shown</p>` : ''}
+      <div class="mv-marquee">
+        <div class="mv-track" style="${shown.length > 1
+          ? `animation:crawl ${secs}s linear infinite` : 'animation:none'}">${row}${row}</div>
+      </div>
     </section>`;
   }
 
@@ -64,14 +68,14 @@ const MoviesView = (() => {
         return `<section class="mv-strip">
           <div class="car-head"><h3 class="pf-h3">Must watch</h3></div>
           <p class="empty">No watchlist yet. Letterboxd cannot be read directly from a
-            static page, so either set the scrape proxy URL in Settings → Movies, or use
-            <b>Import watchlist CSV</b> above (Letterboxd → Settings → Data → Export).</p>
+            static page, so either set the scrape proxy URL in Settings &rarr; Movies, or use
+            <b>Import watchlist CSV</b> above (Letterboxd &rarr; Settings &rarr; Data &rarr; Export).</p>
         </section>`;
       }
       return `<section class="mv-strip">
         <div class="car-head"><h3 class="pf-h3">Must watch</h3></div>
         <p class="empty">Nothing came back from Letterboxd${
-          Letterboxd.error ? ` — ${esc(Letterboxd.error)}` : ''}.</p>
+          Letterboxd.error ? ` &mdash; ${esc(Letterboxd.error)}` : ''}.</p>
       </section>`;
     }
     return block('Must watch', films);
@@ -80,14 +84,14 @@ const MoviesView = (() => {
   function playingHtml(){
     const films = (window.Movies ? Movies.playing : []) || [];
     if(!films.length) return '';
-    const today = new Date(); today.setHours(0,0,0,0);
+    /* No badge: every film in this block is already out, and a row of
+       identical "in cinemas" chips is just noise over the posters. */
     return block('Popular movies out now', films.map(f => ({
       title: f.title,
       year: (f.date || '').slice(0,4),
       poster: f.poster ? `https://image.tmdb.org/t/p/w342${f.poster}` : '',
-      tmdbId: f.id, score: f.score, genres: f.genres,
-      _badge: {text:'in cinemas', warn:false}
-    })), {cap:12, note:'in cinemas this week, most popular first'});
+      tmdbId: f.id, score: f.score, genres: f.genres
+    })), {cap:20, note:'in cinemas this week, most popular first'});
   }
 
   function diaryHtml(){
@@ -100,8 +104,8 @@ const MoviesView = (() => {
         <a class="mv-seen-row" href="${esc(f.link)}" target="_blank" rel="noopener">
           <span class="row-title">${esc(f.title)}${f.year ? ` <i>${f.year}</i>` : ''}</span>
           <span class="row-side">${f.rated != null
-            ? `<span class="mv-stars">${'★'.repeat(Math.round(f.rated))}${
-                 '☆'.repeat(Math.max(0, 5 - Math.round(f.rated)))}</span>`
+            ? `<span class="mv-stars">${STAR.repeat(Math.round(f.rated))}${
+                 HOLLOW.repeat(Math.max(0, 5 - Math.round(f.rated)))}</span>`
             : ''}</span>
         </a>`).join('')}</div>
     </section>`;
@@ -118,7 +122,10 @@ const MoviesView = (() => {
       </section>`;
     }
 
-    const today = new Date(); today.setHours(0,0,0,0);
+    /* Midday both sides: from midnight, a release five days out rounds to
+       six and the chip reads a day late. */
+    const t = new Date();
+    const today = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12);
     return block('Coming out', films.map(f => {
       const d = new Date(f.date + 'T12:00:00');
       const days = Math.round((d - today) / 864e5);
@@ -126,10 +133,10 @@ const MoviesView = (() => {
         title: f.title, year: (f.date || '').slice(0,4),
         poster: f.poster ? `https://image.tmdb.org/t/p/w342${f.poster}` : '',
         tmdbId: f.id, score: f.score, genres: f.genres,
-        _badge: {
-          text: days <= 0 ? 'out now' : days < 7 ? `${days}d`
-              : d.toLocaleDateString(undefined,{month:'short',day:'numeric'}),
-          warn: days >= 0 && days < 7
+        /* Only films still ahead get a chip, and it says how long. */
+        _badge: days <= 0 ? null : {
+          text: days < 7 ? `${days}d` : d.toLocaleDateString(undefined,{month:'short',day:'numeric'}),
+          warn: days < 7
         }
       };
     }));
@@ -154,6 +161,9 @@ const MoviesView = (() => {
       if(b.dataset.url) window.open(b.dataset.url, '_blank', 'noopener');
     });
   }
+
+  const STAR = '★';
+  const HOLLOW = '☆';
 
   return { render };
 })();

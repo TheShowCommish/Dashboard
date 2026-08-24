@@ -41,6 +41,7 @@ const App = (() => {
       if(name === 'movies')  { MoviesView.render(); Letterboxd.load(); }
       if(name === 'notes')     StickyNotes.renderArchive();
       if(name === 'fantasy')   Fantasy.load();
+      if(name === 'todo')      TodoList.render();
     }catch(e){ console.error(`Tab "${name}" refresh failed:`, e); }
   }
 
@@ -61,13 +62,27 @@ const App = (() => {
     k_finnhub:'keys.finnhub', k_twelve:'keys.twelve',
     k_tmdb:'keys.tmdb', k_gclient:'keys.gclient',
     k_wxUrl:'weather.url',
-    k_lbUser:'movies.lbUser', k_lbProxy:'movies.lbProxy',
+    k_lbUser:'movies.lbUser', k_lbProxy:'movies.lbProxy', k_omdb:'keys.omdb',
     k_ffLeague:'fantasy.league', k_ffSeason:'fantasy.season',
     k_ffTeam:'fantasy.team', k_ffProxy:'fantasy.proxy',
     k_themeMode:'theme.mode', k_themePick:'theme.pick'
   };
 
+  /* One preview button per followed team, so a six-team deck can be
+     checked one screen at a time instead of only ever showing whichever
+     game happens to be nearest. */
+  function renderPreviewTeams(){
+    const host = document.getElementById('previewTeams');
+    if(!host) return;
+    const teams = window.Sports ? Sports.teams() : [];
+    host.innerHTML = teams.map(t => `
+      <button class="ghost-btn sm" data-preview="sports"
+              data-team="${esc(t.league)}|${esc(String(t.id))}"
+              title="Sports AD for ${esc(t.name)}">${esc(t.abbr || t.name)}</button>`).join('');
+  }
+
   function openDrawer(){
+    renderPreviewTeams();
     const pick = document.getElementById('k_themePick');
     pick.innerHTML = Themes.all.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
     for(const [el,path] of Object.entries(FIELDS))
@@ -201,13 +216,28 @@ const App = (() => {
     on('tmLeague','change',   () => Teams.fillTeams());
 
     /* Preview buttons live in the drawer, so they close it first — an AD
-       is full screen and the drawer would sit on top of it. */
+       is full screen and the drawer would sit on top of it. Delegated,
+       because the per-team buttons are rebuilt every time the drawer
+       opens and a direct listener would only ever see the first set. */
     step('kiosk previews', () => {
-      document.querySelectorAll('[data-preview]').forEach(b =>
-        b.addEventListener('click', () => {
-          closeDrawer();
-          if(window.Kiosk) Kiosk.previewAd(b.dataset.preview);
-        }));
+      drawer.addEventListener('click', e => {
+        const b = e.target.closest('[data-preview]');
+        if(!b) return;
+        const opts = b.dataset.team ? {team: b.dataset.team} : undefined;
+        closeDrawer();
+        if(window.Kiosk) Kiosk.previewAd(b.dataset.preview, opts);
+      });
+    });
+
+    step('todo', () => {
+      TodoList.boot();
+      on('todoAdd','click', () => TodoList.addFromInput());
+      on('todoFilter','click', e => {
+        const order = ['open','all','done'];
+        const next = order[(order.indexOf(TodoList.filterMode) + 1) % order.length];
+        TodoList.setFilter(next);
+        e.currentTarget.textContent = `Showing: ${next}`;
+      });
     });
 
     on('btnExport','click', () => Store.export());

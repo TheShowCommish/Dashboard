@@ -125,6 +125,7 @@ const Movies = (() => {
             `&append_to_response=credits&api_key=${key()}`));
           return {
             id: m.id,
+            imdb: full.imdb_id || '',
             title: full.title || m.title,
             date: m.release_date,
             poster: full.poster_path || m.poster_path,
@@ -168,6 +169,7 @@ const Movies = (() => {
         `&append_to_response=credits&api_key=${key()}`));
       films.push({
         id: full.id,
+        imdb: full.imdb_id || '',
         title: full.title || '',
         date: full.release_date || '',
         poster: full.poster_path || '',
@@ -181,6 +183,74 @@ const Movies = (() => {
       open(id);
     }catch(e){
       mBody.innerHTML = `<p class="empty">Could not load that film (${esc(e.message)}).</p>`;
+    }
+  }
+
+  /* Full record for one film, fetched and cached on demand. The list
+     payloads carry no synopsis for anything past the detail cap, which is
+     why the movies AD kept saying "no synopsis available". */
+  async function detail(id){
+    const have = films.find(x => String(x.id) === String(id));
+    if(have && have.overview) return have;
+    if(!key()) return have || null;
+
+    try{
+      const full = guard(await getJSON(
+        `https://api.themoviedb.org/3/movie/${id}?language=en-US` +
+        `&append_to_response=credits&api_key=${key()}`));
+      const rec = {
+        id: full.id,
+        imdb: full.imdb_id || '',
+        title: full.title || '',
+        date: full.release_date || '',
+        poster: full.poster_path || '',
+        overview: full.overview || '',
+        runtime: full.runtime || 0,
+        score: full.vote_count > 40 ? full.vote_average : null,
+        genres: (full.genres||[]).slice(0,2).map(g => g.name),
+        director: (full.credits?.crew||[]).find(c => c.job === 'Director')?.name || '',
+        cast: (full.credits?.cast||[]).slice(0,3).map(c => c.name)
+      };
+      const i = films.findIndex(x => String(x.id) === String(id));
+      if(i >= 0) films[i] = {...films[i], ...rec}; else films.push(rec);
+      return rec;
+    }catch(e){
+      console.error('Detail lookup failed for', id, e.message);
+      return have || null;
+    }
+  }
+
+  /* ---- outside ratings (OMDb) ----
+     TMDB publishes its own average and nothing else. Rotten Tomatoes comes
+     from OMDb, which is free but needs its own key — with no key the AD
+     simply shows one fewer rating rather than an error. Cached per film
+     forever: a released film's scores barely move and the free tier is
+     1,000 calls a day. */
+  const omdbCache = () => Store.get('movies.omdb', {});
+
+  async function ratings(imdbId){
+    if(!imdbId) return null;
+    const cache = omdbCache();
+    if(cache[imdbId]) return cache[imdbId];
+
+    const k = Store.get('keys.omdb','');
+    if(!k) return null;
+
+    try{
+      const d = await getJSON(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${k}`);
+      if(!d || d.Response === 'False') throw new Error(d?.Error || 'not found');
+      const find = n => (d.Ratings || []).find(r => r.Source === n)?.Value || '';
+      const out = {
+        rt: find('Rotten Tomatoes'),
+        meta: find('Metacritic'),
+        imdb: d.imdbRating && d.imdbRating !== 'N/A' ? d.imdbRating : ''
+      };
+      cache[imdbId] = out;
+      Store.set('movies.omdb', cache);
+      return out;
+    }catch(e){
+      console.error('OMDb ratings failed for', imdbId, e.message);
+      return null;
     }
   }
 
@@ -208,7 +278,7 @@ const Movies = (() => {
   const close = () => { modal.hidden = true; };
 
   return {
-    load, close, open, openTmdb,
+    load, close, open, openTmdb, detail, ratings,
     /* [{id, title, date}] for the calendar — every release in range, not
        just the enriched ones, so a pill appears for the full window. */
     get releases(){ return listed.map(f => ({id:f.id, title:f.title, date:f.date})); },

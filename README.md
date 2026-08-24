@@ -93,8 +93,10 @@ A rolling two-week grid, deliberately sparse so it can stay large: a weather gly
 
 Everything that needs room renders in the **focus strip below the grid** for whichever day is selected:
 
-- **Game preview** — both teams' logos and records, kickoff or live score, who's broadcasting, venue and the betting line. For baseball it also carries both **probable starting pitchers** with their season line. Click the card for the full stats popup, or **Standings** for the league table. When a day holds several games, one preview shows at a time and they **rotate themselves every 12 seconds**; the dots page through them by hand, and a pointer over the card holds it.
-- **Movie carousel** — posters for that day's releases with director and top-3 cast; click one for the synopsis. The rail **scrolls itself** back and forth when the day has more releases than fit, and shows no scrollbar.
+- **Game preview** — both teams' logos and records, each side's stat leaders as small buttons under its own logo, kickoff or live score, who's broadcasting, venue and the betting line. For baseball it also carries both **probable starting pitchers** with their season line. Click the card for the full stats popup, a leader for their game log, or **Standings** for the league table. When a day holds several games, one preview shows at a time and they **rotate themselves every 12 seconds**; the dots page through them by hand, and a pointer over the card holds it.
+- **Movie crawl** — posters for that day's releases with genre and director, **crawling like the market ticker** below. Click one for the synopsis. Every line of text is clipped to the width of the poster above it.
+
+The game preview and the poster crawl sit **side by side**, with the fantasy board above them, so the whole panel fits its height without scrolling.
 - **Fantasy scoreboard** — on Sundays and Mondays only, showing the week's matchup score and each side's top three scorers.
 
 Click any day to focus it; double-click for a summary dialog.
@@ -126,8 +128,9 @@ though they were flat. Hovering any bubble shows its ticker, its return, and its
 
 ### Movies
 
-Four blocks. Posters wrap into a **grid** — a few rows deep, no side-scrolling — and every poster carries
-its genre under the title:
+Four blocks. The three poster blocks are each **one line that crawls**, on the same mechanism as the
+market ticker — two copies of the row translated by half their width, so the loop never seams. Hovering
+pauses it. Every poster carries its genre under the title:
 
 - **Must watch** — your Letterboxd watchlist.
 - **Popular movies out now** — what is actually in cinemas this week, ranked by TMDB popularity.
@@ -136,10 +139,18 @@ its genre under the title:
   first page.
 - **Recently watched** — your Letterboxd diary feed, with your star ratings.
 
-Each grid stops at a couple of dozen posters and says how many it left out, so one 500-film watchlist
-cannot push everything else off the screen.
+Each line is capped so a lap stays watchable, and a chip on a **Coming out** poster says how many days
+until release. Films already in cinemas carry no chip — a row of identical labels is just noise over the
+art.
 
 See **Step 8** for the Letterboxd setup.
+
+### To Do
+
+A running backlog of improvement ideas for this dashboard — type one in, Enter or **Add** to file it,
+click the box to tick it off, × to drop it. **Showing:** cycles open → all → done. Deliberately separate
+from sticky notes: notes are pinned to a day and go stale, ideas have no date at all. It is not part of
+the kiosk rotation.
 
 ### Notes
 
@@ -169,13 +180,17 @@ What the ADs show:
   "In 4 days". If the whole week is empty the AD is **skipped** and the next pass starts immediately —
   the only slot that is ever skipped rather than rendered.
 - **Sports** — the next game as a full preview: both teams' logos and records, the screen tinted with
-  each team's own colours, where to watch, both sides' season stat leaders, and for baseball the two
-  probable starting pitchers at full size.
+  each team's own colours, the full date and start time, the venue, where to watch, the betting line,
+  both sides' season stat leaders, and for baseball the two probable starting pitchers at full size.
 - **Portfolio** — today's move, with the day's top gainers and top losers.
-- **Movies**, **Notes**, **Fantasy** — the next release or watchlist pick, the nearest open note, and the
-  current (or, midweek, the coming) matchup.
+- **Movies** — a coming release or a watchlist pick, with its synopsis (fetched on demand for films past
+  the detail cap), the exact release date and a countdown, and three ratings: Rotten Tomatoes, Letterboxd
+  and TMDB. A rating that cannot be reached shows an em dash rather than disappearing.
+- **Notes**, **Fantasy** — the nearest open note, and the current (or, midweek, the coming) matchup.
 
-**Settings → Kiosk previews** opens any single AD on demand and holds it there — no rotation, no timer —
+**Settings → Kiosk previews** carries one button per followed team as well as one per AD, so a six-team
+deck can be checked a screen at a time instead of only ever showing whichever game is nearest. Any of
+them opens that single AD and holds it there — no rotation, no timer —
 so it can be restyled without waiting for its slot. It works whether AUTO is on or off, closes with the ✕
 or Escape, and is `Kiosk.previewAd('sports')` from the console.
 
@@ -301,6 +316,12 @@ but it goes stale until you re-import.
 
 Posters are in neither payload. Titles are matched against TMDB (the key you already added in Step 3) and
 the result is cached per film, so a settled watchlist reloads without spending any API calls.
+
+**Ratings on the movie AD.** Letterboxd's site-wide average is read from the film's own page through the
+same worker, so **redeploy the worker** after this update — the `/letterboxd/film/…` path is new. Rotten
+Tomatoes has no public API at all; it comes from [OMDb](https://www.omdbapi.com/apikey.aspx) instead, a
+free key you paste into Settings → API keys. Both are cached per film forever, and either one missing
+just shows an em dash.
 
 ## Adding a theme
 
