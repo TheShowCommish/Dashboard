@@ -34,11 +34,13 @@ export default {
 
     const url = new URL(request.url);
 
-    // Only forward the fantasy API. Nothing else.
-    if (!url.pathname.startsWith('/apis/v3/games/ffl/'))
-      return new Response('That path is not proxied.', { status: 400, headers: cors });
+    // Two allowed paths, each to its own ESPN host. Nothing else forwards.
+    let host;
+    if (url.pathname.startsWith('/apis/v3/games/ffl/'))      host = 'https://lm-api-reads.fantasy.espn.com';
+    else if (url.pathname.startsWith('/apis/site/v2/sports/')) host = 'https://site.api.espn.com';
+    else return new Response('That path is not proxied.', { status: 400, headers: cors });
 
-    const target = 'https://lm-api-reads.fantasy.espn.com' + url.pathname + url.search;
+    const target = host + url.pathname + url.search;
 
     const headers = {
       'Cookie': `espn_s2=${env.ESPN_S2}; SWID=${env.ESPN_SWID}`,

@@ -240,6 +240,10 @@ input,select{
 .note .swatches span{width:12px;height:12px;border-radius:50%;cursor:pointer;border:1px solid rgba(0,0,0,.2);}
 
 /* ---- drawer + modal ---- */
+/* The hidden attribute must beat the display rules below, or Cancel
+   and Close appear to do nothing. Keep this first. */
+#drawer[hidden],#scrim[hidden],#teamModal[hidden]{display:none !important;}
+
 #scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:60;}
 #drawer{
   position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);
