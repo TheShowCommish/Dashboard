@@ -245,29 +245,42 @@ const Mail = (() => {
     { key:'Everything else', test:() => true }
   ];
 
-  /* Gmail answers a search with an estimate of how many matched, which is
-     all three of these need — a count, not the messages themselves. Spam
-     needs its own query: is:unread excludes the spam folder by default,
-     which is why it never showed up here before. */
+  /* Counting unread.
+
+     resultSizeEstimate is exactly what it says — an ESTIMATE, and a bad
+     one on a large mailbox; it was reporting hundreds of unread spam that
+     were not there. The labels endpoint carries the real figure, so the
+     two folder counts come from there and only the "important" slice,
+     which has no label of its own, is still a search. */
+  async function labelUnread(id){
+    try{
+      const d = await Google.api(
+        `https://gmail.googleapis.com/gmail/v1/users/me/labels/${id}`);
+      return d.messagesUnread || 0;
+    }catch(e){ return 0; }
+  }
+
   async function tally(){
-    const ask = async q => {
-      try{
-        const d = await Google.api('https://gmail.googleapis.com/gmail/v1/users/me/messages' +
-          `?q=${encodeURIComponent(q)}&maxResults=1`);
-        return d.resultSizeEstimate || 0;
-      }catch(e){ return 0; }
-    };
     /* Gmail's importance marker is generous — it lands on newsletters and
        receipts as readily as on anything that needs an answer. Important
        here means the Primary inbox only, which is what a red triangle
-       should mean. */
-    const [all, important, spam] = await Promise.all([
-      ask('in:inbox is:unread'),
-      ask('in:inbox is:unread is:important -category:promotions -category:social ' +
-          '-category:updates -category:forums'),
-      ask('in:spam is:unread')
+       should mean. Counted by listing the ids, because this is the one
+       number no label can give and an estimate would be wrong again. */
+    const askExact = async q => {
+      try{
+        const d = await Google.api('https://gmail.googleapis.com/gmail/v1/users/me/messages' +
+          `?q=${encodeURIComponent(q)}&maxResults=100`);
+        return (d.messages || []).length;
+      }catch(e){ return 0; }
+    };
+
+    const [inbox, spam, important] = await Promise.all([
+      labelUnread('INBOX'),
+      labelUnread('SPAM'),
+      askExact('in:inbox is:unread is:important -category:promotions -category:social ' +
+               '-category:updates -category:forums')
     ]);
-    counts = {important, normal: Math.max(0, all - important), spam};
+    counts = {important, normal: Math.max(0, inbox - important), spam};
   }
 
   async function load(){

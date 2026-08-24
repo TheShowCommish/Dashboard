@@ -19,6 +19,9 @@ const App = (() => {
       hour:    now.getHours(),
       month:   now.getMonth() + 1
     });
+    /* The balls answer the same question the game-day theme does, so they
+       are re-drawn on the same beat. */
+    if(window.GameBalls) GameBalls.render();
   }
 
   /* ---- tabs ---- */

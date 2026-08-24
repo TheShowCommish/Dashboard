@@ -2018,3 +2018,15 @@ body.fx-sun .pf-card{
 /* The theme label sat on top of the ticker bars. */
 #rail{bottom:calc(var(--ticker-h) + 10px);}
 #railLabel{padding:0 0 40px;}
+
+/* ---- game-day balls ----
+   Top middle, above the header, one per team out today. Small on
+   purpose: this is a marker, not a scoreboard. */
+#gameBalls{
+  position:fixed;top:4px;left:50%;transform:translateX(-50%);
+  z-index:55;display:flex;align-items:center;gap:8px;
+  pointer-events:none;
+}
+#gameBalls[hidden]{display:none;}
+.gb{display:block;line-height:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));}
+.gb svg{height:20px;width:auto;display:block;}

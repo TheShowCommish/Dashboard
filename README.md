@@ -178,7 +178,7 @@ Its own tab, intentionally a shell for now.
 Two bars along the bottom. Each has a **fixed head** that never moves and a **crawl** that takes the width left over; both pause on hover.
 
 - **Markets** — the head carries today's move across the whole portfolio, then the best name and the worst with their percentages. The crawl continues with everything else.
-- **Inbox** — three lamps: a red warning triangle for important, an envelope for ordinary, a tin for spam, each with its unread count. **Unlit is an outline**; anything unread fills the shape and colours the number. Spam gets its own Gmail query, since `is:unread` excludes the spam folder by default.
+- **Inbox** — three lamps: a red warning triangle for important, an envelope for ordinary, a tin for spam, each with its unread count. **Unlit is an outline**; anything unread fills the shape and colours the number. The inbox and spam figures come from Gmail's labels endpoint, which carries the real count — a search's `resultSizeEstimate` is exactly that, an estimate, and on a large mailbox it is wrong by hundreds. Important has no label of its own, so it is counted by listing the ids of unread, important, Primary-inbox mail.
 
 Teams are managed in Settings, since following a team is a rare action and its games belong on the calendar.
 
@@ -390,7 +390,14 @@ top edge of one cell is behind the cell above it.
 On a day a followed team plays, the deck paints itself in **that team's own colour** — accent, rail,
 panel wash and edges — and the status rail says whose day it is. A colour too dark to read against
 falls back to the team's alternate, and then to the standard green rather than shipping something
-illegible. (The Raiders are the case that matters: their primary is black, so the deck goes silver.)
+illegible. A dark-but-not-black primary is **lifted** toward the light rather than swapped out, so a navy
+team stays navy — the Sixers and the Giants both have navy primaries that a flat brightness cutoff used
+to push onto their red alternates. Only an actually black primary falls through, which is the Raiders,
+and they go silver.
+
+A small **ball sits at the top of the screen for each team playing that day**, in that team's colour and
+in the shape of its sport — four teams out on the same day reads as two footballs, a basketball and a
+baseball.
 
 **When two teams play at once**, a game already in progress beats one that has not started, and among
 those that have not, the one kicking off soonest wins. A genuine tie — two kickoffs at the same minute —

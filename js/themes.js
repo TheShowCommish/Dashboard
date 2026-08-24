@@ -250,15 +250,35 @@ const lum = rgb => {
   return .2126*f(rgb[0]) + .7152*f(rgb[1]) + .0722*f(rgb[2]);
 };
 
-/* A team's primary is sometimes near-black (navy, midnight) and would
-   vanish as an accent on a dark deck. Take the alternate when that
-   happens, and give up rather than ship something unreadable. */
+/* A team's primary is often dark — navy, midnight, and in a few cases
+   actually black. Only black is unusable: a navy is still that team's
+   colour and should stay blue rather than being swapped for whatever
+   their secondary happens to be. So anything with light in it is kept
+   and LIFTED until it reads against a dark panel; only something with
+   effectively no light falls through to the alternate.
+
+   The Sixers and the Giants are the cases that drove this: both are navy
+   primaries that a flat brightness cutoff pushed onto their red
+   alternates. */
 function pickReadable(primary, alt){
   for(const c of [primary, alt]){
     const bits = hexBits(c);
-    if(bits && lum(bits) > .06) return c.startsWith('#') ? c : `#${c}`;
+    if(bits && lum(bits) > .012) return lift(c.startsWith('#') ? c : `#${c}`, .085);
   }
   return null;
+}
+
+/* Mix toward white until it carries enough light to sit on the deck,
+   keeping the hue. Steps rather than solving for it: five per cent at a
+   time is close enough and cannot overshoot into pastel. */
+function lift(colour, min){
+  let out = colour;
+  for(let i = 0; i < 12; i++){
+    const bits = hexBits(out);
+    if(!bits || lum(bits) >= min) break;
+    out = mix('#ffffff', out, .08);
+  }
+  return out;
 }
 
 const inkFor = c => {
