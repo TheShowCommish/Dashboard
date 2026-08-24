@@ -14,10 +14,23 @@ const GameCard = (() => {
 
   function shell(g){
     const el = document.createElement('div');
-    el.className = `gc${isLive(g) ? ' is-live' : ''}`;
+    el.className = `gc gc-open${isLive(g) ? ' is-live' : ''}`;
     el.dataset.event = g.eventId;
+    el.tabIndex = 0;
+    el.title = 'Open game stats';
     el.innerHTML = render(g, null);
     wire(el, g, null);
+
+    /* The whole card is the way into the game modal. Bound once on the
+       element rather than on its contents, so it survives the innerHTML
+       swap when the summary lands; the inner controls stop propagation. */
+    el.addEventListener('click', () => GameStats.open(g));
+    el.addEventListener('keydown', e => {
+      /* Only the card itself — Enter on a player button inside it belongs
+         to that button, and its own handler has already run. */
+      if(e.target !== el) return;
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); GameStats.open(g); }
+    });
 
     /* Enrich in the background; a failure leaves the schedule view intact. */
     Sports.summary(g.league, g.eventId, isLive(g))

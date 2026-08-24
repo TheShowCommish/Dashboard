@@ -12,6 +12,12 @@
    after the last real pointer or key event; the skip button (bottom-left,
    always visible while kiosk is on) is exempt and just jumps to the next
    AD without pausing.
+
+   An AD that would be blank is skipped rather than shown — see
+   AD_CONTENT_CHECKS — and its slot is burned so the rotation stays fair.
+
+   Kiosk.previewAd(name) holds one AD on screen with no timer and no
+   advance, for iterating on its styling. It works with rotation off.
    ============================================================ */
 
 const Kiosk = (() => {
@@ -27,6 +33,9 @@ const Kiosk = (() => {
   let adIdx    = 0;
   let timerId  = null;
   let pausedUntil = 0;
+  /* Preview holds a single AD on screen indefinitely: no timer, no
+     advance, and independent of whether rotation is even enabled. */
+  let preview  = false;
 
   /* One cursor per sub-selecting tab. Read modulo current list length so a
      team added or removed at runtime wraps cleanly rather than throwing or
@@ -50,7 +59,7 @@ const Kiosk = (() => {
 
   /* ---- state machine ---- */
   function tick(){
-    if(!enabled) return;
+    if(!enabled || preview) return;
 
     /* Interaction may have landed since this timer was armed; honour the
        pause instead of firing on top of a user still using the deck. */
@@ -68,13 +77,38 @@ const Kiosk = (() => {
     }
 
     tabIdx++;
-    if(tabIdx >= TABS.length){
-      mode = 'ad';
-      openAd(TABS[adIdx]);
-      schedule(AD_MS);
-    } else {
+    if(tabIdx >= TABS.length) startAd();
+    else { showCurrentTab(); schedule(TAB_MS); }
+  }
+
+  /* Open the AD whose turn it is — unless that AD has nothing worth a
+     full screen, in which case its slot is burned and the next pass of
+     tabs starts immediately. adIdx still advances, so an AD that is
+     empty every pass cannot monopolise the following slot. */
+  function startAd(){
+    const name = TABS[adIdx];
+    if(!hasContent(name)){
+      adIdx = (adIdx + 1) % TABS.length;
+      mode = 'tab';
+      tabIdx = 0;
       showCurrentTab();
       schedule(TAB_MS);
+      return;
+    }
+    mode = 'ad';
+    openAd(name);
+    schedule(AD_MS);
+  }
+
+  /* Default true: an AD is shown unless its renderer has declared a way
+     to know it would be blank. */
+  function hasContent(name){
+    try{
+      const fn = AD_CONTENT_CHECKS[name];
+      return fn ? !!fn() : true;
+    }catch(e){
+      console.error(`AD content check "${name}" failed:`, e);
+      return true;
     }
   }
 
@@ -113,6 +147,7 @@ const Kiosk = (() => {
   /* ---- start / stop / toggle ---- */
   function start(){
     if(enabled) return;
+    preview = false;
     enabled = true;
     Store.set('kiosk.enabled', true);
     document.body.classList.add('kiosk-on');
@@ -145,12 +180,14 @@ const Kiosk = (() => {
     b.classList.toggle('is-on', enabled);
     b.title = enabled ? 'Rotation on — click to stop' : 'Start rotation';
     const s = skipBtn();
-    if(s) s.hidden = !enabled;
+    if(s) s.hidden = !enabled || preview;   // nothing to skip to in a preview
   }
 
   /* ---- interaction detection ---- */
   function noteInteraction(){
-    if(!enabled) return;
+    /* A preview is a deliberate, held state — touching the screen must not
+       schedule a tick that would pull the deck out from under it. */
+    if(!enabled || preview) return;
     pausedUntil = Date.now() + RESUME_MS;
     /* If an AD is up when the user touches the screen, get out of the way
        immediately rather than making them wait for the ad timer. */
@@ -165,28 +202,55 @@ const Kiosk = (() => {
        This is a control, not an interruption — it should not trigger the
        resume-after-idle pause. */
     closeAd();
-    mode = 'ad';
-    openAd(TABS[adIdx]);
-    schedule(AD_MS);
+    startAd();
   }
 
   /* ---- AD overlay ---- */
   function openAd(name){
     const el = overlay();
     if(!el) return;
-    el.className = `ad ad-${name} is-on`;
-    el.innerHTML = `<div class="ad-brand">${name.toUpperCase()}</div>
+    el.className = `ad ad-${name} is-on${preview ? ' is-preview' : ''}`;
+    el.innerHTML = `${preview ? `<button id="adClose" class="ad-x" title="Close preview"
+                       aria-label="Close preview">✕</button>` : ''}
+                    <div class="ad-brand">${name.toUpperCase()}${preview ? ' · PREVIEW' : ''}</div>
                     <div class="ad-body" id="adBody">
                       <p class="ad-empty">Loading…</p>
                     </div>`;
+    const x = el.querySelector('#adClose');
+    if(x) x.addEventListener('click', closePreview);
     renderAd(name);
   }
 
   function closeAd(){
+    preview = false;
+    updateToggleUi();
     const el = overlay();
     if(!el) return;
     el.className = 'ad';
     el.innerHTML = '';
+  }
+
+  /* ---- preview ----
+     Open one AD and leave it there. Works with rotation off, and with it
+     on it parks the state machine until the preview is dismissed. */
+  function previewAd(name){
+    if(!AD_RENDERERS[name]){
+      console.error(`No such AD: "${name}". Try one of: ${TABS.join(', ')}.`);
+      return;
+    }
+    clearTimer();
+    preview = true;
+    updateToggleUi();
+    openAd(name);
+  }
+
+  /* Back to whatever tab was showing. Rotation, if it was on, picks up
+     from where it was parked rather than restarting the pass. */
+  function closePreview(){
+    const wasPreview = preview;
+    closeAd();
+    if(!wasPreview) return;
+    if(enabled){ mode = 'tab'; schedule(TAB_MS); }
   }
 
   function renderAd(name){
@@ -217,32 +281,58 @@ const Kiosk = (() => {
     fantasy:  adFantasy
   };
 
+  /* Only ADs that can be genuinely blank need an entry; everything else
+     defaults to "show it". A false return burns the slot — see startAd. */
+  const AD_CONTENT_CHECKS = {
+    calendar: () => !!calendarWindow()
+  };
+
   const sameDay = (a,b) => a && b &&
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
 
-  function adCalendar(host){
-    const today = new Date();
-    const events = (window.Calendar ? Calendar.events : [])
-      .filter(e => e.start && sameDay(new Date(e.start), today))
-      .slice(0, 8);
+  /* The nearest day inside the next week that actually has events —
+     today first, then one day at a time out to day 7. Null means the
+     whole window is empty, which is what lets the AD be skipped. */
+  function calendarWindow(){
+    const all = (window.Calendar ? Calendar.events : []) || [];
+    const base = new Date();
+    for(let i = 0; i <= 7; i++){
+      const day = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+      const events = all
+        .filter(e => e.start && sameDay(new Date(e.start), day))
+        .sort((a,b) => new Date(a.start) - new Date(b.start));
+      if(events.length) return {day, days:i, events: events.slice(0, 8)};
+    }
+    return null;
+  }
 
-    if(!events.length){
+  function adCalendar(host){
+    const win = calendarWindow();
+
+    /* Rotation never lands here — startAd skips an empty calendar. A
+       preview can, so it still needs to say something. */
+    if(!win){
+      const today = new Date();
       host.innerHTML = `<div class="ad-hero">
         <h1 class="ad-h1">${today.toLocaleDateString(undefined,{weekday:'long'})}</h1>
         <p class="ad-sub">${today.toLocaleDateString(undefined,{month:'long',day:'numeric'})}</p>
-        <p class="ad-empty ad-big">Nothing on the calendar today.</p>
+        <p class="ad-empty ad-big">Nothing on the calendar this week.</p>
       </div>`;
       return;
     }
 
+    const head = win.days === 0 ? 'Today'
+               : win.days === 1 ? 'Tomorrow'
+               : `In ${win.days} days`;
+
     host.innerHTML = `
       <div class="ad-hero">
-        <h1 class="ad-h1">Today</h1>
-        <p class="ad-sub">${today.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p>
+        <h1 class="ad-h1">${esc(head)}</h1>
+        <p class="ad-sub">${win.day.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</p>
       </div>
-      <ul class="ad-list">${events.map(e => {
+      <ul class="ad-list">${win.events.map(e => {
         const t = new Date(e.start);
         const when = e.allDay ? 'All day'
                     : t.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
@@ -471,6 +561,12 @@ const Kiosk = (() => {
       if(!isInternal(e.target)) noteInteraction();
     }, {capture:true, passive:true});
 
+    /* Escape is the way out of every other overlay on the deck, so it is
+       the way out of a preview too. */
+    document.addEventListener('keydown', e => {
+      if(e.key === 'Escape' && preview) closePreview();
+    });
+
     const t = toggleBtn();
     if(t) t.addEventListener('click', toggle);
     const s = skipBtn();
@@ -480,7 +576,9 @@ const Kiosk = (() => {
     updateToggleUi();
   }
 
-  return { boot, start, stop, toggle, get enabled(){ return enabled; } };
+  return { boot, start, stop, toggle, previewAd, closePreview,
+           get enabled(){ return enabled; },
+           get previewing(){ return preview; } };
 })();
 
 window.Kiosk = Kiosk;

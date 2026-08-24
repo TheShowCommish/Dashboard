@@ -239,6 +239,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{
   border:1px solid var(--edge);border-radius:var(--r);padding:14px 16px;
 }
 .gc.is-live{border-color:var(--bad);}
+/* The card body opens the game modal, same affordance as a .row-btn row. */
+.gc-open{cursor:pointer;transition:background .12s ease,border-color .12s ease;}
+.gc-open:hover,
+.gc-open:focus-visible{
+  background:color-mix(in srgb,var(--accent) 8%,transparent);
+  border-color:color-mix(in srgb,var(--accent) 45%,var(--edge));
+}
+.gc-open:focus-visible{outline:none;}
+.gc-open .gc-player,.gc-open .gc-stand{cursor:pointer;}
 .gc-top{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
 .gc-league{
   font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
@@ -442,6 +451,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{
 .plot-pt.up circle{fill:var(--good);}
 .plot-pt.down circle{fill:var(--bad);}
 .plot-lab{fill:var(--ink);font-family:var(--mono);font-size:9px;font-weight:700;pointer-events:none;}
+.pf-unpriced{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  margin:10px 0 0;padding:10px 12px;
+  border:1px dashed var(--edge);border-radius:var(--r);
+}
+.pf-unpriced .plot-key{flex:1 1 100%;}
+
 .plot-empty{padding:26px;text-align:center;}
 
 /* ---- note tray ---- */
@@ -1047,6 +1063,17 @@ body{
   padding:60px 80px 100px;overflow:hidden;
   font-family:var(--display);
 }
+
+/* Preview only: the one control on an otherwise chrome-free overlay. */
+.ad-x{
+  position:absolute;top:22px;right:26px;z-index:2;
+  width:48px;height:48px;border-radius:99px;
+  border:1px solid var(--edge);background:color-mix(in srgb,var(--panel-2) 80%,transparent);
+  color:var(--muted);font-size:22px;line-height:1;cursor:pointer;
+}
+.ad-x:hover{border-color:var(--accent);color:var(--accent);}
+
+.preview-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
 
 .ad-brand{
   font-family:var(--mono);letter-spacing:.35em;font-size:12px;

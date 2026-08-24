@@ -200,6 +200,16 @@ const App = (() => {
     on('tmSave','click',      () => Teams.saveTeam());
     on('tmLeague','change',   () => Teams.fillTeams());
 
+    /* Preview buttons live in the drawer, so they close it first — an AD
+       is full screen and the drawer would sit on top of it. */
+    step('kiosk previews', () => {
+      document.querySelectorAll('[data-preview]').forEach(b =>
+        b.addEventListener('click', () => {
+          closeDrawer();
+          if(window.Kiosk) Kiosk.previewAd(b.dataset.preview);
+        }));
+    });
+
     on('btnExport','click', () => Store.export());
     on('btnWipe','click', () => {
       if(confirm('Erase every saved key, note, holding and team from this browser?')){

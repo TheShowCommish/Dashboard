@@ -189,6 +189,8 @@ Quotes refresh **once a day** from Finnhub, on first load of the day, and cache 
 
 Finnhub's free tier returns **only the current price and today's move** — no history. The weekly, monthly, 6-month and 1-year windows therefore need a second free key from [Twelve Data](https://twelvedata.com/pricing) (Settings → API keys). Without it, Today still works and the other four windows say so rather than showing nothing.
 
+Finnhub does not price **mutual funds, money-market funds and some ETFs** at all — it answers with a zero price rather than an error. Those holdings are then quoted from Twelve Data instead, and if that has no coverage either, the `Price` / `Mkt Val` columns from your own CSV are used as a last resort. Anything left over is listed by name in a **Not priced** strip under the plot rather than being dropped from the tab; `Stocks.coverage()` in the console prints the per-symbol breakdown — live quote, which provider it came from, CSV fallback, and whether history exists.
+
 Twelve Data's free tier allows 800 credits a day and 8 requests a minute. Symbols are batched 8 to a request, so 41 holdings cost 41 credits in about 6 requests, once daily. Only six prices per symbol are kept — the rest of the year of daily bars is discarded on arrival, which keeps the cache small.
 
 ### Deliberately vague

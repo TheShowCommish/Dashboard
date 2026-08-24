@@ -4,6 +4,9 @@
    Import a positions CSV once to learn WHAT you hold; Finnhub prices it
    daily and Twelve Data supplies the history behind the weekly, monthly,
    6-month and 1-year windows (Finnhub's free tier gives today only).
+   Twelve Data also covers the quotes Finnhub will not price — funds and
+   money-market positions — and the CSV's own Price column is the last
+   fallback, so a held position never silently disappears from the tab.
 
    House rule: no total portfolio value is ever rendered. Percentages are
    exact; dollar amounts are described by order of magnitude and nothing
@@ -167,7 +170,12 @@ const Stocks = (() => {
         const m = by.get(r.symbol);
         m.shares += r.shares;
         m.cost   += r.cost;
-        if(m.csvValue != null && r.csvValue != null) m.csvValue += r.csvValue;
+        /* Shares are summed, so a value that covers only one of the two
+           lots would price the merged position too low. Either both rows
+           carry a market value or the position has none. */
+        m.csvValue = (m.csvValue != null && r.csvValue != null)
+          ? m.csvValue + r.csvValue : null;
+        if(m.csvPrice == null) m.csvPrice = r.csvPrice;
         if(!m.accounts.includes(r.account)) m.accounts.push(r.account);
         const a = m.byAccount[r.account] || (m.byAccount[r.account] = {shares:0, cost:0});
         a.shares += r.shares;
@@ -228,6 +236,9 @@ const Stocks = (() => {
     if(Object.keys(quotes).length) render();      // yesterday's numbers while refreshing
 
     await Promise.all([loadQuotes(hold), loadHistory(hold, force)]);
+    /* Runs after both, not alongside them: it shares Twelve Data's
+       per-minute allowance with the history pull. */
+    await fillQuoteGaps(hold);
     render();
     loadEarnings();
     if(window.Ticker) Ticker.render();
@@ -256,6 +267,62 @@ const Stocks = (() => {
       Store.set('portfolio.quotes', {at:quotedAt.toISOString(), quotes});
     }else if(!Object.keys(quotes).length){
       Store.toast('No quotes came back from Finnhub — check the key in Settings.');
+    }
+  }
+
+  /* ---- quote gaps (Twelve Data) ----
+     Finnhub's free tier has no quote for mutual funds, money-market funds
+     and a fair few ETFs — it answers 200 with c:0. Twelve Data prices most
+     of them, and the key is already here for the history, so the two
+     sources are combined: Finnhub first, Twelve Data for whatever it left
+     empty. Anything neither can price falls back to the CSV. */
+  async function fillQuoteGaps(hold){
+    const key = Store.get('keys.twelve','');
+    if(!key) return;
+
+    const gaps = hold.filter(h => !(quotes[h.symbol] && quotes[h.symbol].c));
+    if(!gaps.length) return;
+
+    const bySym = new Map(gaps.map(h => [h.ticker, h.symbol]));
+    const tickers = [...bySym.keys()];
+    let found = 0;
+
+    for(let i = 0; i < tickers.length; i += 8){
+      const batch = tickers.slice(i, i+8);
+      try{
+        const d = await getJSON('https://api.twelvedata.com/quote' +
+          `?symbol=${encodeURIComponent(batch.join(','))}&apikey=${key}`);
+
+        if(d && d.code && d.code !== 200) throw new Error(d.message || `Twelve Data error ${d.code}`);
+
+        /* One symbol returns the quote directly; several return a map. */
+        const series = batch.length === 1 ? {[batch[0]]: d} : d;
+        for(const t of batch){
+          const q = series[t];
+          if(!q || q.status === 'error') continue;      // not covered there either
+          const c = parseFloat(q.close);
+          if(!Number.isFinite(c) || !c) continue;
+          const prev = parseFloat(q.previous_close);
+          const usable = Number.isFinite(prev) && prev > 0;
+          quotes[bySym.get(t)] = {
+            c,
+            d:  usable ? c - prev : 0,
+            dp: usable ? (c/prev - 1) * 100 : 0,
+            src: 'twelve'
+          };
+          found++;
+        }
+      }catch(e){
+        console.error('Twelve Data quote failed for', batch.join(','), e.message);
+        /* A rejected key or a spent allowance will reject every remaining
+           batch the same way — stop rather than burn the rest. */
+        if(/api key|401|403|429|limit/i.test(e.message)) break;
+      }
+    }
+
+    if(found){
+      quotedAt = new Date();
+      Store.set('portfolio.quotes', {at:quotedAt.toISOString(), quotes});
     }
   }
 
@@ -460,6 +527,7 @@ const Stocks = (() => {
       return {
         symbol: h.symbol,
         name: h.name || '',
+        priced: p != null,
         val: p != null ? p * sh : 0,
         ret: (p != null && then) ? (p/then - 1) * 100 : null
       };
@@ -645,7 +713,7 @@ const Stocks = (() => {
         return `<button class="pf-card is-empty${on ? ' is-on' : ''}" data-win="${w.id}">
           <span class="pf-when">${w.label}</span>
           <span class="pf-none">${w.id === 'd1'
-            ? 'Needs a Finnhub key.'
+            ? 'Needs a Finnhub or Twelve Data key.'
             : needKey ? 'Add a Twelve Data key in Settings.'
                       : 'No history yet.'}</span>
         </button>`;
@@ -663,7 +731,20 @@ const Stocks = (() => {
     }).join('');
 
     const label = WINDOWS.find(w => w.id === plotWin)?.label || '';
-    const plotted = weights(plotWin).filter(p => p.val > 0).length;
+    const rows = weights(plotWin);
+    const plotted = rows.filter(p => p.val > 0).length;
+
+    /* A holding with no price has no weight, so the scatter has nowhere to
+       put it — but it is still money the user holds, and silently dropping
+       it makes the tab look like it lost positions. Name them instead. */
+    const unpriced = rows.filter(p => !p.priced);
+    const unpricedStrip = unpriced.length ? `
+      <div class="pf-unpriced">
+        <span class="mv-label">Not priced</span>
+        ${unpriced.map(p => `<span class="chip" title="${esc(p.name || p.symbol)}">${esc(p.symbol)}</span>`).join('')}
+        <span class="plot-key">no quote from Finnhub or Twelve Data and no price column in the
+          import — re-import the CSV to price these at their export-day value</span>
+      </div>` : '';
 
     body.innerHTML = `
       <div class="pf-grid">${cards}</div>
@@ -675,8 +756,9 @@ const Stocks = (() => {
         ${scatter(plotWin)}
         <div class="plot-tip" hidden></div>
       </div>
+      ${unpricedStrip}
       <p class="pf-foot">${hold.length} holdings${account ? ` in ${esc(account)}` : ' across all accounts'}
-        · ${plotted} plotted · quotes ${stampText()}${hasHistory ? ' · history current' : ''}
+        · ${plotted} plotted${unpriced.length ? ` · ${unpriced.length} unpriced` : ''} · quotes ${stampText()}${hasHistory ? ' · history current' : ''}
         · exact percentages, deliberately fuzzy dollars</p>`;
 
     body.querySelectorAll('[data-win]').forEach(b => b.onclick = () => {
@@ -741,8 +823,39 @@ const Stocks = (() => {
     }
   }
 
+  /* ---- coverage ----
+     Why a holding is or is not on the tab, per symbol. Console tool:
+     Stocks.coverage() after a load, to see exactly which positions have
+     no live quote, no CSV fallback, or no Twelve Data history. */
+  function coverage(log = true){
+    const rows = Store.get('holdings',[]).map(h => ({
+      symbol: h.symbol,
+      ticker: h.ticker,
+      type: h.type || '',
+      quote: quotes[h.symbol]?.c ?? null,
+      quoteFrom: quotes[h.symbol] ? (quotes[h.symbol].src || 'finnhub') : null,
+      csvPrice: h.csvPrice ?? null,
+      csvValue: h.csvValue ?? null,
+      price: priceNow(h),
+      history: !!anchors[h.symbol]
+    }));
+    const out = {
+      holdings: rows.length,
+      priced: rows.filter(r => r.price != null).length,
+      unpriced: rows.filter(r => r.price == null).map(r => r.symbol),
+      noHistory: rows.filter(r => !r.history).map(r => r.symbol),
+      rows
+    };
+    if(log){
+      console.log(`${out.priced}/${out.holdings} priced · ` +
+        `${out.unpriced.length} unpriced · ${out.noHistory.length} without history`);
+      if(console.table) console.table(rows);
+    }
+    return out;
+  }
+
   return {
-    load, ingest, parse, refresh: () => load(true),
+    load, ingest, parse, coverage, refresh: () => load(true),
     get earnings(){ return earnings; },
     /* Biggest absolute movers today, for the ticker. */
     get movers(){
