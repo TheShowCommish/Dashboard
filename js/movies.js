@@ -1,13 +1,12 @@
 /* ============================================================
    movies.js — upcoming theatrical releases from TMDB.
 
-   Posters in a grid. Director, genre and top-3 cast sit on every card;
-   clicking a card opens the synopsis. Credits and genres come from one
-   append_to_response call per film rather than three separate requests.
+   Releases become pills on the calendar; clicking one opens the poster,
+   synopsis, director, genre and top-3 cast. Credits and genres come from
+   one append_to_response call per film rather than three requests.
    ============================================================ */
 
 const Movies = (() => {
-  const body   = document.getElementById('moviesBody');
   const modal  = document.getElementById('movieModal');
   const mBody  = document.getElementById('movieModalBody');
 
@@ -24,7 +23,7 @@ const Movies = (() => {
   }
 
   async function load(){
-    if(!key()) return tileError(body,'Add a TMDB key in Settings.');
+    if(!key()) return;                      // no key: the calendar simply carries no films
 
     try{
       const d = guard(await getJSON(
@@ -35,9 +34,7 @@ const Movies = (() => {
         .sort((a,b) => a.release_date.localeCompare(b.release_date))
         .slice(0,8);
 
-      if(!soon.length) return tileError(body,'No upcoming releases listed right now.');
-
-      body.innerHTML = '<p class="empty">Loading details…</p>';
+      if(!soon.length){ films = []; return; }
 
       /* One detail call per film, in parallel. A film whose details fail
          still renders from the list payload it already has. */
@@ -69,37 +66,11 @@ const Movies = (() => {
         }
       }));
 
-      render();
+      if(window.CalendarView) CalendarView.render();
     }catch(e){
-      tileError(body,`Movies failed to load (${esc(e.message)}). Check the TMDB key.`);
+      console.error('Movies failed to load:', e);
+      Store.toast(`Movies failed to load (${e.message}). Check the TMDB key.`);
     }
-  }
-
-  function render(){
-    body.innerHTML = `<div class="mv-grid">${films.map(f => {
-      const d0 = new Date(f.date+'T12:00:00');
-      const days = Math.round((d0 - Date.now())/864e5);
-      const art = f.poster
-        ? `<img class="mv-poster" src="${IMG}${esc(f.poster)}" alt="" loading="lazy">`
-        : `<div class="mv-poster mv-noart">🎬</div>`;
-
-      return `<button class="mv-card" data-film="${esc(f.id)}"
-                      aria-label="Details for ${esc(f.title)}">
-        ${art}
-        <span class="mv-chip ${days<=7?'warn':''}">${days<=0 ? 'out now' : days+'d'}</span>
-        <span class="mv-info">
-          <span class="mv-title">${esc(f.title)}</span>
-          <span class="mv-line">${d0.toLocaleDateString(undefined,{month:'short',day:'numeric'})}${
-            f.genres.length ? ` · ${esc(f.genres.join(', '))}` : ''}${
-            f.score ? ` · ${f.score.toFixed(1)}★` : ''}</span>
-          ${f.director ? `<span class="mv-line"><i>Dir</i> ${esc(f.director)}</span>` : ''}
-          ${f.cast.length ? `<span class="mv-line"><i>Cast</i> ${esc(f.cast.join(', '))}</span>` : ''}
-        </span>
-      </button>`;
-    }).join('')}</div>`;
-
-    body.querySelectorAll('[data-film]').forEach(b =>
-      b.onclick = () => open(b.dataset.film));
   }
 
   function open(id){
@@ -125,5 +96,14 @@ const Movies = (() => {
 
   const close = () => { modal.hidden = true; };
 
-  return { load, close };
+  return {
+    load, close, open,
+    /* [{id, title, date}] for the calendar. */
+    get releases(){ return films.map(f => ({id:f.id, title:f.title, date:f.date})); }
+  };
 })();
+
+/* module export: a top-level const does not become a window property in a
+   classic script, so the window.X guards other modules use would all read
+   undefined without this. */
+window.Movies = Movies;

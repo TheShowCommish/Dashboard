@@ -272,3 +272,8 @@ const Teams = (() => {
     get games(){ return games; }
   };
 })();
+
+/* module export: a top-level const does not become a window property in a
+   classic script, so the window.X guards other modules use would all read
+   undefined without this. */
+window.Teams = Teams;

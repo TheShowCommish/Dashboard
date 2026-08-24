@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
 
@@ -24,6 +24,14 @@
     <h1>Control Deck</h1>
     <p id="headSub">Loading systems…</p>
   </div>
+
+  <nav id="tabs" role="tablist" aria-label="Views">
+    <button class="tab-btn is-on" data-tab="calendar"  role="tab" aria-selected="true">Calendar</button>
+    <button class="tab-btn"       data-tab="portfolio" role="tab" aria-selected="false">Portfolio</button>
+    <button class="tab-btn"       data-tab="notes"     role="tab" aria-selected="false">Notes</button>
+    <button class="tab-btn"       data-tab="fantasy"   role="tab" aria-selected="false">Fantasy</button>
+  </nav>
+
   <div class="head-right">
     <div class="clock">
       <span id="clockTime">--:--</span>
@@ -33,78 +41,86 @@
   </div>
 </header>
 
-<main id="grid">
+<main id="deck">
 
-  <section class="tile tile-weather" id="tileWeather">
-    <div class="tile-head"><h2>Weather</h2>
-      <span class="chip" id="wxUpdated" title="Last updated">—</span>
-      <button id="btnWxRefresh" class="ghost-btn sm" aria-label="Refresh weather now">Refresh</button>
+  <!-- ===================== Calendar ===================== -->
+  <section class="view is-on" id="view-calendar" role="tabpanel">
+    <div class="view-head">
+      <div class="view-title">
+        <h2 id="calRange">—</h2>
+        <span class="chip" id="wxUpdated" title="Weather last updated">—</span>
+      </div>
+      <div class="view-tools">
+        <button id="calPrev"  class="ghost-btn sm" aria-label="Previous two weeks">‹</button>
+        <button id="calToday" class="ghost-btn sm">Today</button>
+        <button id="calNext"  class="ghost-btn sm" aria-label="Next two weeks">›</button>
+        <button id="btnWxRefresh" class="ghost-btn sm">Refresh</button>
+      </div>
     </div>
-    <div class="tile-body" id="weatherBody"><p class="empty">Loading weather…</p></div>
-  </section>
 
-  <section class="tile tile-cal" id="tileCal">
-    <div class="tile-head"><h2>Calendar</h2>
-      <button id="btnGoogle" class="ghost-btn sm">Connect Google</button>
+    <div class="cal-wrap">
+      <div class="cal-dow" id="calDow"></div>
+      <div class="cal-grid" id="calGrid"></div>
     </div>
-    <div class="tile-body" id="calBody"><p class="empty">Connect Google to pull events. Favorite-team games show up here too.</p></div>
+
+    <aside class="tray">
+      <div class="tray-head">
+        <h3>Unscheduled notes</h3>
+        <button id="btnAddNote" class="ghost-btn sm">New note</button>
+      </div>
+      <p class="note-line">Drag a note onto any day to pin it there.</p>
+      <div id="trayBoard" class="tray-board"></div>
+    </aside>
   </section>
 
-  <section class="tile tile-mail" id="tileMail">
-    <div class="tile-head"><h2>Inbox</h2><span class="chip" id="mailCount">—</span></div>
-    <div class="tile-body" id="mailBody"><p class="empty">Connect Google to sort mail by importance.</p></div>
-  </section>
-
-  <section class="tile tile-port" id="tilePortfolio">
-    <div class="tile-head"><h2>Portfolio</h2>
-      <span class="chip" id="pfUpdated" title="Quotes last refreshed">—</span>
-      <button id="btnPfRefresh" class="ghost-btn sm" aria-label="Refresh quotes now">Refresh</button>
-      <label class="ghost-btn sm file-btn">Import<input id="csvInput" type="file" accept=".csv,.txt" hidden></label>
+  <!-- ===================== Portfolio ===================== -->
+  <section class="view" id="view-portfolio" role="tabpanel" hidden>
+    <div class="view-head">
+      <div class="view-title">
+        <h2>How's it going</h2>
+        <span class="chip" id="pfUpdated" title="Quotes last refreshed">—</span>
+      </div>
+      <div class="view-tools">
+        <button id="btnPfRefresh" class="ghost-btn sm">Refresh</button>
+        <label class="ghost-btn sm file-btn">Import CSV<input id="csvInput" type="file" accept=".csv,.txt" hidden></label>
+      </div>
     </div>
-    <div class="tile-body" id="portBody"><p class="empty">Import your positions CSV once — quotes refresh daily from then on.</p></div>
+    <div id="pfBody" class="pf-body"><p class="empty">Import your positions CSV to get started.</p></div>
   </section>
 
-  <section class="tile tile-earn" id="tileEarnings">
-    <div class="tile-head"><h2>Earnings ahead</h2></div>
-    <div class="tile-body" id="earnBody"><p class="empty">Waiting on holdings.</p></div>
-  </section>
-
-  <section class="tile tile-ff" id="tileFantasy">
-    <div class="tile-head"><h2>Fantasy</h2><span class="chip" id="ffWeek">—</span></div>
-    <div class="tile-body" id="ffBody"><p class="empty">Add your league ID in Settings.</p></div>
-  </section>
-
-  <section class="tile tile-teams" id="tileTeams">
-    <div class="tile-head"><h2>My teams</h2>
-      <button id="btnAddTeam" class="ghost-btn sm">Add team</button>
+  <!-- ===================== Notes ===================== -->
+  <section class="view" id="view-notes" role="tabpanel" hidden>
+    <div class="view-head">
+      <div class="view-title">
+        <h2>Every note</h2>
+        <span class="chip" id="notesCount">0</span>
+      </div>
+      <div class="view-tools">
+        <button id="notesFilter" class="ghost-btn sm" data-mode="all">Showing: all</button>
+        <button id="btnAddNote2" class="ghost-btn sm">New note</button>
+      </div>
     </div>
-    <div class="tile-body" id="teamsBody"><p class="empty">No teams followed yet.</p></div>
+    <div id="notesArchive" class="archive"></div>
   </section>
 
-  <section class="tile tile-movies" id="tileMovies">
-    <div class="tile-head"><h2>In theaters soon</h2></div>
-    <div class="tile-body" id="moviesBody"><p class="empty">Add a TMDB key in Settings.</p></div>
-  </section>
-
-  <section class="tile tile-todo" id="tileTodo">
-    <div class="tile-head"><h2>To do</h2><span class="chip" id="todoCount">0</span></div>
-    <div class="tile-body">
-      <form id="todoForm" class="inline-form wide">
-        <input id="todoInput" placeholder="Add a task" aria-label="New task">
-        <button type="submit">Add</button>
-      </form>
-      <ul id="todoList" class="todo-list"></ul>
+  <!-- ===================== Fantasy ===================== -->
+  <section class="view" id="view-fantasy" role="tabpanel" hidden>
+    <div class="view-head">
+      <div class="view-title">
+        <h2>Fantasy</h2>
+        <span class="chip" id="ffWeek">—</span>
+      </div>
     </div>
-  </section>
-
-  <section class="tile tile-notes" id="tileNotes">
-    <div class="tile-head"><h2>Sticky notes</h2>
-      <button id="btnAddNote" class="ghost-btn sm">New note</button>
-    </div>
-    <div class="tile-body"><div id="noteBoard" class="note-board"></div></div>
+    <div id="ffBody" class="pf-body"><p class="empty">Add your league ID in Settings.</p></div>
   </section>
 
 </main>
+
+<!-- ===================== Bottom ticker ===================== -->
+<div id="ticker" aria-label="Inbox and market ticker">
+  <span class="ticker-tag" id="tickerTag">DECK</span>
+  <div class="ticker-view"><div class="ticker-track" id="tickerTrack"></div></div>
+</div>
 
 <!-- ===== Settings drawer ===== -->
 <div id="scrim" hidden></div>
@@ -119,15 +135,24 @@
 
     <fieldset>
       <legend>API keys</legend>
-      <label>Finnhub<input id="k_finnhub" type="password" autocomplete="off"></label>
-      <label>TMDB<input id="k_tmdb" type="password" autocomplete="off"></label>
+      <label>Finnhub <span class="hint">daily quotes</span><input id="k_finnhub" type="password" autocomplete="off"></label>
+      <label>Twelve Data <span class="hint">price history</span><input id="k_twelve" type="password" autocomplete="off"></label>
+      <label>TMDB <span class="hint">movies</span><input id="k_tmdb" type="password" autocomplete="off"></label>
       <label>Google OAuth Client ID<input id="k_gclient" type="text" autocomplete="off"></label>
+      <p class="note-line">A free Twelve Data key powers the weekly, monthly, 6-month and 1-year returns — Finnhub's free tier only gives today's move. Grab one at <a href="https://twelvedata.com/pricing" target="_blank" rel="noopener">twelvedata.com</a>.</p>
+      <button id="btnGoogle" class="ghost-btn sm">Connect Google</button>
     </fieldset>
 
     <fieldset>
       <legend>Weather</legend>
       <label>Open-Meteo request URL<input id="k_wxUrl" type="text" autocomplete="off" placeholder="https://api.open-meteo.com/v1/forecast?..."></label>
-      <p class="note-line">Open-Meteo needs no API key — the free endpoint is unauthenticated. Change the location by editing <code>latitude</code> and <code>longitude</code> in this URL, or build a new one at <a href="https://open-meteo.com/en/docs?hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,visibility,wind_speed_10m&amp;forecast_days=14&amp;timezone=America%2FNew_York&amp;bounding_box=-90,-180,90,180&amp;latitude=39.97282&amp;longitude=-75.14446&amp;current=temperature_2m,relative_humidity_2m,precipitation,rain,showers,snowfall,weather_code&amp;temperature_unit=fahrenheit&amp;wind_speed_unit=mph&amp;precipitation_unit=inch" target="_blank" rel="noopener">open-meteo.com/en/docs</a> and paste it here. Leave blank for the default. Refreshes at 6am, noon, 3pm, 6pm and 10pm.</p>
+      <p class="note-line">Open-Meteo needs no API key — the free endpoint is unauthenticated. Change the location by editing <code>latitude</code> and <code>longitude</code>, or build a new URL at <a href="https://open-meteo.com/en/docs?hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,visibility,wind_speed_10m&amp;forecast_days=14&amp;timezone=America%2FNew_York&amp;bounding_box=-90,-180,90,180&amp;latitude=39.97282&amp;longitude=-75.14446&amp;current=temperature_2m,relative_humidity_2m,precipitation,rain,showers,snowfall,weather_code&amp;temperature_unit=fahrenheit&amp;wind_speed_unit=mph&amp;precipitation_unit=inch" target="_blank" rel="noopener">open-meteo.com/en/docs</a>. Refreshes at 6am, noon, 3pm, 6pm and 10pm.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Followed teams</legend>
+      <div id="teamsBody" class="settings-list"><p class="empty">No teams followed yet.</p></div>
+      <button id="btnAddTeam" class="ghost-btn sm">Add team</button>
     </fieldset>
 
     <fieldset>
@@ -136,7 +161,7 @@
       <label>Season<input id="k_ffSeason" inputmode="numeric" placeholder="2026"></label>
       <label>Your team ID<input id="k_ffTeam" inputmode="numeric"></label>
       <label>Proxy URL<input id="k_ffProxy" type="text" placeholder="https://your-worker.workers.dev"></label>
-      <p class="note-line">Needed for a private league, and for live team lists and schedules in the My&nbsp;teams tile — ESPN sends no CORS header, so the browser cannot call it directly. See README, step 6.</p>
+      <p class="note-line">Only private leagues need the proxy — see README, step 6.</p>
     </fieldset>
 
     <fieldset>
@@ -156,6 +181,16 @@
       <button id="btnWipe" class="ghost-btn sm danger">Erase all data</button>
     </fieldset>
 
+  </div>
+</div>
+
+<!-- day detail -->
+<div id="dayModal" hidden>
+  <div class="modal-card wide">
+    <div id="dayModalBody"></div>
+    <div class="modal-actions">
+      <button id="dayClose" class="ghost-btn sm">Close</button>
+    </div>
   </div>
 </div>
 
@@ -187,16 +222,18 @@
   </div>
 </div>
 
-<script src="js/store.js?v=4"></script>
-<script src="js/themes.js?v=4"></script>
-<script src="js/sky.js?v=4"></script>
-<script src="js/weather.js?v=4"></script>
-<script src="js/google.js?v=4"></script>
-<script src="js/stocks.js?v=4"></script>
-<script src="js/fantasy.js?v=4"></script>
-<script src="js/teams.js?v=4"></script>
-<script src="js/movies.js?v=4"></script>
-<script src="js/notes.js?v=4"></script>
-<script src="js/app.js?v=4"></script>
+<script src="js/store.js?v=9"></script>
+<script src="js/themes.js?v=9"></script>
+<script src="js/sky.js?v=9"></script>
+<script src="js/weather.js?v=9"></script>
+<script src="js/google.js?v=9"></script>
+<script src="js/stocks.js?v=9"></script>
+<script src="js/fantasy.js?v=9"></script>
+<script src="js/teams.js?v=9"></script>
+<script src="js/movies.js?v=9"></script>
+<script src="js/notes.js?v=9"></script>
+<script src="js/calendarview.js?v=9"></script>
+<script src="js/ticker.js?v=9"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>

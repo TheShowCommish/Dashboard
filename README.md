@@ -57,7 +57,8 @@ Be aware of the tradeoff: a browser-only dashboard means any key it holds is vis
 
 | Service | Where to get it | Notes |
 |---|---|---|
-| **Finnhub** | finnhub.io → sign up → dashboard | Free tier. 60 calls/min. Powers quotes and earnings. |
+| **Finnhub** | finnhub.io → sign up → dashboard | Free tier. 60 calls/min. Today's quotes and earnings dates. |
+| **Twelve Data** | twelvedata.com → sign up | Free tier. 800 credits/day. Price history for the longer windows. |
 | **TMDB** | themoviedb.org → Settings → API → request a key | Free. Choose "Developer", personal use. |
 | **Google** | see Step 4 | Client ID, not a key. |
 
@@ -72,6 +73,33 @@ To change location, edit `latitude` and `longitude` in that URL. To change which
 `temperature_2m` and `weather_code` are added automatically to the `hourly` and `current` field lists if your URL omits them — without `weather_code` every forecast day would render with today's icon.
 
 The tile refreshes at **6am, noon, 3pm, 6pm and 10pm** local time, and shows when it last updated. **Refresh** forces one immediately. The last good reading is cached, so a page reload between those times makes no network call and a failed refresh keeps the previous reading on screen rather than blanking the tile.
+
+## The layout
+
+The **calendar is the dashboard.** A rolling two-week grid carries everything with a date on it:
+
+| on the grid | source |
+|---|---|
+| daily high/low and a condition glyph | Open-Meteo |
+| your events | Google Calendar |
+| followed-team games | ESPN |
+| earnings dates for stocks you own | Finnhub |
+| theatrical releases | TMDB |
+
+Click any day for the full detail; click a film pill for its poster, synopsis, director and cast. Each source is wrapped independently — one that fails costs its own pills, not the grid.
+
+**Sticky notes** live in a tray under the calendar. Drag one onto a day to pin it, drag it between days, or drag it back to the tray to un-pin. Completing a note never deletes it.
+
+Four tabs across the top:
+
+- **Calendar** — the two-week grid and the note tray.
+- **Portfolio** — returns over five windows (see below).
+- **Notes** — every note ever written, with the day it was pinned to, when it was created, and whether it is done. Filter by all / open / done.
+- **Fantasy** — its own tab, intentionally a shell for now.
+
+A **ticker** runs along the bottom with unread mail and the day's biggest movers, by percentage. It pauses on hover.
+
+Teams are managed in Settings rather than on the main view, since following a team is a rare action and its games belong on the calendar.
 
 ## Step 4 — Google (Gmail + Calendar)
 
@@ -111,9 +139,17 @@ Click **Import** on the Portfolio tile. Holdings live in your browser only.
 
 ### Daily pricing
 
-Quotes refresh **once a day** from Finnhub, on first load of the day, and cache until the date rolls over — so reopening the dashboard repeatedly costs nothing. **Refresh** forces an update.
+Quotes refresh **once a day** from Finnhub, on first load of the day, and cache until the date rolls over — so reopening the dashboard repeatedly costs nothing. **Refresh** forces an update. Ticker punctuation is translated for you (`BRK/B` → `BRK.B`). Funds and ETFs are excluded from the earnings feed, since they don't report.
 
-A symbol Finnhub won't quote falls back to its import-time price, is marked `stale`, and still counts toward total value — but is left out of the day's change so that figure stays honest. Ticker punctuation is translated for you (`BRK/B` → `BRK.B`). Funds and ETFs are excluded from the earnings tile, since they don't report.
+Finnhub's free tier returns **only the current price and today's move** — no history. The weekly, monthly, 6-month and 1-year windows therefore need a second free key from [Twelve Data](https://twelvedata.com/pricing) (Settings → API keys). Without it, Today still works and the other four windows say so rather than showing nothing.
+
+Twelve Data's free tier allows 800 credits a day and 8 requests a minute. Symbols are batched 8 to a request, so 41 holdings cost 41 credits in about 6 requests, once daily. Only six prices per symbol are kept — the rest of the year of daily bars is discarded on arrival, which keeps the cache small.
+
+### Deliberately vague
+
+The Portfolio tab **never shows a total value.** Percentages are exact; dollar amounts are described only by order of magnitude — "up a few hundred", "down a couple grand", "up tens of thousands". Everything money-shaped goes through one `vague()` function, so there is a single place to change the scale.
+
+Each of the five windows shows the return, a size description, a comment, and the best and worst five holdings by percentage. Below that, holdings are bucketed by share of the portfolio: **Big Dog**, **Heavy Hitter**, **A Good Chunk**, **Pulling Its Weight**, **A Light Sprinkle**, **Rounding Error**.
 
 This reads public market prices only. It never touches Schwab, Vanguard, or your bank — no login, no credentials, nothing to leak.
 

@@ -14,6 +14,9 @@
    ============================================================ */
 
 const Weather = (() => {
+  /* There is no weather tile any more — the forecast lives in the calendar
+     cells via forDay(). body stays optional so the module keeps working if
+     a tile is ever reintroduced. */
   const body  = document.getElementById('weatherBody');
   const stamp = document.getElementById('wxUpdated');
 
@@ -199,8 +202,8 @@ const Weather = (() => {
         paint();                       // keep the last good reading on screen
         Store.toast(`Weather refresh failed (${e.message}) — showing the last reading.`);
       }else{
-        tileError(body, `Weather failed to load (${esc(e.message)}). ` +
-          'Check the Weather API URL in Settings.');
+        console.error('Weather failed to load:', e);
+        Store.toast(`Weather failed to load (${e.message}). Check the URL in Settings.`);
         if(stamp) stamp.textContent = 'failed';
       }
     }
@@ -233,7 +236,7 @@ const Weather = (() => {
     if(!current) return;
     const days = daily();
 
-    body.innerHTML = `
+    if(body) body.innerHTML = `
       <div class="wx-now">
         <span class="wx-glyph">${glyph(current.main)}</span>
         <span class="wx-temp">${current.temp}°</span>
@@ -262,6 +265,8 @@ const Weather = (() => {
 
     document.getElementById('headSub').textContent =
       `${current.temp}°F · ${current.desc}`;
+
+    if(window.CalendarView) CalendarView.render();
   }
 
   return {
@@ -271,6 +276,20 @@ const Weather = (() => {
     DEFAULT_URL,
     get current(){ return current; },
     get updatedAt(){ return fetchedAt; },
+    /* Per-day summary for a calendar cell: hi/lo, the midday condition and
+       the worst rain chance that day. Returns null outside the forecast. */
+    forDay(date){
+      const k = new Date(date).toDateString();
+      const rows = hourly.filter(h => h.t.toDateString() === k);
+      if(!rows.length) return null;
+      const noon = rows.find(h => h.t.getHours() >= 11 && h.t.getHours() <= 14) || rows[0];
+      return {
+        main: noon.main, desc: noon.desc,
+        hi: Math.max(...rows.map(h => h.temp)),
+        lo: Math.min(...rows.map(h => h.temp)),
+        pop: Math.max(...rows.map(h => h.pop || 0))
+      };
+    },
     /* Nearest forecast hour to a given time — used to tag calendar events. */
     forecastFor(date){
       if(!hourly.length) return null;
@@ -281,3 +300,8 @@ const Weather = (() => {
     glyph
   };
 })();
+
+/* module export: a top-level const does not become a window property in a
+   classic script, so the window.X guards other modules use would all read
+   undefined without this. */
+window.Weather = Weather;
