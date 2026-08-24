@@ -113,13 +113,17 @@ on its own timer rather than waiting for the fifteen-minute schedule poll. Click
 
 ### Sports
 
-One sub-tab per followed team, showing the team's record and conference standing, the schedule, recent results, and the latest team news from ESPN. **Georgia Tech football is followed out of the box.**
+One sub-tab per followed team, and three panels that fit the screen without scrolling.
 
-The **whole remaining season** is listed, not a fixed handful of games. The next three get preview cards; the rest are compact rows, because each preview card costs a summary request to enrich and a 162-game baseball season would fire one per game.
+- **Top left — the next game.** Both teams with their records and their last three results as W/L pills, the full date and time, and the betting line drawn as a bar in the two teams' own colours, split where the market has it, with the line printed on the seam. Baseball adds both probable starters; football adds the team numbers. Click it for the full stats popup.
+- **Top right — where they stand.** The team's own conference table with them highlighted: AFC or NFC, American or National, Eastern or Western. College has 130 teams and no table worth the space, so it gets the **AP Top 25** instead.
+- **Bottom third — the next five.** One mini per game: opponent, date and time, venue and the line. No carousel and no scroll; five is the whole row.
 
-A preview card carries what you read at a glance: the two teams, their records, when it starts, where to watch, the venue, the line, and each side's stat leaders as small buttons under its own logo. **Baseball before the last out is the exception** — the two probable starters carry the card and the season leaders wait for the popup, because that is what the matchup actually is. Once a baseball game is final those leaders are its box score, which is exactly what a recent result should show.
+**Georgia Tech football is followed out of the box.**
 
-**Every game on the tab opens the stats popup** — the preview cards, the rest-of-season rows and the recent results alike. The popup holds the final line, the per-quarter score, both teams' totals side by side, the probable starters before first pitch, and each side's leaders; click a leader for their season game log. Every popup in the app closes three ways: the × in its corner, a click on the backdrop, or Escape.
+The same preview card is what the calendar's focus strip shows for a day's games: the two teams, their records, when it starts, where to watch, the venue, the line, and each side's stat leaders as small buttons under its own logo. **Baseball before the last out is the exception** — the two probable starters carry the card and the season leaders wait for the popup, because that is what the matchup actually is. Once a baseball game is final those leaders are its box score, which is exactly what a recent result should show.
+
+**Every game opens the stats popup** — the preview cards, the rest-of-season rows and the recent results alike. The popup holds the final line, the per-quarter score, both teams' totals side by side, the probable starters before first pitch, and each side's leaders; click a leader for their season game log. Every popup in the app closes three ways: the × in its corner, a click on the backdrop, or Escape.
 
 Sports data needs no API key. It is fetched straight from ESPN's public site API — never through the fantasy proxy, because ESPN answers `403` to datacenter IPs and routing it through a Worker breaks calls that work fine from the browser.
 
@@ -145,7 +149,8 @@ pauses it. Every poster carries its genre under the title:
   first page.
 - **Recently watched** — a tall column down the left: poster, who watched it, when, the stars and the
   review. **Yours and your whole network's**, mixed and newest first — the following list is scraped
-  once a day and each person's diary RSS every three hours. Yours are marked.
+  once a day and each person's diary RSS every three hours. Yours carry an accent edge and your own
+  name; everyone else's are green. **This needs the redeployed worker** — see Step 8.
 
 Each line is capped so a lap stays watchable, and a chip on a **Coming out** poster says how many days
 until release. Films already in cinemas carry no chip — a row of identical labels is just noise over the
@@ -182,8 +187,7 @@ Teams are managed in Settings, since following a team is a rare action and its g
 **AUTO** in the header hands the deck over to itself: each tab holds for 15 seconds, and after a full pass
 one full-screen **AD** summarises the most important thing from a single tab for 30 seconds. ADs take
 turns, one per pass, so every tab gets equal airtime. Touching the screen pauses everything and the
-rotation resumes 20 seconds after the last interaction; **SKIP** jumps to the next AD without counting as
-an interruption.
+rotation resumes 20 seconds after the last interaction.
 
 What the ADs show:
 
@@ -363,7 +367,9 @@ outranks all of it, because rain is not a bright day.
 The theme has always changed colour with the weather. It now changes the screen itself:
 
 - **Snow** falls and **settles on the panels** — every card, note, row, news item and calendar cell
-  grows a drift along its top edge over the next few minutes, tapering to nothing at both ends.
+  grows a drift along its top edge over the next few minutes. The drift is inset by each panel's own
+  corner radius and rolls off at the ends, because past the corner the surface is curving away
+  underneath and there is nothing to sit on.
 - **Rain** falls, **runs off the bottom edge of everything it lands on** as drips, and gathers in a
   **puddle across the bottom of the screen** with the deck's own glow smeared across the wet floor.
 - **Sun** throws a **lens flare** from off the top right, ghosts marching through the centre.

@@ -257,8 +257,15 @@ const Mail = (() => {
         return d.resultSizeEstimate || 0;
       }catch(e){ return 0; }
     };
+    /* Gmail's importance marker is generous — it lands on newsletters and
+       receipts as readily as on anything that needs an answer. Important
+       here means the Primary inbox only, which is what a red triangle
+       should mean. */
     const [all, important, spam] = await Promise.all([
-      ask('is:unread'), ask('is:unread is:important'), ask('in:spam is:unread')
+      ask('in:inbox is:unread'),
+      ask('in:inbox is:unread is:important -category:promotions -category:social ' +
+          '-category:updates -category:forums'),
+      ask('in:spam is:unread')
     ]);
     counts = {important, normal: Math.max(0, all - important), spam};
   }

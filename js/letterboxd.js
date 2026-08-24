@@ -421,7 +421,9 @@ const Letterboxd = (() => {
       const res = await fetch(`${proxy()}/letterboxd/film/${slug}/`);
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
-      const m = html.match(/name="twitter:data2"\s+content="([\d.]+)\s+out of 5"/i)
+      /* Two ways in, in case one moves: the twitter card's second data
+         slot, and the JSON-LD block further down the page. */
+      const m = html.match(/twitter:data2"\s+content="([\d.]+)\s+out of 5"/i)
              || html.match(/"ratingValue"\s*:\s*([\d.]+)/i);
       const val = m ? parseFloat(m[1]) : null;
       cache[slug] = Number.isFinite(val) ? val : null;

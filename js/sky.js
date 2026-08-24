@@ -101,9 +101,13 @@ const Sky = (() => {
      couple of times a second rather than every frame: this is the one
      thing here that could cost a frame. */
   const LAND_ON = [
-    '.gc', '.pf-card', '.cal-day', '.ff-board', '.tm-hero', '.mv-card', '.note',
+    '.gc', '.pf-card', '.cal-day', '.ff-board', '.tm-hero', '.note',
     '.wx-now-card', '.td-row', '.nw', '.row-btn', '.plot-wrap', '.mv-seen-row',
-    '.subtab', '.ticker', '.wx-hour', '.mv-diary', '.tm-games', '.tm-news'
+    '.subtab', '.ticker', '.wx-hour', '.mv-diary', '.tm-games', '.tm-news',
+    /* The poster shelves land as one row: the cards inside them are moving,
+       and a drift measured off a moving card twitches every time it is
+       re-measured. */
+    '.mv-marquee', '.sp-card', '.sp-mini', '.sp-panel'
   ].join(', ');
 
   function measurePiles(){
@@ -113,10 +117,14 @@ const Sky = (() => {
     const seen = [];
     const els = document.querySelectorAll(LAND_ON);
     for(let i = 0; i < els.length && seen.length < 110; i++){
-      const r = els[i].getBoundingClientRect();
+      const el = els[i];
+      const r = el.getBoundingClientRect();
       if(r.width < 36 || r.height < 14) continue;
       if(r.top < 0 || r.top > H() - 4) continue;
-      seen.push({x:r.left, y:r.top, w:r.width, b:r.bottom});
+      /* Snow slides off a rounded corner rather than sitting out over the
+         gap, so the drift starts and ends at the corner radius. */
+      const rad = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, r.width / 3);
+      seen.push({x:r.left, y:r.top, w:r.width, b:r.bottom, rad});
     }
 
     /* Depth carries across measurements by position, so a repaint of the
@@ -135,14 +143,22 @@ const Sky = (() => {
       if(p.d < 8) p.d += 0.012;                // settles over about ten minutes
       if(p.d < .5) continue;
 
-      const steps = Math.max(8, Math.round(p.w / 16));
+      /* Inset by the corner radius: past that point the surface is curving
+         away underneath and the snow has nothing to sit on. */
+      const rad = p.rad || 0;
+      const x0 = p.x + rad * .55, x1 = p.x + p.w - rad * .55;
+      const span = Math.max(8, x1 - x0);
+
+      const steps = Math.max(8, Math.round(span / 16));
       const pts = [];
       for(let i = 0; i <= steps; i++){
         const f = i / steps;
-        /* sin gives the taper; the two waves give the lumps. */
-        const taper = Math.sin(Math.PI * f);
-        const lump  = (Math.sin(p.seed + f * 9) * .30 + Math.sin(p.seed * 1.7 + f * 21) * .16);
-        pts.push({x: p.x + p.w * f, y: p.y + 1 - Math.max(0, p.d * taper * (1 + lump))});
+        /* Flat across the middle, rolling off over the last eighth at each
+           end — a drift, not a dome. */
+        const edge = Math.min(1, Math.min(f, 1 - f) / .12);
+        const taper = edge * edge * (3 - 2 * edge);          // smoothstep
+        const lump  = (Math.sin(p.seed + f * 9) * .22 + Math.sin(p.seed * 1.7 + f * 21) * .12);
+        pts.push({x: x0 + span * f, y: p.y + 1 - Math.max(0, p.d * taper * (1 + lump))});
       }
 
       fx2.beginPath();

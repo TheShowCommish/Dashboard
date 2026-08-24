@@ -9,9 +9,7 @@
    at each transition rather than running an interval alongside the tick.
 
    Manual interaction pauses everything and the cycle resumes 20 seconds
-   after the last real pointer or key event; the skip button (bottom-left,
-   always visible while kiosk is on) is exempt and just jumps to the next
-   AD without pausing.
+   after the last real pointer or key event.
 
    An AD that would be blank is skipped rather than shown — see
    AD_CONTENT_CHECKS — and its slot is burned so the rotation stays fair.
@@ -83,7 +81,6 @@ const Kiosk = (() => {
   const subCursor = {sports:0, portfolio:0};
 
   const overlay = () => document.getElementById('adOverlay');
-  const skipBtn = () => document.getElementById('kioskSkip');
   const toggleBtn = () => document.getElementById('kioskToggle');
 
   /* ---- timer plumbing ---- */
@@ -223,8 +220,6 @@ const Kiosk = (() => {
     b.textContent = enabled ? 'AUTO ON' : 'AUTO';
     b.classList.toggle('is-on', enabled);
     b.title = enabled ? 'Rotation on — click to stop' : 'Start rotation';
-    const s = skipBtn();
-    if(s) s.hidden = !enabled || preview;   // nothing to skip to in a preview
   }
 
   /* ---- interaction detection ---- */
@@ -237,16 +232,6 @@ const Kiosk = (() => {
        immediately rather than making them wait for the ad timer. */
     if(mode === 'ad') closeAd();
     schedule(RESUME_MS);
-  }
-
-  /* ---- skip button ---- */
-  function skipToAd(){
-    if(!enabled) return;
-    /* Jump straight to the next AD, regardless of where we are in the pass.
-       This is a control, not an interruption — it should not trigger the
-       resume-after-idle pause. */
-    closeAd();
-    startAd();
   }
 
   /* ---- AD overlay ---- */
@@ -378,6 +363,15 @@ const Kiosk = (() => {
     /* No reading yet means no forecast to put on a full screen. */
     weather:  () => !!(window.Weather && Weather.current)
   };
+
+  /* Whole days from today to a YYYY-MM-DD date, counted midday to midday
+     so neither a timezone nor a DST boundary can shift the answer. */
+  function daysUntil(date){
+    const t = new Date();
+    const today = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12);
+    const then  = new Date(date + 'T12:00:00');
+    return Math.round((then - today) / 864e5);
+  }
 
   const sameDay = (a,b) => a && b &&
     a.getFullYear() === b.getFullYear() &&
@@ -536,29 +530,6 @@ const Kiosk = (() => {
       .catch(e => console.error('Sports AD summary failed:', e.message));
   }
 
-  /* ---- reading the line ----
-     ESPN writes it as "GT -6.5" for a spread and "BOS -124" for a
-     moneyline. Both say the same thing — how sure the market is — so both
-     collapse to one number: the favourite's share of the screen. */
-  function favouriteShare(odds){
-    const m = /([A-Z]{2,5})\s*([+-]\d+(?:\.\d+)?)/.exec(String(odds || ''));
-    if(!m) return null;
-    const abbr = m[1];
-    const n = Math.abs(parseFloat(m[2]));
-    if(!Number.isFinite(n)) return null;
-
-    /* A moneyline already IS an implied probability. A spread is not, so
-       it is mapped: a point and a half of spread is worth a few points of
-       screen, and a two-touchdown favourite owns nearly all of it. */
-    const share = n >= 100
-      ? n / (n + 100)
-      : 0.5 + Math.min(0.42, n * 0.035);
-
-    /* The underdog always keeps a strip of its own colour — a screen in a
-       single colour reads as a bug, not as a mismatch. */
-    return {abbr, share: Math.min(0.92, Math.max(0.55, share))};
-  }
-
   /* Paint the overlay with the two teams' own colours, split by who the
      market likes. Cleared by closeAd so the next AD does not inherit it. */
   function tint(sum, g){
@@ -573,7 +544,7 @@ const Kiosk = (() => {
 
     /* --ad-split is where the away colour hands over to the home colour,
        measured from the left, so the favourite's side is the wider one. */
-    const fav = favouriteShare(sum.odds || g?.odds);
+    const fav = Sports.lineSplit(sum.odds || g?.odds);
     let split = 0.5;
     if(fav){
       const isAway = away?.abbr && fav.abbr.toUpperCase() === away.abbr.toUpperCase();
@@ -1020,8 +991,6 @@ const Kiosk = (() => {
 
     const t = toggleBtn();
     if(t) t.addEventListener('click', toggle);
-    const s = skipBtn();
-    if(s) s.addEventListener('click', skipToAd);
 
     if(Store.get('kiosk.enabled', false)) start();
     updateToggleUi();

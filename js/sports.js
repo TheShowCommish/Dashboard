@@ -108,6 +108,51 @@ const Sports = (() => {
     }));
   }
 
+  /* ---- polls ----
+     College has no table worth showing at this size — 130 teams — so the
+     poll stands in for it. AP first, since that is the one people mean. */
+  async function rankings(league){
+    const d = await get(`${BASE}/${PATH[league]}/rankings`);
+    const list = d.rankings || [];
+    const poll = list.find(r => /^ap /i.test(r.shortName || r.name || '')) ||
+                 list.find(r => /ap top/i.test(r.name || '')) || list[0];
+    if(!poll) return null;
+    return {
+      name: poll.name || poll.shortName || 'Poll',
+      rows: (poll.ranks || []).map(r => ({
+        rank: r.current,
+        team: r.team?.nickname || r.team?.name || r.team?.displayName || '',
+        abbr: r.team?.abbreviation || '',
+        id: r.team?.id,
+        logo: r.team?.logos?.[0]?.href || '',
+        record: r.recordSummary || '',
+        trend: r.trend && r.trend !== '-' ? r.trend : ''
+      }))
+    };
+  }
+
+  /* ---- the line, as a share of the screen ----
+     ESPN writes it as "GT -6.5" for a spread and "BOS -124" for a
+     moneyline. Both say the same thing — how sure the market is — so both
+     collapse to one number: the favourite's share. Lives here because the
+     kiosk AD and the Sports tab both paint with it. */
+  function lineSplit(odds){
+    const m = /([A-Z]{2,5})\s*([+-]\d+(?:\.\d+)?)/.exec(String(odds || ''));
+    if(!m) return null;
+    const abbr = m[1];
+    const n = Math.abs(parseFloat(m[2]));
+    if(!Number.isFinite(n)) return null;
+
+    /* A moneyline already IS an implied probability. A spread is not, so
+       it is mapped: a point and a half is worth a few points of screen, a
+       two-touchdown favourite owns nearly all of it. */
+    const share = n >= 100 ? n / (n + 100) : 0.5 + Math.min(0.42, n * 0.035);
+
+    /* The underdog always keeps a strip of its own colour — one colour
+       across the whole width reads as a bug, not as a mismatch. */
+    return {abbr, share: Math.min(0.92, Math.max(0.55, share))};
+  }
+
   async function standings(league){
     const d = await get(`https://site.api.espn.com/apis/v2/sports/${PATH[league]}/standings`);
     return flattenStandings(d);
@@ -335,8 +380,8 @@ const Sports = (() => {
   }
 
   return {
-    teams, info, schedule, news, standings, summary, gamelog,
-    leagueName, logoFor, clearCache, normalise,
+    teams, info, schedule, news, standings, rankings, summary, gamelog,
+    leagueName, logoFor, clearCache, normalise, lineSplit,
     PATH, DEFAULT_TEAMS
   };
 })();
