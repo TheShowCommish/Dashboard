@@ -167,8 +167,20 @@
         <h2>Fantasy</h2>
         <span class="chip" id="ffWeek">—</span>
       </div>
+      <div class="view-tools" id="ffModes">
+        <button class="ghost-btn sm" data-ffmode="draft">Draft</button>
+        <button class="ghost-btn sm" data-ffmode="roster">Roster</button>
+        <button class="ghost-btn sm" data-ffmode="waivers">Waivers</button>
+        <button class="ghost-btn sm" data-ffmode="league">League</button>
+        <button class="ghost-btn sm" id="ffRefresh" title="Re-pull ADP, injuries and rosters">&#8635;</button>
+      </div>
     </div>
-    <div id="ffBody" class="pf-body"><p class="empty">Add your league ID in Settings.</p></div>
+    <div id="ffBody" class="pf-body">
+      <div id="ffDraft"   class="ff-mode" hidden></div>
+      <div id="ffRoster"  class="ff-mode" hidden></div>
+      <div id="ffWaivers" class="ff-mode" hidden></div>
+      <div id="ffLeague"  class="ff-mode" hidden></div>
+    </div>
   </section>
 
   <!-- ===================== To Do ===================== -->
@@ -343,6 +355,15 @@
   </div>
 </div>
 
+<!-- fantasy player card: scoring history, position room, injury news -->
+<div id="ffPlayerModal" class="modal" hidden>
+  <div class="modal-card xwide">
+    <button class="modal-x" data-close="ffPlayerModal" aria-label="Close">×</button>
+    <div id="ffPlayerBody"></div>
+    <div class="modal-actions"><button class="ghost-btn sm" data-close="ffPlayerModal">Close</button></div>
+  </div>
+</div>
+
 <!-- single game stats -->
 <div id="gameModal" class="modal" hidden>
   <div class="modal-card xwide">
@@ -394,6 +415,11 @@
 <script src="js/weather.js?v=43"></script>
 <script src="js/google.js?v=43"></script>
 <script src="js/stocks.js?v=43"></script>
+<script src="js/ffdata.js?v=43"></script>
+<script src="js/ffplayer.js?v=43"></script>
+<script src="js/ffdraft.js?v=43"></script>
+<script src="js/ffseason.js?v=43"></script>
+<script src="js/ffseasonview.js?v=43"></script>
 <script src="js/fantasy.js?v=43"></script>
 <script src="js/sports.js?v=43"></script>
 <script src="js/teams.js?v=43"></script>

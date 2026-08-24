@@ -1,5 +1,13 @@
 /* ============================================================
-   fantasy.js — ESPN fantasy football.
+   fantasy.js — ESPN fantasy football, and the router for the four
+   screens the tab now holds.
+
+     Draft    the live board — mock-draft ADP, last season's real
+              scoring, depth charts and injuries (js/ffdraft.js)
+     Roster   your team right now: who is hurt, who is on bye, and
+              which team-mate injuries move your players
+     Waivers  the free agent pool, after the draft (js/ffseasonview.js)
+     League   every roster ranked on talent (js/ffseasonview.js)
 
    A PUBLIC league works straight from the browser.
    A PRIVATE league needs the little proxy in /proxy (see README step 6)
@@ -8,14 +16,12 @@
    ============================================================ */
 
 const Fantasy = (() => {
-  const body = document.getElementById('ffBody');
   const weekChip = document.getElementById('ffWeek');
 
-  const POS = {1:'QB',2:'RB',3:'WR',4:'TE',5:'K',16:'D/ST'};
-  const PRO = {1:'ATL',2:'BUF',3:'CHI',4:'CIN',5:'CLE',6:'DAL',7:'DEN',8:'DET',9:'GB',10:'TEN',
-    11:'IND',12:'KC',13:'LV',14:'LAR',15:'MIA',16:'MIN',17:'NE',18:'NO',19:'NYG',20:'NYJ',
-    21:'PHI',22:'ARI',23:'PIT',24:'LAC',25:'SF',26:'SEA',27:'TB',28:'WSH',29:'CAR',30:'JAX',
-    33:'BAL',34:'HOU'};
+  /* ESPN's numeric maps live in ffdata.js so the draft board, the season
+     view and this file cannot drift out of step with each other. */
+  const POS = FFData.ESPN_POS;
+  const PRO = FFData.ESPN_TEAM;
 
   const HURT = ['OUT','DOUBTFUL','INJURY_RESERVE','SUSPENSION','QUESTIONABLE'];
   const SIDELINED = ['OUT','DOUBTFUL','INJURY_RESERVE','SUSPENSION'];
@@ -33,49 +39,110 @@ const Fantasy = (() => {
     return p || 'https://lm-api-reads.fantasy.espn.com';
   };
 
-  async function load(){
-    const league = Store.get('fantasy.league','');
-    const season = Store.get('fantasy.season', String(new Date().getFullYear()));
-    const myTeam = Number(Store.get('fantasy.team',''));
-    if(!league) return tileError(body,'Add your league ID in Settings.');
+  /* ---- mode router ----
+     One tab, four screens. The draft board is the default until the
+     draft is actually done, at which point the roster is the thing you
+     open the tab for. */
+  const MODES = ['draft', 'roster', 'waivers', 'league'];
+  const HOST  = {draft:'ffDraft', roster:'ffRoster', waivers:'ffWaivers', league:'ffLeague'};
 
-    body.innerHTML = '<p class="empty">Loading roster…</p>';
+  const mode = () => {
+    const m = Store.get('fantasy.mode', '');
+    if(MODES.includes(m)) return m;
+    return (Store.get('draft.picks', []) || []).length ? 'roster' : 'draft';
+  };
+
+  function setMode(name){
+    if(!MODES.includes(name)) return;
+    Store.set('fantasy.mode', name);
+    load();
+  }
+
+  /* Each screen is drawn once per visit and left alone after that, so
+     switching back and forth does not re-fetch a league that has not
+     changed. `force` is the refresh button. */
+  const drawn = new Set();
+
+  async function load(opts = {}){
+    const m = mode();
+
+    document.querySelectorAll('#ffModes [data-ffmode]').forEach(b =>
+      b.classList.toggle('is-on', b.dataset.ffmode === m));
+    for(const [name, id] of Object.entries(HOST)){
+      const el = document.getElementById(id);
+      if(el) el.hidden = name !== m;
+    }
+
+    if(opts.force){ drawn.clear(); FFData.clearCache(); }
+    if(drawn.has(m) && !opts.force) return;
+    drawn.add(m);
+
+    const host = document.getElementById(HOST[m]);
+    if(!host) return;
 
     try{
-      const url = `${base()}/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${league}` +
-                  '?view=mRoster&view=mTeam&view=mSettings';
-      const lg = await getJSON(url, {credentials:'omit'});
+      if(m === 'draft'){
+        host.innerHTML = '<p class="empty">Loading the board — mock drafts, last season and the injury report…</p>';
+        await FFData.load({force: !!opts.force});
+        FFDraft.render();
+        return;
+      }
 
-      const week = lg.status?.currentMatchupPeriod ?? lg.scoringPeriodId ?? 1;
-      weekChip.textContent = `Week ${week}`;
+      /* The other three all need the league itself. */
+      if(!Store.get('fantasy.league','')){
+        drawn.delete(m);
+        return tileError(host, 'Add your league ID in Settings to use this screen.');
+      }
+      await FFData.load({force: !!opts.force});
 
-      const team = lg.teams.find(t => t.id === myTeam) || lg.teams[0];
-      if(!team) throw new Error('team not found in that league');
-
-      const roster = (team.roster?.entries||[]).map(e => {
-        const p = e.playerPoolEntry.player;
-        return {
-          id: p.id,
-          name: p.fullName,
-          pos: POS[p.defaultPositionId] || '?',
-          proId: p.proTeamId,
-          pro: PRO[p.proTeamId] || 'FA',
-          status: p.injuryStatus || 'ACTIVE'
-        };
-      });
-
-      const [byes, leagueInjuries] = await Promise.all([
-        byeWeeks(season).catch(() => ({})),
-        nflInjuries().catch(() => [])
-      ]);
-
-      render({team, roster, week, byes, leagueInjuries, lg, season, league});
+      if(m === 'roster')  return await roster(host);
+      if(m === 'waivers') return await FFSeasonView.waivers(host);
+      if(m === 'league')  return await FFSeasonView.league(host);
     }catch(e){
-      tileError(body, `Fantasy failed to load (${e.message}). ` +
+      drawn.delete(m);                       // a failed screen must be retryable
+      tileError(host, `${esc(e.message)}. ` +
         (Store.get('fantasy.proxy','')
           ? 'Check the proxy URL and that your ESPN cookies are still valid.'
           : 'If your league is private you need the proxy — see README step 6.'));
     }
+  }
+
+  /* ---- roster screen ---- */
+  async function roster(body){
+    const league = Store.get('fantasy.league','');
+    const season = Store.get('fantasy.season', String(new Date().getFullYear()));
+    const myTeam = Number(Store.get('fantasy.team',''));
+
+    body.innerHTML = '<p class="empty">Loading roster…</p>';
+
+    const url = `${base()}/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${league}` +
+                '?view=mRoster&view=mTeam&view=mSettings';
+    const lg = await getJSON(url, {credentials:'omit'});
+
+    const week = lg.status?.currentMatchupPeriod ?? lg.scoringPeriodId ?? 1;
+    if(weekChip) weekChip.textContent = `Week ${week}`;
+
+    const team = lg.teams.find(t => t.id === myTeam) || lg.teams[0];
+    if(!team) throw new Error('team not found in that league');
+
+    const list = (team.roster?.entries||[]).map(e => {
+      const p = e.playerPoolEntry.player;
+      return {
+        id: p.id,
+        name: p.fullName,
+        pos: POS[p.defaultPositionId] || '?',
+        proId: p.proTeamId,
+        pro: PRO[p.proTeamId] || 'FA',
+        status: p.injuryStatus || 'ACTIVE'
+      };
+    });
+
+    const [byes, leagueInjuries] = await Promise.all([
+      byeWeeks(season).catch(() => ({})),
+      nflInjuries().catch(() => [])
+    ]);
+
+    render({body, team, roster:list, week, byes, leagueInjuries, season, league});
   }
 
   async function byeWeeks(season){
@@ -103,7 +170,7 @@ const Fantasy = (() => {
     return out;
   }
 
-  function render({team, roster, week, byes, leagueInjuries, season, league}){
+  function render({body, team, roster, week, byes, leagueInjuries, season, league}){
     const hurt = roster.filter(p => HURT.includes(p.status));
     const onBye = roster.filter(p => byes[p.proId] === week);
 
@@ -125,25 +192,32 @@ const Fantasy = (() => {
 
     const sec = (title, inner) => inner ? `<div class="group-label">${title}</div>${inner}` : '';
 
+    /* Roster rows open the same player card the draft board uses, so the
+       full scoring history is one click away from here too. */
+    const card = p => {
+      const known = FFData.bundle && FFData.bundle.index.get(FFData.key(p.name, p.pos));
+      return known ? ` class="ff-click" data-key="${esc(known.key)}"` : '';
+    };
+
     body.innerHTML =
       `<div class="group-label">${esc(team.name || team.location+' '+team.nickname)} · ${roster.length} players</div>` +
 
       sec('Injuries on your roster', hurt.map(p => {
         const cls = SIDELINED.includes(p.status) ? 'hot' : 'warn';
-        return `<div class="row"><span class="row-main">
+        return `<div class="row"${card(p)}><span class="row-main">
           <span class="row-title">${esc(p.name)}</span>
           <span class="row-sub">${p.pos} · ${p.pro}</span></span>
           <span class="chip ${cls}">${p.status.replace('INJURY_RESERVE','IR')}</span></div>`;
       }).join('')) +
 
       sec(`On bye this week`, onBye.map(p =>
-        `<div class="row"><span class="row-main">
+        `<div class="row"${card(p)}><span class="row-main">
           <span class="row-title">${esc(p.name)}</span>
           <span class="row-sub">${p.pos} · ${p.pro}</span></span>
           <span class="chip warn">BYE</span></div>`).join('')) +
 
       sec('Ripple effects', dedupe(alerts).slice(0,8).map(a =>
-        `<div class="row"><span class="row-main">
+        `<div class="row"${card(a.mine)}><span class="row-main">
           <span class="row-title">${esc(a.mine.name)} <span class="chip">${a.mine.pos}</span></span>
           <span class="row-sub">${esc(a.inj.name)} (${a.inj.pos}, ${a.inj.teamAbbr}) is ${a.inj.status.toLowerCase()} — ${a.note}</span>
         </span></div>`).join('')) +
@@ -152,6 +226,13 @@ const Fantasy = (() => {
       byeTable(roster, byes, week) +
       `<div class="group-label">Free agents</div>
        <div id="ffFA"><p class="empty">Loading suggestions…</p></div>`;
+
+    body.onclick = e => {
+      const row = e.target.closest('[data-key]');
+      if(!row) return;
+      const p = FFData.bundle && FFData.bundle.index.get(row.dataset.key);
+      if(p) FFPlayer.open(p);
+    };
 
     freeAgents(season, league, roster, byes, week);
   }
@@ -296,7 +377,7 @@ const Fantasy = (() => {
     return {week, home: side(mine.home,'Home'), away: side(mine.away,'Away')};
   }
 
-  return { load, matchup };
+  return { load, matchup, setMode, mode };
 })();
 
 /* module export: a top-level const does not become a window property in a

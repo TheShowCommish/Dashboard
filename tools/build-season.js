@@ -5,6 +5,8 @@
 
      data/season-YYYY.json   weekly PPR scoring, per player
      data/depth-YYYY.json    the current offensive depth charts
+     data/adp-YYYY.json      a mock-draft ADP snapshot, as a fallback
+                             for when the proxy is not answering
 
    Source: nflverse-data, the play-by-play-derived weekly player
    stats behind nflfastR. It carries fantasy_points_ppr already
@@ -130,11 +132,12 @@ async function build(season){
 
     const id = f[I.id];
     let p = players.get(id);
-    if(!p){ p = { name: f[I.name], pos, weeks: new Map() }; players.set(id, p); }
+    if(!p){ p = { name: f[I.name], pos, weeks: new Map(), opps: new Map() }; players.set(id, p); }
     /* Carry the last team seen, so a player traded mid-season is filed
        under the team he finished on rather than the one he left. */
     p.team = team(f[I.team]);
     p.weeks.set(week, (p.weeks.get(week) || 0) + pts);
+    if(f[I.opp]) p.opps.set(week, team(f[I.opp]));
 
     /* Fantasy points allowed, the other way round: every point a player
        scores is a point his opponent's defence gave up at that position. */
@@ -165,7 +168,11 @@ async function build(season){
       hi:  round1(Math.max(...scores)),
       lo:  round1(Math.min(...scores)),
       w: played,
-      s: scores.map(round1)
+      s: scores.map(round1),
+      /* Who he played that week. A 30-point game against the softest
+         defence in the league is a different fact from 30 against the
+         stiffest, and the season view prints the difference. */
+      o: played.map(w => p.opps.get(w) || '')
     });
   }
   out.sort((a, b) => b.tot - a.tot);
@@ -269,6 +276,43 @@ async function buildDepth(season){
   return payload;
 }
 
+/* ------------------------------------------------------------
+   Mock-draft ADP.
+
+   The dashboard normally reads this live through the proxy, because FFC
+   sends no CORS header and no browser can read it directly. A snapshot is
+   baked anyway, for one reason: draft night. If the Worker is down, or a
+   rate limit bites at pick 40, a board that still opens on last night's
+   consensus is worth far more than a board that does not open. The view
+   labels which one it is showing.
+   ------------------------------------------------------------ */
+const ADP_SRC = (year, teams, format) =>
+  `https://fantasyfootballcalculator.com/api/v1/adp/${format}?teams=${teams}&year=${year}`;
+
+async function buildAdp(season, teams = 12, format = 'ppr'){
+  process.stdout.write(`  ${season} ADP (${teams}-team ${format}): fetching… `);
+
+  const res = await fetch(ADP_SRC(season, teams, format), {
+    headers: {'Accept': 'application/json', 'User-Agent': 'control-deck (personal dashboard)'}
+  });
+  if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+
+  const d = await res.json();
+  if(d.status !== 'Success' || !Array.isArray(d.players))
+    throw new Error('the feed returned an unexpected shape');
+
+  const payload = {season, built: new Date().toISOString(),
+                   source: 'fantasyfootballcalculator.com', meta: d.meta || {},
+                   players: d.players};
+
+  const file = path.join(OUT_DIR, `adp-${season}.json`);
+  fs.mkdirSync(OUT_DIR, {recursive: true});
+  fs.writeFileSync(file, JSON.stringify(payload));
+  const kb = Math.round(fs.statSync(file).size / 1024);
+  console.log(`${d.players.length} players from ${(d.meta && d.meta.total_drafts || 0).toLocaleString()} drafts → data/adp-${season}.json (${kb} KB)`);
+  return payload;
+}
+
 (async () => {
   let seasons = process.argv.slice(2).map(Number).filter(Boolean);
   if(!seasons.length){
@@ -288,4 +332,6 @@ async function buildDepth(season){
   const current = Math.max(...seasons);
   try{ await buildDepth(current); }
   catch(e){ console.error(`  ${current} depth charts: FAILED — ${e.message}`); process.exitCode = 1; }
+  try{ await buildAdp(current); }
+  catch(e){ console.error(`  ${current} ADP: FAILED — ${e.message}`); process.exitCode = 1; }
 })();

@@ -262,6 +262,16 @@ const App = (() => {
       });
     });
 
+    step('fantasy modes', () => {
+      const modes = document.getElementById('ffModes');
+      if(!modes) return;
+      modes.addEventListener('click', e => {
+        const b = e.target.closest('[data-ffmode]');
+        if(b) return Fantasy.setMode(b.dataset.ffmode);
+        if(e.target.closest('#ffRefresh')) Fantasy.load({force:true});
+      });
+    });
+
     step('todo', () => {
       TodoList.boot();
       on('todoAdd','click', () => TodoList.addFromInput());
@@ -281,7 +291,7 @@ const App = (() => {
     });
 
     const MODALS = ['teamModal','movieModal','dayModal','standModal',
-                    'playerModal','gameModal','wxModal'];
+                    'playerModal','gameModal','wxModal','ffPlayerModal'];
 
     const closeModals = () => MODALS.forEach(id => {
       const el = document.getElementById(id);
