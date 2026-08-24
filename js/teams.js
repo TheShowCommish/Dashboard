@@ -28,8 +28,9 @@ const Teams = (() => {
      "Failed to fetch" for every league. (Schedules and scoreboards on the
      same host DO allow CORS, so only the picker is affected.) These
      built-in rosters carry ESPN's own team IDs, which is all the schedule
-     calls need; the two college leagues are far too large to ship here,
-     so those still want the proxy. */
+     calls need. The two college leagues are far too large to ship here and
+     a proxy does not rescue them either — ESPN answers 403 to datacenter
+     IPs — so they need a different data source entirely. */
   const NFL_FALLBACK = [
     [22,'ARI','Arizona Cardinals'],[1,'ATL','Atlanta Falcons'],[33,'BAL','Baltimore Ravens'],
     [2,'BUF','Buffalo Bills'],[29,'CAR','Carolina Panthers'],[3,'CHI','Chicago Bears'],
@@ -97,11 +98,12 @@ const Teams = (() => {
   let games = [];
   let listOK = false;      // true only when the dropdown holds real teams
 
-  /* Route through the proxy when one is set — it forwards site API
-     paths too, which sidesteps any CORS trouble. */
+  /* Always call ESPN directly. Routing this through the fantasy proxy
+     looks tempting but makes things strictly worse: ESPN answers 403
+     Access Denied to datacenter IPs, so every schedule that works fine
+     from the browser starts failing the moment a proxy URL is saved. */
   function espn(path){
-    const p = Store.get('fantasy.proxy','').replace(/\/$/,'');
-    return (p || 'https://site.api.espn.com') + path;
+    return 'https://site.api.espn.com' + path;
   }
 
   /* ---- picker ---- */
@@ -132,8 +134,8 @@ const Teams = (() => {
       }else{
         selTm.innerHTML = `<option value="">Unavailable — ${esc(e.message)}</option>`;
         Store.toast(blocked
-          ? 'College teams need the proxy — ESPN refuses direct browser calls. ' +
-            'Add a Proxy URL in Settings (see README, step 6).'
+          ? 'College team lists are unavailable — ESPN blocks this endpoint from ' +
+            'browsers and from proxies alike. The other four leagues still work.'
           : `Could not load ${lg.toUpperCase()} teams: ${e.message}`);
       }
     }

@@ -30,7 +30,8 @@ const App = (() => {
   const scrim  = document.getElementById('scrim');
 
   const FIELDS = {
-    k_owm:'keys.owm', k_finnhub:'keys.finnhub', k_tmdb:'keys.tmdb', k_gclient:'keys.gclient',
+    k_finnhub:'keys.finnhub', k_tmdb:'keys.tmdb', k_gclient:'keys.gclient',
+    k_wxUrl:'weather.url',
     k_ffLeague:'fantasy.league', k_ffSeason:'fantasy.season',
     k_ffTeam:'fantasy.team', k_ffProxy:'fantasy.proxy',
     k_themeMode:'theme.mode', k_themePick:'theme.pick'
@@ -41,6 +42,10 @@ const App = (() => {
     pick.innerHTML = Themes.all.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
     for(const [el,path] of Object.entries(FIELDS))
       document.getElementById(el).value = Store.get(path,'');
+    /* Show the URL actually in use, so it can be edited rather than
+       retyped from scratch. */
+    const wx = document.getElementById('k_wxUrl');
+    if(wx && !wx.value) wx.value = Weather.DEFAULT_URL;
     drawer.hidden = false; scrim.hidden = false;
   }
 
@@ -91,18 +96,9 @@ const App = (() => {
   function boot(){
     step('clock', () => { clock(); setInterval(clock, 15000); });
 
-    step('zip field',  () => { document.getElementById('zipInput').value = Store.get('zip',''); });
     step('todos',      () => Todos.render());
     step('notes',      () => StickyNotes.render());
     step('theme',      () => recheckTheme());
-
-    on('zipForm','submit', e => {
-      e.preventDefault();
-      const z = document.getElementById('zipInput').value.trim();
-      if(!/^\d{5}$/.test(z)) return Store.toast('That is not a 5-digit ZIP code.');
-      Store.set('zip', z);
-      Weather.load().then(recheckTheme);
-    });
 
     on('todoForm','submit', e => {
       e.preventDefault();
@@ -110,6 +106,8 @@ const App = (() => {
       Todos.add(i.value); i.value = '';
     });
 
+    on('btnWxRefresh','click', () => Weather.refresh().then(recheckTheme));
+    on('mvClose','click',      () => Movies.close());
     on('btnAddNote','click',     () => StickyNotes.add());
     on('btnSettings','click',    openDrawer);
     on('btnCloseDrawer','click', closeDrawer);
@@ -136,11 +134,12 @@ const App = (() => {
       if(e.key === 'Escape'){
         if(!drawer.hidden) closeDrawer();
         document.getElementById('teamModal').hidden = true;
+        document.getElementById('movieModal').hidden = true;
       }
     });
 
     step('first refresh', refreshAll);
-    setInterval(() => { Weather.load().then(recheckTheme); }, 10*60*1000); // weather: 10 min
+    step('weather schedule', () => Weather.scheduleNext());   // 6am, noon, 3pm, 6pm, 10pm
     setInterval(() => { Stocks.load(); }, 5*60*1000);                       // quotes: 5 min
     setInterval(() => { Teams.load(); }, 15*60*1000);                       // scores: 15 min
     setInterval(() => { if(Google.ready){ Calendar.load(); Mail.load(); } }, 5*60*1000);

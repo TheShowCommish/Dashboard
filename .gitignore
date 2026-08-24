@@ -2,3 +2,7 @@
 node_modules/
 *.log
 holdings.csv
+
+# wrangler build cache
+proxy/.wrangler/
+.claude/

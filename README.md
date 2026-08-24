@@ -57,10 +57,21 @@ Be aware of the tradeoff: a browser-only dashboard means any key it holds is vis
 
 | Service | Where to get it | Notes |
 |---|---|---|
-| **OpenWeatherMap** | openweathermap.org/api → sign up → *API keys* | Free tier. Takes up to an hour to activate. |
 | **Finnhub** | finnhub.io → sign up → dashboard | Free tier. 60 calls/min. Powers quotes and earnings. |
 | **TMDB** | themoviedb.org → Settings → API → request a key | Free. Choose "Developer", personal use. |
 | **Google** | see Step 4 | Client ID, not a key. |
+
+Weather needs no key at all — see below.
+
+## Weather
+
+Weather comes from [Open-Meteo](https://open-meteo.com), which is **free and unauthenticated — there is no API key**. The request URL itself is the setting: Settings → Weather → *Open-Meteo request URL*.
+
+To change location, edit `latitude` and `longitude` in that URL. To change which fields come back, build a new URL with the [Open-Meteo docs builder](https://open-meteo.com/en/docs) and paste the whole thing in. Leave the box blank to fall back to the default (Philadelphia).
+
+`temperature_2m` and `weather_code` are added automatically to the `hourly` and `current` field lists if your URL omits them — without `weather_code` every forecast day would render with today's icon.
+
+The tile refreshes at **6am, noon, 3pm, 6pm and 10pm** local time, and shows when it last updated. **Refresh** forces one immediately. The last good reading is cached, so a page reload between those times makes no network call and a failed refresh keeps the previous reading on screen rather than blanking the tile.
 
 ## Step 4 — Google (Gmail + Calendar)
 
@@ -123,7 +134,9 @@ The proxy also unlocks free-agent suggestions, which need a request header ESPN 
 
 ESPN's team-*list* endpoint (`/teams`) sends no `Access-Control-Allow-Origin` header, so no browser can read it from any origin — it fails with `Failed to fetch` for every league. Schedules and scoreboards on the same host do allow CORS and work fine.
 
-So the dashboard ships built-in NFL, NBA, MLB and NHL rosters using ESPN's own team IDs. Those four leagues need **no proxy at all**: pick a team and its schedule loads normally. Only the two college leagues — far too large to bundle — need the worker above. Deploy it and paste the URL into Settings → Proxy URL; the same worker forwards both fantasy and site API paths.
+So the dashboard ships built-in NFL, NBA, MLB and NHL rosters using ESPN's own team IDs. Those four leagues need **no proxy at all**: pick a team and its schedule loads normally.
+
+**The proxy does not help here.** ESPN's edge returns `403 Access Denied` to requests from datacenter IPs, so routing the site API through a Cloudflare Worker fails too — it is blocked by IP reputation, not by a header the worker could spoof. (The fantasy host `lm-api-reads.fantasy.espn.com` is *not* blocked, which is why the proxy still works for its actual job.) The two college leagues are therefore unavailable in the picker for now; they need a different data source, not a proxy.
 
 ## Step 7 — Followed teams
 
@@ -198,4 +211,5 @@ Then open `http://localhost:8000`. Opening `index.html` by double-clicking won't
 - **Free-agent suggestions need the proxy.** The header ESPN requires triggers a CORS preflight it won't answer directly.
 - **ESPN's fantasy API is unofficial.** It can change without notice. If the tile breaks after an ESPN update, that's usually why.
 - **Finnhub's earnings calendar is restricted on some plans.** The tile says so plainly if your key can't reach it.
+- **The Google Calendar API must be enabled separately from Gmail.** Enabling only one gives a `403` on the other tile while the first keeps working. Both live under **APIs & Services → Library**.
 - **Google test-user mode expires.** An unpublished OAuth app makes you re-approve every 7 days. Publishing the consent screen removes that.

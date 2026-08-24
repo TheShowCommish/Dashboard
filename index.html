@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=2">
+<link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
 
@@ -37,12 +37,10 @@
 
   <section class="tile tile-weather" id="tileWeather">
     <div class="tile-head"><h2>Weather</h2>
-      <form id="zipForm" class="inline-form">
-        <input id="zipInput" inputmode="numeric" maxlength="5" placeholder="ZIP" aria-label="ZIP code">
-        <button type="submit">Set</button>
-      </form>
+      <span class="chip" id="wxUpdated" title="Last updated">—</span>
+      <button id="btnWxRefresh" class="ghost-btn sm" aria-label="Refresh weather now">Refresh</button>
     </div>
-    <div class="tile-body" id="weatherBody"><p class="empty">Enter a ZIP code to start.</p></div>
+    <div class="tile-body" id="weatherBody"><p class="empty">Loading weather…</p></div>
   </section>
 
   <section class="tile tile-cal" id="tileCal">
@@ -119,10 +117,15 @@
 
     <fieldset>
       <legend>API keys</legend>
-      <label>OpenWeatherMap<input id="k_owm" type="password" autocomplete="off"></label>
       <label>Finnhub<input id="k_finnhub" type="password" autocomplete="off"></label>
       <label>TMDB<input id="k_tmdb" type="password" autocomplete="off"></label>
       <label>Google OAuth Client ID<input id="k_gclient" type="text" autocomplete="off"></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Weather</legend>
+      <label>Open-Meteo request URL<input id="k_wxUrl" type="text" autocomplete="off" placeholder="https://api.open-meteo.com/v1/forecast?..."></label>
+      <p class="note-line">Open-Meteo needs no API key — the free endpoint is unauthenticated. Change the location by editing <code>latitude</code> and <code>longitude</code> in this URL, or build a new one at <a href="https://open-meteo.com/en/docs?hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,visibility,wind_speed_10m&amp;forecast_days=14&amp;timezone=America%2FNew_York&amp;bounding_box=-90,-180,90,180&amp;latitude=39.97282&amp;longitude=-75.14446&amp;current=temperature_2m,relative_humidity_2m,precipitation,rain,showers,snowfall,weather_code&amp;temperature_unit=fahrenheit&amp;wind_speed_unit=mph&amp;precipitation_unit=inch" target="_blank" rel="noopener">open-meteo.com/en/docs</a> and paste it here. Leave blank for the default. Refreshes at 6am, noon, 3pm, 6pm and 10pm.</p>
     </fieldset>
 
     <fieldset>
@@ -154,6 +157,16 @@
   </div>
 </div>
 
+<!-- movie detail -->
+<div id="movieModal" hidden>
+  <div class="modal-card wide">
+    <div id="movieModalBody"></div>
+    <div class="modal-actions">
+      <button id="mvClose" class="ghost-btn sm">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- team picker -->
 <div id="teamModal" hidden>
   <div class="modal-card">
@@ -172,16 +185,16 @@
   </div>
 </div>
 
-<script src="js/store.js?v=2"></script>
-<script src="js/themes.js?v=2"></script>
-<script src="js/sky.js?v=2"></script>
-<script src="js/weather.js?v=2"></script>
-<script src="js/google.js?v=2"></script>
-<script src="js/stocks.js?v=2"></script>
-<script src="js/fantasy.js?v=2"></script>
-<script src="js/teams.js?v=2"></script>
-<script src="js/movies.js?v=2"></script>
-<script src="js/notes.js?v=2"></script>
-<script src="js/app.js?v=2"></script>
+<script src="js/store.js?v=3"></script>
+<script src="js/themes.js?v=3"></script>
+<script src="js/sky.js?v=3"></script>
+<script src="js/weather.js?v=3"></script>
+<script src="js/google.js?v=3"></script>
+<script src="js/stocks.js?v=3"></script>
+<script src="js/fantasy.js?v=3"></script>
+<script src="js/teams.js?v=3"></script>
+<script src="js/movies.js?v=3"></script>
+<script src="js/notes.js?v=3"></script>
+<script src="js/app.js?v=3"></script>
 </body>
 </html>

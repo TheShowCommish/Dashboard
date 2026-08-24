@@ -80,10 +80,28 @@ const Store = (() => {
   };
 })();
 
-/* Small shared helper every module uses for network calls. */
+/* Small shared helper every module uses for network calls.
+
+   On failure it digs the provider's own message out of the body. A bare
+   "403" tells you nothing; Google's actual text ("Google Calendar API has
+   not been used in project 123 before or it is disabled") tells you
+   exactly what to go and fix. */
 async function getJSON(url, opts){
   const res = await fetch(url, opts);
-  if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if(!res.ok){
+    let detail = '';
+    try{
+      const text = await res.text();
+      try{
+        const j = JSON.parse(text);
+        detail = j.error?.message || j.error_description || j.message
+              || j.status_message || j.reason || (typeof j.error === 'string' ? j.error : '');
+      }catch{
+        if(!/^\s*</.test(text)) detail = text.slice(0, 160);   // not an HTML error page
+      }
+    }catch{ /* body already consumed or unreadable */ }
+    throw new Error(`${res.status} ${res.statusText}${detail ? ' — ' + detail : ''}`);
+  }
   return res.json();
 }
 
