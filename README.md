@@ -21,6 +21,7 @@ js/fantasy.js           ESPN fantasy football; routes the four Fantasy screens
 js/ffdata.js            the draft/season model: ADP, scoring, depth, injuries
 js/ffplayer.js          the player card (scoring history, position room)
 js/ffdraft.js           the live draft board
+js/ffboard.js           the whole draft as an editable grid
 js/ffseason.js          post-draft analysis: talent, weaknesses, free agents
 js/ffseasonview.js      the Team, Waivers and League screens
 js/sports.js            team data from ESPN's public site API
@@ -330,6 +331,7 @@ node tools/build-season.js
 | `data/season-YYYY.json` | every player's PPR score, week by week | weekly, in season |
 | `data/depth-YYYY.json` | the current offensive depth charts | constantly, in season |
 | `data/adp-YYYY.json` | a mock-draft ADP snapshot | daily, before the draft |
+| `data/line-YYYY.json` | offensive line grades, per team | once a season |
 
 Why baked rather than fetched live: the two upstream files are 8 MB and 44 MB.
 Parsing those in a Cloudflare Worker blows past the free tier's 10 ms CPU
@@ -348,8 +350,9 @@ pick of the draft is in; after that the roster is.
 
 ### Draft
 
-The board is every player being drafted in 12-team PPR mocks, in ADP order,
-against what he actually scored last season.
+The board is every player being drafted in 12-team PPR mocks, against what he
+actually scored last season. **Every column header explains itself** — hover any
+of them — and **every column sorts**, ascending and descending, by clicking it.
 
 - **ADP** is the consensus of every mock draft Fantasy Football Calculator ran in
   the last seven days at exactly your format — thousands of them, not a pundit's
@@ -367,20 +370,80 @@ against what he actually scored last season.
 - **The last column** is the chance he survives to your next pick, from his ADP
   and its standard deviation. Set your slot in the panel on the right and the
   snake maths follows.
+- **Support** is what he is walking into, and it changes by position:
+  a running back gets his **offensive line**, graded A to F; a receiver or tight
+  end gets **his quarterback**; a quarterback gets **his top two receivers**. The
+  line grade is built from two measurements that isolate the line from the man
+  behind it — yards *before* contact per carry for run blocking (yards after
+  contact are the back's doing, not the line's), and pressure rate allowed for
+  pass protection. Hover for both ranks. Because the scales differ by position,
+  sort this column with a position filter on.
 - A **NAME OUT** chip means someone *ahead of him on his own depth chart* is out.
   That is the cheap edge on draft day. A starter whose backup is hurt is not
   flagged — he was already taking the touches.
+- A **PHI → NE** chip means he changed teams. Everything in the columns to its
+  right was earned somewhere else, behind a different line, with a different
+  quarterback throwing — so it is called out rather than left to be noticed.
+
+#### Running the draft
+
+Set your **slot**, the number of **teams** and the number of **rounds** in the
+panel on the right. The button at the end of each row says who the pick is going
+to — **→ Kyle**, **→ You** — so putting somebody else's pick in is the same one
+click as putting in your own. Click it again to undo that pick.
+
+**Draft board** opens the whole thing: rounds down, seats across, snaked the way
+the picks actually ran, one colour per position so a roster full of running backs
+is visible without reading a name. Click any cell to change who was taken there,
+or clear it; click a seat's name to rename it. Editing a pick that moves a player
+from elsewhere leaves the old slot empty and puts the clock back on it, because
+that hole is now the next thing that needs filling.
+
+#### Targets
+
+Star anyone on the board — before the draft or during it — and the **Targets**
+panel tells you when to take him rather than whether he is any good:
+
+| verdict | what it means |
+| --- | --- |
+| **TOO EARLY** | taking him now is a reach; it names the later pick he is still likely to reach |
+| **NOW** | this is his spot — the odds of him lasting to your next pick are printed |
+| **TAKE NOW** | he will not survive to your next pick at all |
+| **STEAL** | he has slid well past where the room usually takes him |
+| **WAIT** | not your pick, and he should still be there at a named later one |
+| **SLIPPING** | he is going before your next pick, so stop planning around him |
+| **GONE** | taken, at which pick, and by whom |
+
+All of it comes off the standard deviation FFC publishes with each ADP: the pick
+a player goes at is treated as roughly normal around it, which is what turns
+"will he last?" into a percentage.
+
+#### Take one of these
+
+Best available, weighed against what your roster still needs. Value alone says
+take the best player; need alone says fill the hole; neither is right on its own.
+What reconciles them is the **drop-off** — how much worse the best man at that
+position will be by the time your pick comes round again. A position with a cliff
+behind it is worth reaching for. One with ten interchangeable players is not, and
+the panel says which is which in as many words.
 
 Hit **take** as each pick goes in, whoever made it. The board tracks whose turn
 it is, hides who is gone, keeps your own roster with its positional holes, and
 calls out a run when one is happening. **Undo** fixes a misclick; **Reset** starts
 over. It all survives a reload — a closed laptop mid-draft is not a lost draft.
 
-Click any row for the player card: the weekly bars for last season with the
-median drawn across them, every injury at his position on his NFL team, and
-every other player at that position in depth-chart order with his ADP and his
-scoring. That last block is the one that answers "if I take him, what is actually
-in front of him".
+Click any row for the player card:
+
+- **The weekly bars for last season**, with two dotted lines across them — his own
+  average in amber, and in green the last startable player at his position. Bars
+  clearing the green line were startable weeks; bars under it were the weeks he
+  lost you the matchup. The gap between the two lines is the whole argument for
+  drafting him.
+- **His position room on his NFL team, as a table**: name, injury status, points
+  per game, median, high, low, and points over the last startable player — with
+  him highlighted in it. That is the block that answers "if I take him, what is
+  actually in front of him".
+- **The injury news** behind every designation in that table, with how old it is.
 
 ### Roster, Waivers, League
 

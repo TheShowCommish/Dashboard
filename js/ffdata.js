@@ -214,11 +214,12 @@ const FFData = (() => {
 
       /* Every source is allowed to fail on its own. A missing ADP feed
          should cost the ADP column, not the whole tab. */
-      const [adpRes, curRes, priorRes, depthRes, injRes] = await Promise.allSettled([
+      const [adpRes, curRes, priorRes, depthRes, lineRes, injRes] = await Promise.allSettled([
         loadAdp(),
         localJSON('data/season-' + yr + '.json'),
         localJSON('data/season-' + prior + '.json'),
         localJSON('data/depth-' + yr + '.json'),
+        localJSON('data/line-' + prior + '.json'),
         loadInjuries()
       ]);
 
@@ -227,6 +228,7 @@ const FFData = (() => {
       const current  = val(curRes);
       const past     = val(priorRes);
       const depth    = val(depthRes);
+      const line     = val(lineRes);
       const injuries = val(injRes) || [];
 
       const problems = [];
@@ -267,7 +269,8 @@ const FFData = (() => {
 
       const statLine = (src, s) => ({
         g: s.g, tot: s.tot, avg: s.avg, med: s.med, hi: s.hi, lo: s.lo,
-        weeks: s.w, scores: s.s, opps: s.o || [], season: src.season
+        weeks: s.w, scores: s.s, opps: s.o || [],
+        team: team(s.t), season: src.season
       });
 
       if(past) for(const s of past.players){
@@ -313,8 +316,18 @@ const FFData = (() => {
         players, index, injuries,
         defence: (liveDef || past || {}).defence || {},
         defenceSeason: (liveDef || past || {}).season || null,
+        line: line ? line.teams : null,
+        lineSeason: line ? line.season : null,
         problems
       };
+
+      /* A player whose ADP team is not the team he scored for last season has
+         moved. Worth flagging loudly on a draft board: last year's numbers were
+         earned behind a different line, with a different quarterback throwing. */
+      for(const p of players){
+        const was = p.last && p.last.team;
+        p.movedFrom = (was && p.team && was !== p.team) ? was : null;
+      }
 
       buildGroups(bundle);
       return bundle;
@@ -357,6 +370,93 @@ const FFData = (() => {
   function group(teamAbbr, pos){
     if(!bundle) return [];
     return bundle.groups.get(team(teamAbbr) + '|' + pos) || [];
+  }
+
+  /* ---- support staff ----
+     Nobody scores alone. What a player is walking into next season matters as
+     much as what he did last one, and for each position there is one thing
+     that matters most:
+
+       RB   the offensive line, graded on last season's charting
+       WR   who is throwing to him
+       TE   the same — a tight end is a receiver with worse coverage
+       QB   the two receivers he is throwing to
+
+     All of it comes off the current depth chart, so it reflects where a player
+     has actually landed rather than where he used to be. */
+  function support(player){
+    if(!bundle || !player || !player.team) return null;
+
+    const chartFor = pos => group(player.team, pos)
+      .filter(p => p.depth)
+      .sort((a, b) => a.depth - b.depth);
+
+    if(player.pos === 'RB'){
+      const ol = lineFor(player.team);
+      if(!ol) return null;
+      return {
+        kind: 'ol',
+        label: 'OL ' + grade(ol.rank),
+        detail: 'run block ' + ordinal(ol.runRank) + ' (' + ol.ybc + ' yds before contact/carry) · ' +
+                'pass block ' + ordinal(ol.passRank) + ' (' + ol.pressure + '% pressure allowed) · ' +
+                bundle.lineSeason + ' charting',
+        rank: ol.rank
+      };
+    }
+
+    if(player.pos === 'WR' || player.pos === 'TE'){
+      const qb = chartFor('QB')[0];
+      if(!qb) return null;
+      const ppg = qb.now && qb.now.g ? qb.now.avg : (qb.last && qb.last.g ? qb.last.avg : null);
+      return {
+        kind: 'qb',
+        label: qb.name,
+        detail: 'his quarterback' + (ppg == null ? ', with no NFL scoring on record'
+                                                : ' — ' + ppg + ' a game in ' + (qb.now && qb.now.g ? qb.now.season : qb.last.season)),
+        player: qb
+      };
+    }
+
+    if(player.pos === 'QB'){
+      const wrs = chartFor('WR').slice(0, 2);
+      if(!wrs.length) return null;
+      return {
+        kind: 'wr',
+        label: wrs.map(w => shortName(w.name)).join(', '),
+        detail: 'his top two receivers — ' + wrs.map(w => {
+          const st = (w.now && w.now.g) ? w.now : (w.last && w.last.g ? w.last : null);
+          return w.name + (st ? ' (' + st.avg + ' a game)' : ' (no scoring on record)');
+        }).join(', '),
+        players: wrs
+      };
+    }
+
+    return null;
+  }
+
+  /* "Amon-Ra St. Brown" does not fit in a table cell; "A. St. Brown" does. */
+  function shortName(name){
+    const bits = String(name || '').split(' ');
+    if(bits.length < 2) return name;
+    return bits[0][0] + '. ' + bits.slice(1).join(' ');
+  }
+
+  const lineFor = t => (bundle && bundle.line) ? bundle.line[team(t)] || null : null;
+
+  /* A rank out of 32 read as a letter, so a glance is enough. */
+  function grade(rank){
+    if(rank <= 4)  return 'A';
+    if(rank <= 8)  return 'B+';
+    if(rank <= 13) return 'B';
+    if(rank <= 19) return 'C';
+    if(rank <= 24) return 'C-';
+    if(rank <= 28) return 'D';
+    return 'F';
+  }
+
+  function ordinal(n){
+    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
   }
 
   /* ---- replacement level ----
@@ -447,6 +547,7 @@ const FFData = (() => {
   return {
     load, mates, group, replacementLevels, survival, defenceRanks,
     pickOf, myPicks, onClock, clearCache, norm, key, team, statusRank, normStatus,
+    support, lineFor, grade, ordinal, shortName,
     LEAGUE_SIZE, REPLACEMENT, OUT, DINGED, ESPN_POS, ESPN_TEAM,
     get bundle(){ return bundle; }
   };

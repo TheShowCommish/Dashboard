@@ -197,7 +197,7 @@ const FFSeasonView = (() => {
     const table = rows.map(r => {
       const w = (r.start / top) * 100;
       const best = [...r.starters].sort((a, b) => b.v - a.v)[0];
-      return `<div class="row ff-team${r.team.mine ? ' is-mine' : ''}">
+      return `<div class="row${r.team.mine ? ' is-mine' : ''}">
         <span class="row-main">
           <span class="row-title">${r.startRank}. ${esc(r.team.name)}${
             r.team.mine ? ' <span class="chip warn">YOU</span>' : ''}</span>

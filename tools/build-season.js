@@ -7,6 +7,7 @@
      data/depth-YYYY.json    the current offensive depth charts
      data/adp-YYYY.json      a mock-draft ADP snapshot, as a fallback
                              for when the proxy is not answering
+     data/line-YYYY.json     offensive line grades, per team
 
    Source: nflverse-data, the play-by-play-derived weekly player
    stats behind nflfastR. It carries fantasy_points_ppr already
@@ -84,6 +85,7 @@ function parseCSV(text){
 }
 
 const round1 = n => Math.round(n * 10) / 10;
+const round2 = n => Math.round(n * 100) / 100;
 
 function median(list){
   const s = [...list].sort((a, b) => a - b);
@@ -319,6 +321,98 @@ async function buildAdp(season, teams = 12, format = 'ppr'){
   return payload;
 }
 
+/* ------------------------------------------------------------
+   Offensive line.
+
+   Two measurements, both from Pro Football Reference's charting, and both
+   chosen because they isolate the line from the man behind it:
+
+     run block   yards before contact per carry. Yards BEFORE contact are
+                 the line's doing; yards after are the back's. Team rushing
+                 average cannot tell those apart, which is why it is a bad
+                 line stat and this is a good one.
+     pass block  pressure rate allowed. Sacks alone under-count it — a QB
+                 who gets rid of it fast hides a leaky line — so the rate
+                 at which the pocket breaks is the honest number.
+
+   Note times_pressured_pct arrives as a fraction (0.182 = 18.2%), not as a
+   percentage. Reading it as the latter yields 50,000 dropbacks a season.
+   ------------------------------------------------------------ */
+const RUSH_SRC = y => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rush_${y}.csv`;
+const PASS_SRC = y => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_${y}.csv`;
+
+async function grab(url){
+  const res = await fetch(url, {redirect: 'follow'});
+  if(res.status === 404) return null;
+  if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const rows = parseCSV(await res.text());
+  const head = rows[0];
+  return rows.slice(1)
+    .filter(r => r.length === head.length)
+    .map(r => Object.fromEntries(head.map((k, i) => [k, r[i]])));
+}
+
+async function buildLine(season){
+  process.stdout.write(`  ${season} offensive line: fetching… `);
+
+  const [rush, pass] = await Promise.all([grab(RUSH_SRC(season)), grab(PASS_SRC(season))]);
+  if(!rush || !pass){ console.log('not published yet — skipped.'); return null; }
+
+  const acc = {};
+  const at = t => acc[t] || (acc[t] = {ybc: 0, carries: 0, pressured: 0, sacked: 0, dropbacks: 0});
+
+  for(const r of rush){
+    if(r.game_type !== 'REG') continue;
+    const carries = Number(r.carries) || 0;
+    if(!carries) continue;
+    const x = at(team(r.team));
+    x.carries += carries;
+    x.ybc += Number(r.rushing_yards_before_contact) || 0;
+  }
+
+  for(const r of pass){
+    if(r.game_type !== 'REG') continue;
+    const pressured = Number(r.times_pressured) || 0;
+    const pct = parseFloat(r.times_pressured_pct);
+    if(!(pct > 0)) continue;                       // no dropbacks to divide by
+    const x = at(team(r.team));
+    x.pressured += pressured;
+    x.sacked    += Number(r.times_sacked) || 0;
+    x.dropbacks += Math.round(pressured / pct);
+  }
+
+  const rows = Object.entries(acc)
+    .filter(([, x]) => x.carries && x.dropbacks)
+    .map(([abbr, x]) => ({
+      team: abbr,
+      ybc:      round2(x.ybc / x.carries),
+      pressure: round1(100 * x.pressured / x.dropbacks),
+      sack:     round1(100 * x.sacked / x.dropbacks)
+    }));
+
+  /* Rank 1 is best at both, so pressure sorts the other way round. */
+  [...rows].sort((a, b) => b.ybc - a.ybc).forEach((r, i) => { r.runRank = i + 1; });
+  [...rows].sort((a, b) => a.pressure - b.pressure).forEach((r, i) => { r.passRank = i + 1; });
+
+  /* One number for a running back, who cares about the run block roughly
+     twice as much as he cares about the pocket. */
+  for(const r of rows) r.blend = round1(r.runRank * 0.65 + r.passRank * 0.35);
+  [...rows].sort((a, b) => a.blend - b.blend).forEach((r, i) => { r.rank = i + 1; });
+
+  const teams = {};
+  for(const r of rows){
+    const {team: abbr, ...rest} = r;
+    teams[abbr] = rest;
+  }
+
+  const file = path.join(OUT_DIR, `line-${season}.json`);
+  fs.mkdirSync(OUT_DIR, {recursive: true});
+  fs.writeFileSync(file, JSON.stringify({season, built: new Date().toISOString(),
+                                         source: 'nflverse pfr_advstats', teams}));
+  const best = rows.find(r => r.rank === 1), worst = rows.find(r => r.rank === rows.length);
+  console.log(`${rows.length} teams (best ${best.team}, worst ${worst.team}) → data/line-${season}.json`);
+  return teams;
+}
 (async () => {
   let seasons = process.argv.slice(2).map(Number).filter(Boolean);
   if(!seasons.length){
@@ -338,6 +432,8 @@ async function buildAdp(season, teams = 12, format = 'ppr'){
   const current = Math.max(...seasons);
   try{ await buildDepth(current); }
   catch(e){ console.error(`  ${current} depth charts: FAILED — ${e.message}`); process.exitCode = 1; }
+  try{ await buildLine(Math.min(...seasons)); }
+  catch(e){ console.error(`  offensive line: FAILED — ${e.message}`); process.exitCode = 1; }
   try{ await buildAdp(current); }
   catch(e){ console.error(`  ${current} ADP: FAILED — ${e.message}`); process.exitCode = 1; }
 })();

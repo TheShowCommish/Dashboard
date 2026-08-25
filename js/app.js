@@ -291,7 +291,7 @@ const App = (() => {
     });
 
     const MODALS = ['teamModal','movieModal','dayModal','standModal',
-                    'playerModal','gameModal','wxModal','ffPlayerModal'];
+                    'playerModal','gameModal','wxModal','ffPlayerModal','ffBoardModal'];
 
     const closeModals = () => MODALS.forEach(id => {
       const el = document.getElementById(id);
