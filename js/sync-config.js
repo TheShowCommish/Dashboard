@@ -24,6 +24,6 @@
    ============================================================ */
 
 window.DECK_SYNC = {
-  url:  '',      // e.g. 'https://abcdefghijklm.supabase.co'
-  anon: ''       // the anon / publishable key, the long eyJ... string
+  url:  'https://iizyncdgvkntotojwkvn.supabase.co',      // e.g. 'https://abcdefghijklm.supabase.co'
+  anon: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpenluY2RndmtudG90b2p3a3ZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NzYyMDYsImV4cCI6MjEwMzM1MjIwNn0.PZqWcUInazVMPJtwYNfm_xiY89Tn8i_pOjjFM7hXFB8'       // the anon / publishable key, the long eyJ... string
 };
