@@ -99,6 +99,35 @@ const App = (() => {
       b.addEventListener('change', () => Store.set(`kiosk.show.${b.dataset.show}`, b.checked)));
   }
 
+  /* ---- the sync panel ---- */
+  const SYNC_WORDS = {
+    off:        () => 'Not set up. Paste your Supabase project URL and anon key above.',
+    'signed-out': d => d || 'Not signed in on this device.',
+    sent:       d => d || 'Check your email.',
+    syncing:    () => 'Syncing…',
+    ok:         d => `In sync${d ? ' · ' + d : ''}.`,
+    offline:    () => 'Offline — changes are saved here and will go up when there is signal.',
+    error:      d => `Sync failed: ${d}`
+  };
+
+  function paintSyncState(st){
+    const el = document.getElementById('syncState');
+    if(!el || !window.Cloud) return;
+    const who = Cloud.user ? ` Signed in as ${Cloud.user.email}.` : '';
+    const q = st.pending ? ` ${st.pending} waiting to upload.` : '';
+    el.textContent = (SYNC_WORDS[st.state] || (() => st.state))(st.detail) + who + q;
+  }
+
+  function fillSyncFields(){
+    if(!window.Cloud) return;
+    const s = Cloud.settings;
+    const set = (id, v) => { const el = document.getElementById(id); if(el && !el.value) el.value = v; };
+    set('k_syncUrl', s.url);
+    set('k_syncAnon', s.anon);
+    set('k_syncEmail', s.lastEmail);
+    paintSyncState(Cloud.status);
+  }
+
   /* The game-day theme, forced to one followed team so it can be seen
      without waiting for that team to actually play. */
   function renderGamedayTest(){
@@ -115,6 +144,7 @@ const App = (() => {
   }
 
   function openDrawer(){
+    fillSyncFields();
     renderKioskShow();
     renderGamedayTest();
     renderPreviewTeams();
@@ -195,6 +225,26 @@ const App = (() => {
     step('notes', () => StickyNotes.render());
     step('theme', () => recheckTheme());
 
+    /* Sync comes up after the tabs so a pull that lands mid-boot has
+       something to redraw into, and never blocks first paint. */
+    step('sync', () => {
+      if(!window.Cloud) return;
+      /* A row arriving from another device is only interesting if you
+         are looking at the screen it changed. Redraw that one rather
+         than the whole deck. */
+      Store.onChange(paths => {
+        const hit = pre => paths.some(p => p === pre || p.startsWith(pre + '.'));
+        if(hit('menu') && window.MenuView) MenuView.render();
+        if(hit('notes') && window.StickyNotes) StickyNotes.render();
+        if(hit('todos') && window.Todo) Todo.render();
+        if(hit('holdings') && window.Stocks) Stocks.render();
+        if(hit('teams') && window.Sports) recheckTheme();
+        if(hit('theme')) recheckTheme();
+      });
+      Cloud.onStatus(paintSyncState);
+      Cloud.boot();
+    });
+
     step('tabs', () => {
       document.querySelectorAll('.tab-btn').forEach(b =>
         b.addEventListener('click', () => showTab(b.dataset.tab)));
@@ -239,6 +289,22 @@ const App = (() => {
     on('btnAddTeam','click',  () => Teams.openPicker());
     on('btnAddTeam2','click', () => Teams.openPicker());
     on('tmCancel','click',    () => Teams.closePicker());
+    on('btnSyncIn','click', async () => {
+      const url  = document.getElementById('k_syncUrl').value.trim();
+      const anon = document.getElementById('k_syncAnon').value.trim();
+      Cloud.configure({url, anon});
+      try{
+        await Cloud.signIn(document.getElementById('k_syncEmail').value);
+        Store.toast('Link sent. Open it on this device.');
+      }catch(e){ Store.toast(e.message); paintSyncState({...Cloud.status, state:'error', detail:e.message}); }
+    });
+    on('btnSyncOut','click',  async () => { await Cloud.signOut(); Store.toast('Signed out on this device.'); });
+    on('btnSyncNow','click',  () => { Cloud.sync(); Store.toast('Syncing…'); });
+    on('btnSyncPush','click', () => {
+      const n = Cloud.pushEverything();
+      Store.toast(`Queued ${n} ${n === 1 ? 'thing' : 'things'} to upload.`);
+    });
+
     on('tmSave','click',      () => Teams.saveTeam());
     on('tmLeague','change',   () => Teams.fillTeams());
 

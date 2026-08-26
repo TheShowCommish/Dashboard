@@ -48,8 +48,11 @@ const Shop = (() => {
     const ds = days();
 
     const range = document.getElementById('shopRange');
-    if(range) range.textContent =
-      `${ds[0].toLocaleDateString(undefined,{month:'short',day:'numeric'})} – ${ds[13].toLocaleDateString(undefined,{month:'short',day:'numeric'})}`;
+    if(range){
+      range.dataset.range =
+        `${ds[0].toLocaleDateString(undefined,{month:'short',day:'numeric'})} – ${ds[13].toLocaleDateString(undefined,{month:'short',day:'numeric'})}`;
+      range.textContent = range.dataset.note || range.dataset.range;
+    }
 
     const left = document.getElementById('shopLeft');
     if(left) left.textContent = `${count - ticked} to get`;
@@ -110,6 +113,16 @@ const Shop = (() => {
       if(!b) return;
       const a = b.dataset.act;
 
+      if(a === 'signIn'){
+        const box = document.getElementById('shopEmail');
+        if(!window.Cloud || !Cloud.configured)
+          return Store.toast('Set the Supabase URL and key in the deck\u2019s Settings first.');
+        Cloud.signIn(box.value)
+          .then(() => Store.toast('Link sent. Open it on this phone.'))
+          .catch(err => Store.toast(err.message));
+        return;
+      }
+
       if(a === 'clearTicks'){ Menu.clearBought(); return render(); }
 
       if(a === 'stow'){
@@ -148,10 +161,54 @@ const Shop = (() => {
     addEventListener('storage', render);   // another tab on the same device
   }
 
+  /* ---- sync ----
+     This page is the reason sync exists, so it says out loud where it
+     stands. A list that is quietly a week stale is worse than one that
+     admits it cannot reach the server. */
+  const SYNC_WORDS = {
+    off:          () => 'Not synced — set this up in the deck’s Settings first.',
+    'signed-out': d  => d || 'Sign in to see the list from your other devices.',
+    sent:         d  => d || 'Check your email for the link.',
+    syncing:      () => 'Checking for changes…',
+    ok:           () => '',
+    offline:      () => 'Offline — ticks are saved here and go up when there is signal.',
+    error:        d  => `Could not reach the server: ${d}`
+  };
+
+  function paintSync(st){
+    const auth = document.getElementById('shopAuth');
+    const why  = document.getElementById('shopAuthWhy');
+    if(!auth) return;
+
+    const needsAuth = st.state === 'off' || st.state === 'signed-out' || st.state === 'sent';
+    auth.hidden = !needsAuth;
+    if(why) why.textContent = (SYNC_WORDS[st.state] || (() => ''))(st.detail);
+
+    /* The header carries the softer states so they do not push the list
+       down the screen while you are reading it. */
+    const range = document.getElementById('shopRange');
+    if(!range) return;
+    const note = needsAuth ? '' : (SYNC_WORDS[st.state] || (() => ''))(st.detail);
+    range.dataset.note = note;
+    if(note) range.textContent = note;
+    else if(range.dataset.range) range.textContent = range.dataset.range;
+  }
+
   async function boot(){
     paintDaylight();
     wire();
     render();                 // draw whatever can be drawn before the backlog lands
+
+    if(window.Cloud){
+      /* A pull that lands while you are mid-aisle redraws the list, but
+         only if it touched something the list is made of. */
+      Store.onChange(paths => {
+        if(paths.some(p => p === 'menu.bought' || p.startsWith('menu.'))) render();
+      });
+      Cloud.onStatus(paintSync);
+      await Cloud.boot();
+    }
+
     await Recipes.load();
     render();
   }

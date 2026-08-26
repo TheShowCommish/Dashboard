@@ -719,6 +719,99 @@ so it survives a laptop sleep and a DST change instead of drifting.
 
 ---
 
+## Sync across devices (optional)
+
+Without this, every browser keeps its own copy of everything. That is fine for one
+screen and useless the moment you want the grocery list on a phone in a shop — the
+phone has never seen the plan you built at home, so it honestly reports nothing to buy.
+
+Turning sync on splits your data three ways:
+
+| | examples | where it lives |
+|---|---|---|
+| **Secrets** | `keys.finnhub`, `keys.tmdb`, `keys.gclient`, the proxy URLs | this device only, never uploaded |
+| **Device state** | which tab is open, kiosk on/off, weather and poster caches | this device only — syncing them would have the phone yank the wall display's tab |
+| **Your data** | meal plan, kitchen, shopping list, notes, todos, holdings, followed teams, draft board | synced |
+
+The list of synced paths is `Store.SYNCED` in `js/store.js`. It is an **allowlist**, so a
+path added later has to be opted in deliberately. A mistake there means "my todos did not
+sync", never "my API key is in a database".
+
+### Step 1 — make the project
+
+Create a project at [supabase.com](https://supabase.com). Free tier is plenty; this stores
+a few kilobytes.
+
+### Step 2 — make the table
+
+**SQL Editor → New query**, paste all of [`tools/supabase-setup.sql`](tools/supabase-setup.sql),
+**Run**. That creates `deck_state`, switches on row-level security, and adds four policies
+that fence every row to the user who owns it. Safe to run twice.
+
+### Step 3 — allow your site to be redirected back to
+
+**Authentication → URL Configuration**:
+
+- **Site URL** — `https://<you>.github.io/Dashboard/`
+- **Redirect URLs** — `https://<you>.github.io/Dashboard/**`, plus `http://localhost:8000/**` if you develop locally
+
+A redirect URL that is not on this list is refused, and the magic link dumps you on the site
+root instead of the page you were on. That is the usual cause of "the link did nothing".
+
+### Step 4 — put the project in the page
+
+**Project Settings → API**, copy the **Project URL** and the **anon** key into
+[`js/sync-config.js`](js/sync-config.js), and commit it.
+
+Both values are meant to be public — the anon key identifies the project and nothing more,
+and every device needs it before it can even show you a sign-in box. What protects your data
+is the row-level security from step 2 plus your login: a stranger holding this key has no
+JWT, so every policy refuses them.
+
+**Never commit the `service_role` key.** That one bypasses row-level security entirely.
+
+Committing the anon key is what lets a phone work by opening the page and tapping a button,
+instead of you typing a JWT on a phone keyboard in a supermarket car park.
+
+### Step 5 — sign in, then upload once
+
+On the device that already has your real data: **Settings → Sync**, enter your email, click
+the link in it, then press **Upload this device** once.
+
+Every other device — phone included — just signs in. Open `grocery.html` on the phone, tap
+**Email me a link**, and the list is there.
+
+"Upload this device" only sends paths that actually hold something, so pressing it on an
+empty phone cannot wipe the plan on the wall display.
+
+### What it does and does not promise
+
+- **Local first.** Every write lands in `localStorage` immediately and no screen ever waits
+  for the network. Ticking things off with no signal works; the queue drains when you get it back.
+- **Hidden pages still upload.** Ticking the last item and pocketing the phone is the most
+  likely way this gets used, so an outstanding queue flushes whether or not the page is on
+  screen. Only the polling *pull* waits to be looked at.
+- **One row per path, last write wins.** Two devices editing different things never collide —
+  the phone ticking the shopping list while the display edits the meal plan is not a conflict
+  at all. Two devices editing *the same* path inside one poll window will keep the later one.
+  For one person with a phone and a wall display that is an honest trade.
+- **Tokens live in `localStorage`,** the same as any app that stays signed in between visits.
+  The alternative is an email round trip at the shop door, which is the thing this avoids.
+
+### Testing it without a Supabase project
+
+`tools/mock-supabase.js` stands in for the real thing — sign-in, token refresh, expiry,
+pulling, pushing and going offline — so the sync client can be exercised end to end locally:
+
+```bash
+node tools/mock-supabase.js
+```
+
+Point `js/sync-config.js` at `http://localhost:8099` with any non-empty key. The magic link
+is not emailed; it is printed to that terminal and served at `/inbox`.
+
+---
+
 ## Testing locally
 
 ```bash

@@ -32,6 +32,16 @@
     <p class="empty">Loading the plan&hellip;</p>
   </div>
 
+  <!-- Signing in here rather than only on the deck: this is the page that
+       gets opened on a phone that has never seen the dashboard. -->
+  <div id="shopAuth" class="shop-auth" hidden>
+    <p id="shopAuthWhy"></p>
+    <div class="shop-auth-row">
+      <input id="shopEmail" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email">
+      <button class="ghost-btn sm primary" data-act="signIn">Email me a link</button>
+    </div>
+  </div>
+
   <footer class="shop-foot">
     <button class="ghost-btn sm" data-act="stow">Put ticked away</button>
     <button class="ghost-btn sm" data-act="clearTicks">Clear ticks</button>
@@ -43,6 +53,8 @@
      kiosk, no tabs — this page exists to be read at arm's length with a
      trolley in the other hand. -->
 <script src="js/store.js?v=dev"></script>
+<script src="js/sync-config.js?v=dev"></script>
+<script src="js/cloud.js?v=dev"></script>
 <script src="js/themes.js?v=dev"></script>
 <script src="js/food.js?v=dev"></script>
 <script src="js/recipes.js?v=dev"></script>

@@ -3075,3 +3075,27 @@ body.shop{
 .shop-foot .ghost-btn{flex:1 1 auto;text-align:center;padding:9px 12px;font-size:13px;}
 body.shop .empty{font-size:14px;color:var(--muted);text-align:center;padding:40px 10px;}
 body.shop .mv-error{margin-bottom:12px;}
+
+/* ---- sync ---- */
+.sync-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 4px;}
+.sync-row input{
+  flex:1 1 190px;background:var(--panel-2);border:1px solid var(--edge);color:var(--text);
+  border-radius:6px;padding:6px 9px;font:inherit;font-size:12.5px;
+}
+.sync-row input:focus{outline:none;border-color:var(--accent);}
+
+/* The phone list's own sign-in. It sits between the list and the footer
+   rather than over them: a banner that covers the list is the last thing
+   wanted by someone holding a trolley. */
+.shop-auth{
+  display:flex;flex-direction:column;gap:8px;
+  padding:12px;margin-bottom:10px;
+  border:1px solid var(--edge);border-radius:var(--r);background:var(--panel);
+}
+.shop-auth p{margin:0;font-size:13px;line-height:1.45;color:var(--muted);}
+.shop-auth-row{display:flex;gap:8px;}
+.shop-auth-row input{
+  flex:1;min-width:0;background:var(--panel-2);border:1px solid var(--edge);color:var(--text);
+  border-radius:6px;padding:10px 11px;font:inherit;font-size:16px;
+}
+.shop-auth-row input:focus{outline:none;border-color:var(--accent);}
