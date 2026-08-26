@@ -40,6 +40,7 @@ const Sky = (() => {
   let bits = [], drops = [], flakes = [], ripples = [], gusts = [], drips = [];
   let raf = null, flash = 0, nextBolt = 0, bolt = null;
   let piles = [], pilesAt = 0;
+  let clouds = [], cloudLit = null;
   let t = 0;
 
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -90,6 +91,12 @@ const Sky = (() => {
       flakes = Array.from({length:170}, () => ({x:rnd(0,W()), y:rnd(-H(),H()),
                                                 r:rnd(1.1,3.4), v:rnd(.5,1.6), d:rnd(0,6.3)}));
     if(!fx.has('snow')) flakes = [];
+
+    if(fx.has('clouds')){
+      const want = cloudCount();
+      if(clouds.length !== want || cloudLit !== litDeck()) seedClouds(want);
+    }
+    if(!fx.has('clouds')) clouds = [];
 
     if(fx.has('wind') && gusts.length !== 26)
       gusts = Array.from({length:26}, () => ({x:rnd(0,W()), y:rnd(0,H()), l:rnd(40,160), v:rnd(4,11), a:rnd(.05,.18)}));
@@ -333,6 +340,103 @@ const Sky = (() => {
   }
 
   /* ---- wind ---- */
+  /* ---- clouds ----
+     The one sky the deck used to sit out. Overcast and partly cloudy are
+     the most common weather there is, and all it drew was nine ellipses
+     at seven per cent BEHIND the panels — which is to say nothing at
+     all. These go on the front canvas with the rain and the snow,
+     because a cloud that passes behind the deck is not a cloud, it is a
+     gradient.
+
+     Sprites are pre-rendered once and then blitted: soft edges want
+     radial gradients, and forty of those a frame is a real cost for
+     something that moves a pixel a second. */
+
+  const relLum = h => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(h || ''));
+    if(!m) return 0;
+    const n = parseInt(m[1], 16);
+    const f = v => { v = ((n >> v) & 255) / 255;
+                     return v <= .03928 ? v/12.92 : Math.pow((v+.055)/1.055, 2.4); };
+    return .2126*f(16) + .7152*f(8) + .0722*f(0);
+  };
+
+  /* Light themes need dark clouds and dark themes need pale ones, or the
+     cloud is the same colour as the sky it is crossing. Read off --ink
+     rather than guessing from the theme id, so a new theme gets this for
+     free. */
+  const litDeck = () =>
+    relLum(getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()) > .3;
+
+  /* Overcast is a full sky; partly cloudy is a handful. */
+  function cloudCount(){
+    const d = String(currentDesc || '').toLowerCase();
+    if(d.includes('partly') || d.includes('mainly')) return 5;
+    return 9;
+  }
+
+  /* One cloud, drawn once into its own canvas: a row of soft puffs with a
+     flatter base, the way a real one sits on its layer. */
+  function cloudSprite(w, h, lit){
+    const el = document.createElement('canvas');
+    el.width  = Math.ceil(w * devicePixelRatio);
+    el.height = Math.ceil(h * devicePixelRatio);
+    const g = el.getContext('2d');
+    g.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+
+    const rgb = lit ? '90,105,125' : '225,236,250';
+    const puffs = Math.round(rnd(5, 8));
+    for(let i = 0; i < puffs; i++){
+      const px = w * (.14 + (i / (puffs - 1)) * .72) + rnd(-w*.04, w*.04);
+      const r  = rnd(h*.30, h*.48) * (i === 0 || i === puffs-1 ? .72 : 1);
+      const py = h * .62 - r * rnd(.15, .55);
+      const rg = g.createRadialGradient(px, py, r*.15, px, py, r);
+      rg.addColorStop(0,   `rgba(${rgb},.95)`);
+      rg.addColorStop(.55, `rgba(${rgb},.45)`);
+      rg.addColorStop(1,   `rgba(${rgb},0)`);
+      g.fillStyle = rg;
+      g.beginPath(); g.arc(px, py, r, 0, 6.3); g.fill();
+    }
+    return el;
+  }
+
+  function seedClouds(n){
+    cloudLit = litDeck();
+    clouds = Array.from({length:n}, () => {
+      /* Depth: the small, faint, slow ones read as far off. */
+      const depth = rnd(.35, 1);
+      const w = rnd(190, 430) * depth + 90;
+      const h = w * rnd(.30, .42);
+      return {
+        x: rnd(-w, W()),
+        y: rnd(-h*.25, H() * .55),
+        w, h,
+        v: (.10 + depth * .32),
+        /* Same weight either way. Overlapping puffs stack, so the core
+           of a near cloud lands around a third — enough to read as a
+           cloud crossing the deck, not enough to grey out what is
+           written under it. */
+        a: .22 * (.45 + depth * .55),
+        img: cloudSprite(w, h, cloudLit)
+      };
+    });
+  }
+
+  function drawClouds(){
+    /* The theme can change under a running effect — day into dusk, a
+       won game repainting the deck — and a pale cloud on a pale deck is
+       invisible. Checked a couple of times a second, not every frame. */
+    if(t % 90 === 0 && litDeck() !== cloudLit) seedClouds(clouds.length);
+
+    for(const c of clouds){
+      fx2.globalAlpha = c.a;
+      fx2.drawImage(c.img, c.x, c.y, c.w, c.h);
+      c.x += c.v;
+      if(c.x > W()){ c.x = -c.w; c.y = rnd(-c.h*.25, H() * .55); }
+    }
+    fx2.globalAlpha = 1;
+  }
+
   function drawWind(){
     fx2.strokeStyle = 'rgba(210,225,245,.16)';
     fx2.lineWidth = 1;
@@ -456,11 +560,13 @@ const Sky = (() => {
     /* An effect and the theme ambient can name the same weather; the
        effect is the better version, so the ambient stands down. */
     const muted = (fx.has('rain') && (mode==='rain' || mode==='storm')) ||
-                  (fx.has('snow') &&  mode==='snow');
+                  (fx.has('snow') &&  mode==='snow') ||
+                  (fx.has('clouds') && (mode==='clouds' || mode==='fog'));
     if(!muted) drawAmbient();
 
     if(fx.has('snow') || fx.has('rain')) measurePiles();
 
+    if(fx.has('clouds'))    drawClouds();
     if(fx.has('sun'))       drawFlare();
     if(fx.has('wind'))      drawWind();
     if(fx.has('snow'))      drawSnowFx();
@@ -491,7 +597,10 @@ const Sky = (() => {
   /* ---- which effects are running ----
      Forced from Settings for testing, otherwise read off the same weather
      the theme was picked from. */
-  const ALL_FX = ['snow','rain','sun','wind','lightning'];
+  const ALL_FX = ['snow','rain','clouds','sun','wind','lightning'];
+
+  /* The current condition text, for how heavy the cloud should be. */
+  let currentDesc = '';
 
   function effectsFor(ctx){
     const on = new Set();
@@ -505,13 +614,21 @@ const Sky = (() => {
     if(forced.length) return new Set(forced);
 
     const w = ctx && ctx.weather;
+    currentDesc = w ? (w.desc || '') : '';
     if(w){
       if(w.main === 'Snow') on.add('snow');
       if(['Rain','Drizzle','Thunderstorm'].includes(w.main)) on.add('rain');
       if(w.main === 'Thunderstorm') on.add('lightning');
       if(w.main === 'Clear' && w.isDay) on.add('sun');
       if((w.wind || 0) >= 18) on.add('wind');
+      if(['Clouds','Fog'].includes(w.main)) on.add('clouds');
     }
+
+    /* Never a dead screen. Clear nights already have their stars, but
+       anything else that lands here — a condition with no effect of its
+       own, or no forecast at all yet — gets a thin, slow high cloud
+       rather than nothing. */
+    if(!on.size) on.add('clouds');
     return on;
   }
 

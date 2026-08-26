@@ -404,7 +404,7 @@ const App = (() => {
     /* Force-on switches for the screen effects, so each can be seen
        without waiting for that weather. */
     step('weather effects', () => {
-      const FX = ['on','snow','rain','sun','wind','lightning'];
+      const FX = ['on','snow','rain','clouds','sun','wind','lightning'];
       for(const k of FX){
         const box = document.getElementById(`fx_${k}`);
         if(!box) continue;

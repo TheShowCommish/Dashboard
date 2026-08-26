@@ -115,6 +115,19 @@ const THEMES = [
       '--good':'#4CC9A7','--bad':'#E5484D','--rail':'#8FA3BF'
     }
   },
+  /* Overcast in daylight is still daylight — a grey afternoon should not
+     look like a grey midnight. Same flat, colourless sky as `overcast`,
+     lit from the front: cool greys instead of blues, and the accent
+     pulled back to slate so nothing on the deck sparkles. */
+  {
+    id:'cloudyday', label:'Cloudy', priority:16, sky:'clouds',
+    when: c => c.phase === 'day' && c.weather && c.weather.main === 'Clouds',
+    tokens:{
+      '--ink':'#E7EAEF','--panel':'#F8FAFC','--panel-2':'#EDF1F6','--edge':'#CFD7E1',
+      '--text':'#1A2029','--muted':'#63707F','--accent':'#4A6785','--accent-ink':'#FFFFFF',
+      '--good':'#15795C','--bad':'#B93A3F','--rail':'#4A6785'
+    }
+  },
   {
     id:'heat', label:'Heat', priority:22, sky:'clear',
     when: c => c.weather && c.weather.temp >= 95,
