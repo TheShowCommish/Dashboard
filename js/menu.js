@@ -86,6 +86,47 @@ const Menu = (() => {
     write(p);
   }
 
+  /* The next thing to cook: the earliest meal from today forward that
+     has not been cooked yet, in slot order within a day. This is what
+     the Up Next screen is an advert for. */
+  function nextMeal(from){
+    const start = new Date(from || Date.now());
+    start.setHours(0,0,0,0);
+    for(let i = 0; i < 30; i++){
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      for(const s of SLOTS){
+        const hit = entries(d, s.id).find(e => !e.cooked);
+        if(hit) return {date: d, dateKey: iso(d), slot: s.id, slotLabel: s.label, entry: hit};
+      }
+    }
+    return null;
+  }
+
+  /* Moving a meal from one slot to another — what dragging a chip across
+     the fortnight does. Kept here rather than as a remove + add in the
+     view so the entry keeps its id, its servings and its cooked flag. */
+  function move(fromDate, fromSlot, entryId, toDate, toSlot){
+    const p = plan();
+    const src = (p[iso(fromDate)] || {})[fromSlot];
+    if(!src) return false;
+    const e = src.find(x => x.id === entryId);
+    if(!e) return false;
+    if(iso(fromDate) === iso(toDate) && fromSlot === toSlot) return false;
+
+    const fk = iso(fromDate);
+    p[fk][fromSlot] = src.filter(x => x.id !== entryId);
+    if(!p[fk][fromSlot].length) delete p[fk][fromSlot];
+    if(!Object.keys(p[fk]).length) delete p[fk];
+
+    const tk = iso(toDate);
+    p[tk] = p[tk] || {};
+    p[tk][toSlot] = p[tk][toSlot] || [];
+    p[tk][toSlot].push(e);
+    write(p);
+    return true;
+  }
+
   /* ---------- what the plan is made of ---------- */
 
   /* Every recipe on the plan across a set of days, deduplicated. This is
@@ -202,7 +243,7 @@ const Menu = (() => {
     update(date, slot, entryId, {cooked: false, cookedAt: null});
   }
 
-  return { SLOTS, iso, fortnight, entries, add, remove, update,
+  return { SLOTS, iso, fortnight, entries, add, remove, update, move, nextMeal,
            recipesIn, committed, macrosFor, macrosPerPerson,
            grocery, setBought, clearBought, cook, uncook,
            get plan(){ return plan(); } };

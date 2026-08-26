@@ -79,6 +79,11 @@ const Pantry = (() => {
 
   const keys = () => new Set(items().map(i => i.key));
 
+  /* Everything in one place in the kitchen. The Up Next advert asks the
+     freezer this, because a chicken you have is not a chicken you can
+     cook at six o'clock. */
+  const inLocation = loc => items().filter(i => i.loc === loc);
+
   /* Grouped for the fridge view, in a fixed order so the columns do not
      dance around as things are added. */
   function grouped(){
@@ -88,7 +93,7 @@ const Pantry = (() => {
     return out;
   }
 
-  return { LOCATIONS, items, add, addMany, remove, consume, keys, grouped,
+  return { LOCATIONS, items, add, addMany, remove, consume, keys, grouped, inLocation,
            get count(){ return items().length; } };
 })();
 

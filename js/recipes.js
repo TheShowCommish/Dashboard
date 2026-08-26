@@ -22,7 +22,8 @@
 
 const Recipes = (() => {
 
-  let corpus  = [];          // the baked backlog
+  let corpus  = [];          // the baked backlog, exactly as built
+  let dishes  = [];          // the part of it that is dinner (see Food.isComponent)
   let loaded  = false;
   let loading = null;
   let meta    = {shardSize: 400, built: null};
@@ -31,10 +32,21 @@ const Recipes = (() => {
   const custom = () => Store.get('menu.custom', []);
 
   /* Everything, baked and hand-added, newest hand-added first — a recipe
-     you pasted in this afternoon should not be on page nine. */
+     you pasted in this afternoon should not be on page nine.
+
+     Components are filtered out here rather than at each call site, so
+     the whole tab — search, the rail, the counts — agrees on what a
+     recipe is. A hand-added recipe is never filtered: you went and
+     pasted that link, so you meant it. `everything()` still sees the
+     unabridged library, which is what byId needs for a plan made before
+     the filter existed. */
   function all(){
+    return custom().concat(dishes);
+  }
+  function everything(){
     return custom().concat(corpus);
   }
+  const componentCount = () => corpus.length - dishes.length;
 
   /* byId is called once per meal per day per repaint — a linear scan of
      four thousand recipes fourteen times over is the difference between
@@ -43,7 +55,7 @@ const Recipes = (() => {
   function byId(id){
     if(!idMap){
       idMap = new Map();
-      for(const r of corpus) idMap.set(r.id, r);
+      for(const r of corpus) idMap.set(r.id, r);   // the whole library, components included
     }
     return custom().find(r => r.id === id) || idMap.get(id) || null;
   }
@@ -58,12 +70,13 @@ const Recipes = (() => {
       try{
         const data = await getJSON('data/recipes.json');
         corpus = data.recipes || [];
+        dishes = corpus.filter(r => !Food.isComponent(r));
         forgetIds();
         meta = {shardSize: data.shardSize || 400, built: data.built, shards: data.shards};
         loaded = true;
       }catch(e){
         console.warn('Recipe backlog not loaded:', e.message);
-        corpus = [];
+        corpus = []; dishes = [];
         loaded = true;      // a missing corpus is a smaller tab, not a broken one
       }
       loading = null;
@@ -291,14 +304,20 @@ const Recipes = (() => {
      Staples never count as missing — see Food.STAPLES for why. */
   function against(recipe, haveKeys){
     const have = [], missing = [];
+    let buyable = 0;                          // non-staple lines that mean a shopping trip
     for(const ing of recipe.ingredients || []){
       if(ing.staple) continue;
       if(!ing.key) continue;
+      buyable++;
       if([...haveKeys].some(k => covers(k, ing.key))) have.push(ing);
       else if(ing.optional) continue;         // "chives, optional" is not a shopping trip
       else missing.push(ing);
     }
-    return {have, missing, need: missing.length, matched: have.length};
+    /* `buyable` is what stops "0 missing" from meaning "you have it all"
+       for a recipe that never asked for anything in the first place — a
+       spice blend against an empty fridge is not dinner you can cook
+       tonight, it is a recipe with nothing to check. */
+    return {have, missing, need: missing.length, matched: have.length, buyable};
   }
 
   /* The whole library, scored against what is in the kitchen.
@@ -308,6 +327,10 @@ const Recipes = (() => {
     for(const r of (list || all())){
       const m = against(r, haveKeys);
       if(m.need > within) continue;
+      /* Nothing of yours went into it, so it is not something the
+         kitchen can make — it is something the kitchen was never asked
+         about. An empty fridge cooks nothing. */
+      if(!m.matched) continue;
       out.push({recipe:r, ...m});
     }
     /* Fewest missing first; then most of the fridge used, because the
@@ -393,9 +416,10 @@ const Recipes = (() => {
     });
   }
 
-  return { load, all, byId, steps, details, search, cookable, reusing, against, covers,
+  return { load, all, everything, byId, steps, details, search, cookable, reusing, against, covers,
            forgetIndex, fromUrl, fromNode, addCustom, removeCustom,
            get count(){ return all().length; },
+           get hidden(){ return componentCount(); },
            get built(){ return meta.built; },
            get ready(){ return loaded; } };
 })();

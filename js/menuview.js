@@ -22,6 +22,7 @@ const MenuView = (() => {
   const body = () => document.getElementById('menuBody');
 
   const MODES = [
+    {id:'next',    label:'Up next'},
     {id:'plan',    label:'Plan'},
     {id:'fridge',  label:'Fridge'},
     {id:'recipes', label:'Recipes'},
@@ -29,14 +30,26 @@ const MenuView = (() => {
   ];
 
   /* ---- state that is worth surviving a reload ---- */
-  const mode      = () => Store.get('menu.mode', 'plan');
+  const mode      = () => Store.get('menu.mode', 'next');
   const setMode   = m => { Store.set('menu.mode', m); render(); };
   const startDate = () => new Date(Store.get('menu.start', Menu.iso(new Date())) + 'T00:00:00');
   const selected  = () => Store.get('menu.sel', null);
 
   /* ---- transient: filters live for the session, not forever ---- */
-  let suggestTab = 'reuse';                 // reuse | now | near
+  let suggestTab = 'reuse';                 // reuse | now | near — now *derived* from scroll
   let filters = {q:'', within:null, cuisine:'', maxMin:0, sort:'best', limit:60};
+
+  /* The rail is one continuous strip and the tab under the cursor is
+     whichever stretch of it you have scrolled to. That makes its scroll
+     position real state: every repaint rebuilds the strip from scratch,
+     and a strip that snapped back to the left every time a meal was
+     planned would be unusable. */
+  let railScroll = 0;
+
+  /* What is being dragged. The HTML drag API will not let you read
+     dataTransfer during dragover — only on drop — so the slot under the
+     cursor cannot ask what is coming. It has to have been told. */
+  let dragging = null;                      // {kind:'recipe'|'meal', ...}
 
   const days = () => Menu.fortnight(startDate());
 
@@ -56,12 +69,19 @@ const MenuView = (() => {
   function card(match, extra){
     const r = match.recipe || match;
     const need = match.need;
-    const badge = need === 0 ? '<span class="chip ok">have it all</span>'
-                : need != null ? `<span class="chip warn">${need} to buy</span>` : '';
+    /* "have it all" has to mean something was checked. A recipe whose
+       every line is a staple has nothing to be missing, and saying you
+       have all of it before you have put anything in the fridge is the
+       planner telling you a thing it does not know. */
+    const badge = need === 0
+        ? (match.matched ? '<span class="chip ok">have it all</span>'
+                         : '<span class="chip">nothing to buy</span>')
+        : need != null ? `<span class="chip warn">${need} to buy</span>` : '';
     const shared = match.shared ? `<span class="chip">reuses ${match.shared}</span>` : '';
     const n = r.nutrition || {};
     return `
-      <article class="rc" data-recipe="${esc(r.id)}" tabindex="0">
+      <article class="rc" data-recipe="${esc(r.id)}" tabindex="0" draggable="true"
+               title="Drag me onto a day, or click to open">
         ${r.image ? `<img class="rc-img" src="${esc(r.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
                   : '<div class="rc-img rc-noimg">🍳</div>'}
         <div class="rc-body">
@@ -93,7 +113,8 @@ const MenuView = (() => {
           <div class="mv-slot-meals">${list.map(e => {
             const r = recipeById(e.recipeId);
             return `<button class="mv-meal${e.cooked ? ' is-cooked' : ''}" data-entry="${esc(e.id)}"
-                      data-day="${key}" data-slot="${s.id}" title="${esc(r ? r.title : 'Missing recipe')}">
+                      data-day="${key}" data-slot="${s.id}" draggable="true"
+                      title="${esc(r ? r.title : 'Missing recipe')}">
                       ${esc(r ? r.title : 'Removed recipe')}</button>`;
           }).join('') || '<span class="mv-slot-empty">—</span>'}</div>
         </div>`;
@@ -110,50 +131,161 @@ const MenuView = (() => {
     }).join('')}</div>`;
   }
 
-  /* The rail: the reason the plan screen is not just a grid. */
+  /* The rail: the reason the plan screen is not just a grid.
+
+     One strip, three answers, no seam. The three filters used to be
+     three separate lists behind three buttons, which meant three clicks
+     to see what was really on offer. Now they are laid end to end in a
+     single scroller: keep going right past the end of "reuses your
+     week" and you are in "cook tonight" without anything having
+     happened. The buttons stop being a switch and become a read-out —
+     they light up to say where in the strip you are, and clicking one
+     glides you to that stretch rather than redrawing the screen.
+
+     Which means the strip's scroll position is the filter state. Never
+     re-render the rail to change the highlighted button; move the
+     highlight in place (see markRail) or the strip jumps back to the
+     left under your hand. */
+
+  const RAIL_GROUPS = [
+    {id:'reuse', label:'Reuses your week'},
+    {id:'now',   label:'Cook tonight'},
+    {id:'near',  label:'1–2 away'}
+  ];
+
+  function railLists(){
+    const seeds = Menu.recipesIn(days());
+    const have  = Pantry.keys();
+
+    const reuse = seeds.length
+      ? Recipes.reusing(seeds, have, {within:2, limit:30})
+      : Recipes.cookable(have, 0).slice(0, 30);
+
+    return {
+      reuse: {
+        list: reuse,
+        note: seeds.length
+          ? `Sorted by how much they reuse the ${seeds.length} ${seeds.length === 1 ? 'meal' : 'meals'} already on this fortnight.`
+          : 'Plan one meal and this stretch fills with everything that shares its ingredients.',
+        empty: 'Nothing shares an ingredient with this fortnight yet.'
+      },
+      now: {
+        list: Recipes.cookable(have, 0).slice(0, 30),
+        note: 'Nothing to buy — every non-staple ingredient is already in the kitchen.',
+        empty: 'Nothing yet. Put a shop away in the Fridge screen and this fills up.'
+      },
+      near: {
+        list: Recipes.cookable(have, 2).filter(m => m.need > 0).slice(0, 30),
+        note: 'One or two ingredients short. The missing ones are on each card.',
+        empty: 'Nothing within two ingredients of what the kitchen has.'
+      }
+    };
+  }
+
   function suggestions(){
     const sel = selected();
-    const window14 = days();
-    const seeds = Menu.recipesIn(window14);
-    const have = Pantry.keys();
-
-    let list = [], note = '';
-    if(suggestTab === 'reuse'){
-      list = Recipes.reusing(seeds, have, {within:2, limit:30});
-      note = seeds.length
-        ? `Sorted by how much they reuse the ${seeds.length} ${seeds.length === 1 ? 'meal' : 'meals'} already on this fortnight.`
-        : 'Plan one meal and this rail fills with everything that shares its ingredients.';
-      if(!seeds.length) list = Recipes.cookable(have, 0).slice(0, 30);
-    }else if(suggestTab === 'now'){
-      list = Recipes.cookable(have, 0).slice(0, 30);
-      note = 'Nothing to buy — every non-staple ingredient is already in the kitchen.';
-    }else{
-      list = Recipes.cookable(have, 2).filter(m => m.need > 0).slice(0, 30);
-      note = 'One or two ingredients short. The missing ones are on each card.';
-    }
+    const groups = railLists();
 
     const target = sel
       ? `Adding to <b>${esc(new Date(sel.date + 'T00:00:00').toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'}))}</b> · ${esc(sel.slot)}`
-      : 'Pick a day and a meal above, then click a recipe to plan it.';
+      : 'Drag a card onto any day — or pick a slot above and click one.';
+
+    const strip = RAIL_GROUPS.map(g => {
+      const {list, empty} = groups[g.id];
+      return `<div class="mv-rail-group" data-group="${g.id}">${
+        list.length
+          ? list.map(m => card(m, m.missing && m.missing.length
+              ? `<span class="chip" title="${esc(m.missing.map(i => i.item || i.key).join(', '))}">${esc(m.missing.slice(0,2).map(i => i.key).join(', '))}${m.missing.length > 2 ? '…' : ''}</span>`
+              : '')).join('')
+          : `<p class="mv-rail-blank">${esc(empty)}</p>`
+      }</div>`;
+    }).join('');
 
     return `
       <div class="mv-rail">
         <div class="mv-rail-head">
-          <nav class="subtabs sm">
-            ${[['reuse','Reuses your week'],['now','Cook tonight'],['near','1–2 away']]
-              .map(([id,label]) => `<button class="ghost-btn sm${suggestTab === id ? ' primary' : ''}" data-suggest="${id}">${label}</button>`).join('')}
+          <nav class="subtabs sm" id="mvRailTabs">
+            ${RAIL_GROUPS.map(g =>
+              `<button class="ghost-btn sm${suggestTab === g.id ? ' primary' : ''}" data-suggest="${g.id}">${g.label}</button>`).join('')}
           </nav>
           <span class="mv-target">${target}</span>
         </div>
-        <p class="empty">${note}</p>
-        <div class="mv-rail-strip">${
-          list.length
-            ? list.map(m => card(m, m.missing && m.missing.length
-                ? `<span class="chip" title="${esc(m.missing.map(i => i.item).join(', '))}">${esc(m.missing.slice(0,2).map(i => i.key).join(', '))}${m.missing.length > 2 ? '…' : ''}</span>`
-                : '')).join('')
-            : '<p class="empty">Nothing to suggest yet — put something in the fridge, or plan a meal.</p>'
-        }</div>
+        <p class="empty" id="mvRailNote">${esc(groups[suggestTab].note)}</p>
+        <div class="mv-carousel">
+          <button class="mv-rail-arrow" data-rail="-1" aria-label="Scroll back">‹</button>
+          <div class="mv-rail-strip" id="mvRailStrip">${strip}</div>
+          <button class="mv-rail-arrow" data-rail="1" aria-label="Scroll on">›</button>
+        </div>
       </div>`;
+  }
+
+  /* Which stretch of the strip is under the left edge — the answer the
+     buttons are reporting. Measured against the strip's own scroll box
+     so it survives zoom, wrapping and a resized window. */
+  function railGroupAt(strip){
+    const els = [...strip.querySelectorAll('.mv-rail-group')];
+    if(!els.length) return suggestTab;
+    /* A third of a card in from the left: at a boundary the eye calls
+       the strip "the next one" slightly before its first card is flush. */
+    const at = strip.scrollLeft + 56;
+    let id = els[0].dataset.group;
+    for(const el of els) if(el.offsetLeft <= at) id = el.dataset.group;
+    return id;
+  }
+
+  /* Move the highlight without redrawing anything. Redrawing would reset
+     scrollLeft, which is the very thing that decided the highlight. */
+  function markRail(id, notes){
+    if(id === suggestTab) return;
+    suggestTab = id;
+    document.querySelectorAll('#mvRailTabs [data-suggest]').forEach(b =>
+      b.classList.toggle('primary', b.dataset.suggest === id));
+    const note = document.getElementById('mvRailNote');
+    if(note && notes && notes[id]) note.textContent = notes[id];
+  }
+
+  /* The strip's own behaviour: remember where it was, follow it as it
+     moves, and turn a vertical wheel into sideways travel so a plain
+     mouse can get from one end to the other. */
+  function wireRail(){
+    const strip = document.getElementById('mvRailStrip');
+    if(!strip) return;
+
+    const notes = {};
+    const lists = railLists();
+    for(const g of RAIL_GROUPS) notes[g.id] = lists[g.id].note;
+
+    /* `instant`, not a bare assignment: the strip is smooth-scrolling by
+       stylesheet, so plain scrollLeft would animate all the way back
+       from zero every time the screen repaints. Restoring where you
+       were should not look like travelling there. */
+    strip.scrollTo({left: railScroll, behavior:'instant'});
+
+    /* Straight through, no rAF. markRail bails out unless the group
+       actually changed, so the common scroll tick costs one comparison —
+       and the highlight can never lag a frame behind the strip it is
+       reporting on. */
+    strip.addEventListener('scroll', () => {
+      railScroll = strip.scrollLeft;
+      markRail(railGroupAt(strip), notes);
+    }, {passive:true});
+
+    strip.addEventListener('wheel', e => {
+      if(Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      strip.scrollBy({left: e.deltaY, behavior:'instant'});
+    }, {passive:false});
+
+    markRail(railGroupAt(strip), notes);
+  }
+
+  /* Glide to a stretch, rather than switching to it. Same strip either
+     way — the only difference is that you did not have to drag. */
+  function railTo(id){
+    const strip = document.getElementById('mvRailStrip');
+    const el = strip && strip.querySelector(`.mv-rail-group[data-group="${id}"]`);
+    if(!strip || !el) return;
+    strip.scrollTo({left: Math.max(0, el.offsetLeft - 4), behavior:'smooth'});
   }
 
   function renderPlan(){
@@ -174,6 +306,146 @@ const MenuView = (() => {
         ${planGrid()}
         ${suggestions()}
       </div>`;
+    wireRail();
+  }
+
+  /* ============================================================
+     Up next — the advert
+     ============================================================
+
+     The one screen in this tab that is not a tool. It has a single job:
+     you walk past the dashboard at five o'clock and it tells you what
+     you are cooking, everything you need down the left, everything you
+     do at the right, and a picture so it reads from across the room.
+
+     The sticky note is the part that earns it. A plan that says "chicken
+     thighs — in the kitchen" is technically right and practically
+     useless when the chicken is a brick at the back of the freezer, and
+     the moment to learn that is the morning, not when the pan is hot. So
+     anything the recipe needs that is in the freezer gets slapped on the
+     front of the ad in the same handwriting you would have used.
+     ============================================================ */
+
+  /* Everything the recipe wants that is currently frozen. Matched with
+     the same covers() the whole tab matches on, so "chicken" in the
+     freezer answers a recipe asking for "chicken thigh". */
+  function frozenFor(recipe){
+    const cold = Pantry.inLocation('freezer');
+    if(!cold.length) return [];
+    const out = [], seen = new Set();
+    for(const ing of recipe.ingredients || []){
+      if(ing.staple || !ing.key) continue;
+      for(const item of cold){
+        if(!Recipes.covers(item.key, ing.key)) continue;
+        if(seen.has(item.key)) break;
+        seen.add(item.key);
+        out.push(item);
+        break;
+      }
+    }
+    return out;
+  }
+
+  /* How long before the meal, in whole days — a thaw note that says
+     "tomorrow" is worth more than one that says "soon". */
+  function whenLabel(date){
+    const d = new Date(date); d.setHours(0,0,0,0);
+    const t = new Date();    t.setHours(0,0,0,0);
+    const days = Math.round((d - t) / 86400000);
+    if(days <= 0) return 'Tonight';
+    if(days === 1) return 'Tomorrow';
+    return d.toLocaleDateString(undefined, {weekday:'long'});
+  }
+
+  function thawNote(frozen, date){
+    if(!frozen.length) return '';
+    const names = frozen.map(i => i.label || Food.pretty(null, i.key));
+    const list = names.length === 1 ? names[0]
+      : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+    const when = whenLabel(date);
+    const lead = when === 'Tonight' ? 'Get it out now' : `${when}'s dinner`;
+    return `
+      <aside class="mv-ad-note" role="note">
+        <span class="mv-ad-note-pin" aria-hidden="true"></span>
+        <b>Thaw ${esc(list)}</b>
+        <span>${esc(lead)} — ${names.length === 1 ? 'it is' : 'they are'} in the freezer.</span>
+      </aside>`;
+  }
+
+  async function renderNext(){
+    const up = Menu.nextMeal();
+    if(!up){
+      body().innerHTML = `
+        <div class="mv-ad is-blank">
+          <p class="empty">Nothing on the menu yet. Plan a meal and this becomes the poster for it.</p>
+          <button class="ghost-btn sm primary" data-act="goPlan">Open the plan</button>
+        </div>`;
+      return;
+    }
+
+    const r = recipeById(up.entry.recipeId);
+    if(!r){
+      body().innerHTML = '<div class="mv-ad is-blank"><p class="empty">The next meal points at a recipe that is no longer in the book.</p></div>';
+      return;
+    }
+
+    const have = Pantry.keys();
+    const m    = Recipes.against(r, have);
+    const n    = r.nutrition || {};
+    const frozen = frozenFor(r);
+    const when = up.date.toLocaleDateString(undefined, {weekday:'long', month:'long', day:'numeric'});
+
+    /* Drawn once off the index so it is on screen instantly, then the
+       method drops into the right-hand column when its shard lands. */
+    body().innerHTML = `
+      <div class="mv-ad${frozen.length ? ' has-note' : ''}">
+        ${thawNote(frozen, up.date)}
+        <header class="mv-ad-head">
+          <div class="mv-ad-title">
+            <p class="mv-ad-eyebrow">${esc(whenLabel(up.date))} · ${esc(when)} · ${esc(up.slotLabel)}</p>
+            <h1>${esc(r.title)}</h1>
+            <p class="mv-ad-meta">${[
+              r.servings ? `serves ${r.servings}` : '',
+              up.entry.servings ? `${up.entry.servings} planned` : '',
+              r.minutes ? `${r.minutes} min` : '',
+              r.cuisine || r.category || '',
+              r.source
+            ].filter(Boolean).map(esc).join('  ·  ')}</p>
+            ${n.kcal ? `<p class="mv-ad-macros"><b>${n0(n.kcal)}</b> kcal &nbsp; ${n0(n.protein)}g protein &nbsp; ${n0(n.carbs)}g carbs &nbsp; ${n0(n.fat)}g fat <i>per serving</i></p>` : ''}
+            <div class="mv-ad-actions">
+              <button class="ghost-btn sm primary" data-act="cook"
+                      data-day="${esc(up.dateKey)}" data-slot="${esc(up.slot)}" data-entry="${esc(up.entry.id)}">Cooked it</button>
+              <button class="ghost-btn sm" data-act="openRecipe" data-recipe="${esc(r.id)}">Open the card</button>
+              ${r.url ? `<a class="ghost-btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">The original</a>` : ''}
+            </div>
+          </div>
+          ${r.image
+            ? `<div class="mv-ad-shot"><img src="${esc(r.image)}" alt="" referrerpolicy="no-referrer"></div>`
+            : '<div class="mv-ad-shot mv-ad-noshot">🍳</div>'}
+        </header>
+
+        <div class="mv-ad-split">
+          <section class="mv-ad-ing">
+            <h2>What goes in <span class="chip${m.need ? ' warn' : ' ok'}">${m.need ? `${m.need} still to buy` : 'all in'}</span></h2>
+            <ul class="rd-ing" id="mvAdIng">${ingredientList(r, m, null)}</ul>
+          </section>
+          <section class="mv-ad-steps">
+            <h2>What you do</h2>
+            <ol class="rd-steps" id="mvAdSteps"><li class="empty">Loading the method…</li></ol>
+          </section>
+        </div>
+      </div>`;
+
+    const detail = await Recipes.details(r.id);
+    if(mode() !== 'next') return;
+
+    const ol = document.getElementById('mvAdSteps');
+    if(ol) ol.innerHTML = detail.steps.length
+      ? detail.steps.map(x => `<li>${esc(x)}</li>`).join('')
+      : `<li class="empty">This one keeps its method on the original page.${r.url ? ' The link is up there.' : ''}</li>`;
+
+    const ul = document.getElementById('mvAdIng');
+    if(ul && detail.lines.length) ul.innerHTML = ingredientList(r, m, detail.lines);
   }
 
   /* ============================================================
@@ -275,7 +547,8 @@ const MenuView = (() => {
           </select>
           <button class="ghost-btn sm" data-act="addLink">+ Add by link</button>
         </div>
-        <p class="empty">${list.length.toLocaleString()} of ${Recipes.count.toLocaleString()} recipes${
+        <p class="empty">${list.length.toLocaleString()} of ${Recipes.count.toLocaleString()} dishes${
+          Recipes.hidden ? ` · ${Recipes.hidden.toLocaleString()} sauces, seasonings and drinks held back` : ''}${
           Recipes.built ? ` · backlog built ${esc(new Date(Recipes.built).toLocaleDateString())}` : ''}</p>
         <div class="mv-cards">${shown.map(m => card(m)).join('') || '<p class="empty">Nothing matches. Loosen a filter.</p>'}</div>
         ${list.length > shown.length
@@ -506,7 +779,14 @@ const MenuView = (() => {
       }
 
       const sug = t.closest('[data-suggest]');
-      if(sug){ suggestTab = sug.dataset.suggest; return render(); }
+      if(sug) return railTo(sug.dataset.suggest);
+
+      const arrow = t.closest('[data-rail]');
+      if(arrow){
+        const strip = document.getElementById('mvRailStrip');
+        if(strip) strip.scrollBy({left: (+arrow.dataset.rail) * Math.round(strip.clientWidth * 0.8), behavior:'smooth'});
+        return;
+      }
 
       const within = t.closest('[data-within]');
       if(within){
@@ -546,6 +826,7 @@ const MenuView = (() => {
           return render();
         }
         if(a === 'more'){ filters.limit += 60; return render(); }
+        if(a === 'goPlan') return setMode('plan');
         if(a === 'addLink') return addByLink();
 
         if(a === 'planIt'){
@@ -611,6 +892,87 @@ const MenuView = (() => {
     host.addEventListener('click', onClick);
     if(modal) modal.addEventListener('click', onClick);
 
+    /* ---- dragging things onto the fortnight ----
+
+       Two things are draggable and they land in the same place: a recipe
+       card from the rail (or the backlog), which plans a new meal, and a
+       meal chip already on the grid, which moves that meal without
+       losing its servings or its cooked flag.
+
+       What is being carried is kept in a module variable as well as on
+       the dataTransfer, because dragover — the event that has to decide
+       whether a slot will accept the drop — is not allowed to read the
+       dataTransfer. Only drop is. The payload still goes on the
+       dataTransfer so a drag that leaves the window behaves. */
+
+    const clearDropMarks = () =>
+      document.querySelectorAll('.mv-slot.is-drop').forEach(el => el.classList.remove('is-drop'));
+
+    host.addEventListener('dragstart', e => {
+      const meal = e.target.closest && e.target.closest('.mv-meal');
+      const rc   = e.target.closest && e.target.closest('.rc');
+      if(meal){
+        dragging = {kind:'meal', day: meal.dataset.day, slot: meal.dataset.slot, entry: meal.dataset.entry};
+      }else if(rc){
+        dragging = {kind:'recipe', id: rc.dataset.recipe};
+      }else return;
+      e.target.classList.add('is-dragging');
+      try{
+        e.dataTransfer.effectAllowed = dragging.kind === 'meal' ? 'move' : 'copy';
+        e.dataTransfer.setData('text/plain', dragging.kind === 'meal' ? dragging.entry : dragging.id);
+      }catch{}
+    });
+
+    host.addEventListener('dragend', e => {
+      if(e.target.classList) e.target.classList.remove('is-dragging');
+      dragging = null;
+      clearDropMarks();
+    });
+
+    host.addEventListener('dragover', e => {
+      if(!dragging) return;
+      const slot = e.target.closest && e.target.closest('.mv-slot');
+      if(!slot) return;
+      e.preventDefault();                       // the only way to say "yes, drop here"
+      e.dataTransfer.dropEffect = dragging.kind === 'meal' ? 'move' : 'copy';
+      if(!slot.classList.contains('is-drop')){
+        clearDropMarks();
+        slot.classList.add('is-drop');
+      }
+    });
+
+    host.addEventListener('dragleave', e => {
+      const slot = e.target.closest && e.target.closest('.mv-slot');
+      /* relatedTarget is where the cursor went; if it is still inside the
+         same slot this is a child boundary, not a real exit. */
+      if(slot && !(e.relatedTarget && slot.contains(e.relatedTarget))) slot.classList.remove('is-drop');
+    });
+
+    host.addEventListener('drop', e => {
+      const slot = e.target.closest && e.target.closest('.mv-slot');
+      if(!slot || !dragging) return;
+      e.preventDefault();
+      clearDropMarks();
+      const held = dragging;
+      dragging = null;
+
+      const dayKey = slot.dataset.day, slotId = slot.dataset.slot;
+
+      if(held.kind === 'meal'){
+        const moved = Menu.move(new Date(held.day + 'T00:00:00'), held.slot, held.entry,
+                                new Date(dayKey + 'T00:00:00'), slotId);
+        if(moved) Store.toast(`Moved to ${new Date(dayKey + 'T00:00:00').toLocaleDateString(undefined,{weekday:'short'})} ${slotId}.`);
+        return render();
+      }
+
+      plan(held.id, dayKey, slotId, Store.get('menu.servings', 2));
+      /* Dropping somewhere is choosing it: the next click-to-plan should
+         go to the slot you just used, not the one you picked ten minutes
+         ago. */
+      Store.set('menu.sel', {date: dayKey, slot: slotId});
+      render();
+    });
+
     host.addEventListener('change', e => {
       const t = e.target;
       if(t.id === 'mvPeople'){ Store.set('menu.people', Math.max(1, +t.value || 2)); return render(); }
@@ -651,7 +1013,11 @@ const MenuView = (() => {
     if(chip) chip.textContent = Recipes.ready ? `${Recipes.count.toLocaleString()} recipes` : 'loading…';
 
     try{
-      if(mode() === 'fridge')       renderFridge();
+      if(mode() === 'next')         renderNext().catch(err => {
+        console.error('Menu render failed:', err);
+        body().innerHTML = `<p class="empty">That screen could not be drawn: ${esc(err.message)}</p>`;
+      });
+      else if(mode() === 'fridge')  renderFridge();
       else if(mode() === 'recipes') renderRecipes();
       else if(mode() === 'grocery') renderGrocery();
       else                          renderPlan();

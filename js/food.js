@@ -437,6 +437,93 @@ const Food = (() => {
     };
   }
 
+  /* ---------- dish or component? ----------
+     The backlog is scraped from recipe sites, and recipe sites publish
+     the parts as well as the whole: taco seasoning, hollandaise, pizza
+     dough, mango salsa, a gimlet. Those are real recipes but they are
+     not dinner, and a menu planner that offers "Hamburger Seasoning" for
+     Tuesday night is not a menu planner.
+
+     Three signals, in order of how much they can be trusted:
+
+       1. Nothing to buy at all. If every ingredient is a staple then
+          the recipe is a spice blend or a flatbread — and it is also the
+          reason the planner used to claim you had everything for it
+          before you had put a single thing in the fridge.
+       2. The publisher's own category says sauce / dressing / dip /
+          cocktail. Trusted unless the title names an actual dish, which
+          is how the odd miscategorised "Chimichurri Chicken" survives.
+       3. The title's head noun. English puts the head last, so "Fajita
+          Seasoning" is a seasoning and "Chicken in Orange Sauce" is a
+          chicken — hence the connective test: a title containing with /
+          in / and is a dish that HAS a component, never the component.
+
+     Deliberately conservative in both directions: it is applied to the
+     library as a whole, so a wrong "component" hides a dinner. */
+
+  const COMPONENT_CATEGORIES = new Set([
+    'sauce','sauces','dressing','dressings','salad dressing','condiment','condiments',
+    'seasoning','seasonings','spice blend','spice mix','marinade','frosting','icing',
+    'dip','dips','pantry','basics','staples',
+    'drink','drinks','beverage','beverages','cocktail','cocktails'
+  ]);
+
+  /* Head nouns that name a component in their own right. */
+  const COMPONENT_HEADS = new Set([
+    'seasoning','seasonings','rub','rubs','spice','spices','blend',
+    'sauce','sauces','gravy','dressing','dressings','vinaigrette','marinade','glaze',
+    'syrup','stock','broth','jam','jelly','preserve','preserves','chutney','relish',
+    'pickle','pickles','mayonnaise','mayo','aioli','pesto','salsa','dip','dips',
+    'frosting','icing','ganache','dough','crust','roux','paste','puree',
+    'oil','vinegar','powder','extract','brine','condiment','garnish','topping',
+    'filling','base','milk','creamer','crumbs',
+    'cocktail','martini','margarita','mojito','daiquiri','lemonade','tea','latte',
+    'frappuccino','frappe','toddy','fizz','gimlet','mule','sangria','eggnog',
+    'wassail','smoothie'
+  ]);
+
+  /* Words that make a title a meal no matter what else it says. */
+  const DISH_WORDS =
+    'chicken|beef|pork|steaks?|lamb|fish|salmon|shrimp|pasta|pizza|soups?|stews?|' +
+    'salads?|tacos?|burgers?|sandwich(?:es)?|curry|casserole|bowls?|rice|noodles|' +
+    'cakes?|pies?|cookies|bread|wings|ribs|chili|risotto|lasagna|enchiladas|' +
+    'burrito|quesadilla|turkey|duck|tofu|eggs?|pancakes?|waffles?|muffins?';
+  const DISH_ANY  = new RegExp('\b(?:' + DISH_WORDS + ')\b');
+  const DISH_HEAD = new RegExp('^(?:' + DISH_WORDS + ')$');
+
+  /* "X with Y" is a dish with a Y on it. "X and Y" likewise. */
+  const CONNECTIVE = /\b(with|in|on|over|and|plus|served|topped|stuffed|smothered|drizzled|for)\b|[,&+\/]/;
+
+  /* The title down to the words that carry meaning, so the last one is
+     really the head noun and not "Recipe" or "(Easy!)". */
+  const NOISE = /\b(recipe|recipes|homemade|easy|best|quick|simple|the|a|an|my|copycat|from scratch|authentic|classic|perfect|ultimate|minute|ingredient|no|how|to|make|our|favorite|favourite)\b/g;
+
+  function titleWords(title){
+    return String(title || '').toLowerCase()
+      .replace(/\(.*?\)/g, ' ')
+      .replace(NOISE, ' ')
+      .replace(/[^a-z0-9\s-]/g, ' ')
+      .replace(/\s+/g, ' ').trim()
+      .split(' ').filter(Boolean);
+  }
+
+  function isComponent(recipe){
+    if(!recipe) return false;
+    const buyable = (recipe.ingredients || []).filter(i => !i.staple && i.key);
+    if(!buyable.length) return true;
+
+    const title = String(recipe.title || '').toLowerCase();
+    const words = titleWords(recipe.title);
+    const head  = words[words.length - 1] || '';
+    const joined = CONNECTIVE.test(title);
+
+    if(COMPONENT_CATEGORIES.has(String(recipe.category || '').trim()))
+      return !(DISH_HEAD.test(head) || (joined && DISH_ANY.test(title)));
+
+    if(DISH_ANY.test(title)) return false;
+    return !joined && words.length <= 4 && COMPONENT_HEADS.has(head);
+  }
+
   /* An ISO 8601 duration ("PT1H25M") — what every recipe site's
      structured data uses — into plain minutes. */
   function isoMinutes(iso){
@@ -447,7 +534,8 @@ const Food = (() => {
   }
 
   return { STAPLES, FOODS, ALIAS, UNITS, normalize, singular, isStaple, aisleFor, pretty,
-           parseIngredient, toGrams, nutritionFor, macros, isoMinutes };
+           parseIngredient, toGrams, nutritionFor, macros, isoMinutes,
+           isComponent, COMPONENT_CATEGORIES, COMPONENT_HEADS };
 })();
 
 /* Works in both worlds: a <script> tag in the browser, a require() in

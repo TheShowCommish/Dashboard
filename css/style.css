@@ -2624,11 +2624,47 @@ body.fx-sun .pf-card{
 .mv-target{font-size:12px;color:var(--muted);}
 .mv-target b{color:var(--text);font-weight:600;}
 .mv-rail .empty{margin:0;}
+/* The carousel proper. One scroll box holding three groups laid end to
+   end; the gap between groups is the same as the gap between cards, so
+   there is no seam to see — the filter buttons above are the only thing
+   that says you have crossed from one to the next.
+
+   The scrollbar is hidden on purpose and replaced by the two arrows:
+   a strip that is meant to be skimmed should not carry a piece of
+   window furniture under it. overflow stays `auto` (not `hidden`) so
+   the box is still a scroll container for the wheel, the arrows and
+   scrollTo. */
+.mv-carousel{position:relative;display:flex;align-items:stretch;gap:4px;min-width:0;}
 .mv-rail-strip{
+  flex:1 1 auto;min-width:0;
   display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
-  padding-bottom:6px;scrollbar-width:thin;
+  padding-bottom:2px;scroll-behavior:smooth;overscroll-behavior-x:contain;
+  scrollbar-width:none;-ms-overflow-style:none;
 }
+.mv-rail-strip::-webkit-scrollbar{display:none;width:0;height:0;}
+.mv-rail-group{display:flex;gap:8px;flex:0 0 auto;}
 .mv-rail-strip .rc{flex:0 0 152px;}
+.mv-rail-blank{
+  flex:0 0 210px;margin:0;align-self:center;
+  font-size:11.5px;color:var(--muted);line-height:1.4;padding:0 6px;
+}
+.mv-rail-arrow{
+  flex:0 0 auto;align-self:stretch;width:22px;padding:0;
+  background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);
+  color:var(--muted);font-size:15px;line-height:1;cursor:pointer;
+  transition:border-color .18s var(--ease),color .18s var(--ease);
+}
+.mv-rail-arrow:hover{border-color:var(--accent);color:var(--text);}
+
+/* Dragging a card onto the fortnight. */
+.rc[draggable="true"]{cursor:grab;}
+.rc.is-dragging,.mv-meal.is-dragging{opacity:.4;}
+.mv-slot.is-drop{
+  border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 16%,transparent);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent);
+}
+.mv-meal{cursor:grab;}
 
 /* ---- a recipe card ---- */
 .rc{
@@ -2652,6 +2688,82 @@ body.fx-sun .pf-card{
 .rc-chips .chip{
   font-size:9px;padding:1px 5px;max-width:100%;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ---- Up next: the advert ----
+   Not a tool. A poster, read from the other side of the room: the shot
+   large, the ingredients down the left, the method down the right, and
+   a sticky note stuck over the corner when something has to come out of
+   the freezer first. */
+.mv-ad{position:relative;display:flex;flex-direction:column;gap:18px;padding-top:4px;}
+.mv-ad.is-blank{align-items:flex-start;gap:10px;}
+
+.mv-ad-head{display:flex;gap:24px;align-items:stretch;}
+.mv-ad-title{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px;}
+.mv-ad-eyebrow{
+  margin:0;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--accent);
+}
+.mv-ad-title h1{
+  margin:0;font-family:var(--display);font-weight:600;
+  font-size:clamp(26px,3.6vw,46px);line-height:1.04;letter-spacing:-.01em;
+}
+.mv-ad-meta{margin:2px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+.mv-ad-macros{margin:0;font-size:13px;color:var(--text);}
+.mv-ad-macros b{font-family:var(--display);font-size:17px;}
+.mv-ad-macros i{color:var(--muted);font-size:11px;font-style:normal;}
+.mv-ad-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:8px;}
+
+.mv-ad-shot{
+  flex:0 0 clamp(220px,32%,420px);border-radius:var(--r);overflow:hidden;
+  border:1px solid var(--edge);background:var(--panel-2);min-height:200px;
+}
+.mv-ad-shot img{width:100%;height:100%;object-fit:cover;display:block;}
+.mv-ad-noshot{display:flex;align-items:center;justify-content:center;font-size:64px;}
+
+.mv-ad-split{
+  display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.35fr);
+  gap:28px;border-top:1px solid var(--edge);padding-top:16px;
+}
+.mv-ad-split h2{
+  margin:0 0 10px;font-family:var(--display);font-size:12.5px;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;gap:8px;
+}
+.mv-ad-ing .rd-ing li{font-size:13.5px;padding:4px 8px;}
+.mv-ad-steps .rd-steps li{font-size:14px;line-height:1.6;}
+.mv-ad-steps .rd-steps{gap:10px;}
+
+/* The sticky note. Deliberately the one thing on the screen that is not
+   flush with the grid — it is supposed to look stuck on afterwards,
+   because that is what it is. */
+.mv-ad.has-note .mv-ad-head{padding-right:clamp(0px,4vw,60px);}
+.mv-ad-note{
+  position:absolute;top:-6px;right:0;z-index:3;width:min(250px,42vw);
+  display:flex;flex-direction:column;gap:5px;
+  padding:16px 16px 18px;
+  background:linear-gradient(158deg,#ffe9a3,#ffd766);
+  color:#3a2c05;border-radius:2px;
+  transform:rotate(2.4deg);
+  box-shadow:0 10px 22px rgba(0,0,0,.34),0 2px 5px rgba(0,0,0,.24);
+}
+.mv-ad-note b{
+  font-family:var(--display);font-size:17px;font-weight:700;line-height:1.15;
+}
+.mv-ad-note span{font-size:12px;line-height:1.4;color:#5a4610;}
+.mv-ad-note-pin{
+  position:absolute;top:-7px;left:50%;width:14px;height:14px;margin-left:-7px;
+  border-radius:50%;background:radial-gradient(circle at 34% 32%,#ff8d7a,#c2352b);
+  box-shadow:0 2px 4px rgba(0,0,0,.4);
+}
+
+@media (max-width:900px){
+  .mv-ad-head{flex-direction:column-reverse;}
+  .mv-ad-shot{flex:0 0 auto;height:200px;}
+  .mv-ad-split{grid-template-columns:1fr;gap:18px;}
+  .mv-ad-note{position:static;width:auto;transform:none;margin-bottom:4px;}
+  .mv-ad-note-pin{display:none;}
+  .mv-ad.has-note .mv-ad-head{padding-right:0;}
 }
 
 /* ---- fridge ---- */
