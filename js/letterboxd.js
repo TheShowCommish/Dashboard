@@ -440,6 +440,12 @@ const Letterboxd = (() => {
      how a wall display ends up saying nothing. */
   const LOVE = 4.5, HATE = 2.5;
 
+  /* The two stickers those thresholds earn. Unicode has no gold-bar
+     glyph, so the first-place medal stands in for one — swapping it for
+     🪙 or 💰 is this line and nothing else, because every screen reads
+     the mark from here rather than spelling it out. */
+  const GOLD_MARK = '🥇', POOP_MARK = '💩';
+
   function verdict(title, year, slug){
     const rows = reviewsFor(title, year, slug).filter(f => f.rated != null);
     if(!rows.length) return null;
@@ -572,9 +578,9 @@ const Letterboxd = (() => {
   return {
     load, ingestCsv, decorated, rating, ratingFor, filmSlug, loadNetwork,
     reviewFor, reviewsFor, verdict, talkedAbout,
-    /* The two ends of the scale, so every screen decorates on the same
-       numbers rather than each picking its own. */
-    LOVE, HATE,
+    /* The two ends of the scale and the marks they earn, so every screen
+       decorates on the same numbers rather than each picking its own. */
+    LOVE, HATE, GOLD_MARK, POOP_MARK,
     get diary(){ return diary; },
     get network(){ return network; },
     get feed(){ return feedList(); },

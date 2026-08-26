@@ -1,0 +1,71 @@
+# Publishes the deck to GitHub Pages, and stamps the cache-bust version on
+# the way out.
+#
+# The version in index.html is the literal "dev" in the repo. Nobody edits
+# it, and nobody needs to remember to: this workflow rewrites every ?v=dev
+# to the commit SHA as it builds, so the query string changes whenever the
+# code does and never when it does not.
+#
+# Two bugs die here:
+#
+#   1. A stale bump. The version used to be a number kept in sync by hand,
+#      so a forgotten bump served old JS against new HTML.
+#
+#   2. The race. Pages used to deploy file by file from the branch, so an
+#      index.html bumped in its own commit could go live pointing at JS
+#      that had not shipped yet — the browser then cached the OLD bytes
+#      under the NEW url, which is the worst of both. An artifact deploy
+#      is atomic: the whole site swaps at once or not at all.
+#
+# Needs repo Settings -> Pages -> Source set to "GitHub Actions". With the
+# source left on a branch this workflow deploys nothing and fails loudly,
+# which is the intended failure: silence would mean an unstamped site.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys interleave. Queued rather than cancelled: the last
+# push is the one that must win, and cancelling mid-upload can publish a
+# half-swapped site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp the cache-bust version
+        run: |
+          v="${GITHUB_SHA::7}"
+          before=$(grep -c '?v=dev' index.html || true)
+          # A file that no longer says ?v=dev has been hand-edited back to
+          # a fixed version, and would pin every browser to it forever.
+          # Better to fail the deploy than to publish that quietly.
+          if [ "$before" -eq 0 ]; then
+            echo "::error::No ?v=dev found in index.html — the cache-bust stamp would be a no-op."
+            exit 1
+          fi
+          sed -i "s/?v=dev/?v=$v/g" index.html
+          echo "Stamped $before asset urls with ?v=$v"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
