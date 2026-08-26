@@ -83,6 +83,10 @@ const Gate = (() => {
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-modal', 'true');
     el.setAttribute('aria-labelledby', 'gateTitle');
+
+    /* One form, two modes. A separate "create account" screen would mean
+       a second set of fields holding the same two values, and a phone
+       that has to be navigated back out of when you picked wrong. */
     el.innerHTML = [
       '<form class="gate-card" novalidate>',
       '  <h1 id="gateTitle">Control Deck</h1>',
@@ -90,38 +94,101 @@ const Gate = (() => {
       '  <input id="gateEmail" type="email" name="email" placeholder="you@example.com"',
       '         autocomplete="email" inputmode="email" autocapitalize="off"',
       '         spellcheck="false" aria-label="Email address">',
-      '  <button class="gate-go" type="submit">Email me a link</button>',
+      /* autocomplete tells the password manager which of the two this is;
+         getting it wrong is how browsers end up offering to save a new
+         password over the working one. It is rewritten on mode switch. */
+      '  <input id="gatePass" type="password" name="password" placeholder="Password"',
+      '         autocomplete="current-password" aria-label="Password">',
+      '  <button class="gate-go" type="submit">Sign in</button>',
       '  <p class="gate-note" role="status" aria-live="polite"></p>',
+      '  <div class="gate-alt">',
+      '    <button type="button" class="gate-link" data-mode="up">Create an account</button>',
+      '    <button type="button" class="gate-link" data-forgot>Forgot password</button>',
+      '  </div>',
       '</form>'
     ].join('\n');
     document.body.appendChild(el);
 
     const form = el.querySelector('form');
     const box  = el.querySelector('#gateEmail');
+    const pass = el.querySelector('#gatePass');
     const btn  = el.querySelector('.gate-go');
     const note = el.querySelector('.gate-note');
+    const why  = el.querySelector('.gate-why');
+    const swap = el.querySelector('[data-mode]');
+    const lost = el.querySelector('[data-forgot]');
 
-    /* The address last used on this device, so the common case is one
-       tap rather than a phone keyboard. */
+    let mode = 'in';                        // 'in' | 'up'
+
+    /* The address last used on this device, so the common case is a
+       password and nothing else. */
     try{ box.value = (Cloud.settings || {}).lastEmail || ''; }catch{}
+
+    function say(msg, bad){
+      note.classList.toggle('is-bad', !!bad);
+      note.textContent = msg || '';
+    }
+
+    function setMode(next){
+      mode = next;
+      const up = mode === 'up';
+      btn.textContent  = up ? 'Create account' : 'Sign in';
+      why.textContent  = up
+        ? 'Pick a password of at least 8 characters. No email to wait for.'
+        : 'Sign in once on this device and it stays signed in.';
+      pass.placeholder = up ? 'New password (8+ characters)' : 'Password';
+      pass.setAttribute('autocomplete', up ? 'new-password' : 'current-password');
+      swap.textContent = up ? 'I already have an account' : 'Create an account';
+      lost.hidden = up;
+      say('');
+    }
+    setMode('in');
+
+    swap.addEventListener('click', () => setMode(mode === 'up' ? 'in' : 'up'));
+
+    /* The one thing still worth an email — and only on request, so the
+       rate limit is spent on a reset rather than on every ordinary
+       sign-in. */
+    lost.addEventListener('click', () => {
+      Cloud.signIn(box.value)
+        .then(() => say('Link sent. Opening it signs you in; set a new password in Settings.'))
+        .catch(err => say(err.message, true));
+    });
 
     form.addEventListener('submit', e => {
       e.preventDefault();
       btn.disabled = true;
-      note.classList.remove('is-bad');
-      note.textContent = 'Sending…';
-      Cloud.signIn(box.value)
-        .then(() => {
-          note.textContent = 'Link sent to ' + box.value.trim() + '. Open it on this device.';
-          /* Not re-enabled: the next step happens in the email, and a
-             second tap here only sends a second link that invalidates
-             the first one the user is already walking to. */
-        })
-        .catch(err => {
-          note.classList.add('is-bad');
-          note.textContent = err.message;
-          btn.disabled = false;
-        });
+      say(mode === 'up' ? 'Creating…' : 'Signing in…');
+
+      const done = () => {
+        /* Signed in for real. Re-run the same decision a fresh load
+           would make, so a phone that just made an account lands on the
+           list rather than on the deck it was gated from. */
+        if(route()) return;
+        /* open() runs the page's own boot, and both pages call
+           Cloud.boot() as one of their steps — doing it here too would
+           run two first syncs against each other. */
+        open();
+        watch();
+      };
+
+      const work = mode === 'up'
+        ? Cloud.signUp(box.value, pass.value).then(r => {
+            /* Confirmation is on: there is no session, and cloud.js has
+               already put the reason on the status. Do not open. */
+            if(r && r.confirmRequired){
+              say(Cloud.status.detail, true);
+              btn.disabled = false;
+              return;
+            }
+            done();
+          })
+        : Cloud.signInPassword(box.value, pass.value).then(done);
+
+      work.catch(err => {
+        say(err.message, true);
+        btn.disabled = false;
+      });
     });
     return el;
   }
@@ -177,10 +244,17 @@ const Gate = (() => {
        is about to leave. */
     if(route()) return;
     open();
+    watch();
+  }
 
-    /* A refresh token that turns out to be spent surfaces here, minutes
-       or months later. Drop the curtain again rather than leaving a
-       screen that quietly shows nothing. */
+  /* A refresh token that turns out to be spent surfaces here, minutes or
+     months later. Drop the curtain again rather than leaving a screen
+     that quietly shows nothing. Registered once, whether the session was
+     already on the device at boot or was just typed into the curtain. */
+  let watching = false;
+  function watch(){
+    if(watching) return;
+    watching = true;
     Cloud.onStatus(st => {
       if(st.state === 'signed-out' && !Cloud.signedIn) show(st.detail);
       else if(Cloud.signedIn && el && !el.hidden) hide();

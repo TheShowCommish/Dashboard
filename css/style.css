@@ -3161,3 +3161,19 @@ html.is-gated body{overflow:hidden;}
 
 .gate-note{margin:0;font-size:12.5px;line-height:1.45;color:var(--muted);min-height:1.2em;}
 .gate-note.is-bad{color:var(--bad);}
+
+/* The two ways out of the default: make an account, or reset a password.
+   Text rather than buttons, because neither is the thing you came here
+   to press. */
+.gate-alt{
+  display:flex;flex-wrap:wrap;gap:4px 16px;justify-content:space-between;
+  margin-top:2px;padding-top:12px;border-top:1px solid var(--edge);
+}
+.gate-link{
+  font:inherit;font-size:12.5px;
+  background:none;border:0;padding:4px 0;
+  color:var(--muted);text-decoration:underline;text-underline-offset:3px;
+  cursor:pointer;
+}
+.gate-link:hover{color:var(--accent);}
+.gate-link[hidden]{display:none;}

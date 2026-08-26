@@ -341,10 +341,19 @@
         <input id="k_syncAnon" type="text" placeholder="eyJhbGci&hellip;" autocomplete="off"></label>
       <div class="sync-row">
         <input id="k_syncEmail" type="email" placeholder="you@example.com" autocomplete="email">
-        <button id="btnSyncIn" class="ghost-btn sm primary">Email me a link</button>
+        <button id="btnSyncIn" class="ghost-btn sm">Email me a link</button>
         <button id="btnSyncOut" class="ghost-btn sm">Sign out</button>
         <button id="btnSyncNow" class="ghost-btn sm">Sync now</button>
         <button id="btnSyncPush" class="ghost-btn sm">Upload this device</button>
+      </div>
+      <!-- The way off magic links. An account made by clicking a link has
+           no password, so it can only be reopened by another link — and
+           Supabase's send quota runs out. Setting one here keeps the same
+           account, and so keeps the data. -->
+      <div class="sync-row">
+        <input id="k_syncPass" type="password" placeholder="New password (8+ characters)"
+               autocomplete="new-password">
+        <button id="btnSyncPass" class="ghost-btn sm primary">Set password</button>
       </div>
       <p class="note-line" id="syncState">&hellip;</p>
     </fieldset>

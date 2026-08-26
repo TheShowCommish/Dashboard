@@ -166,7 +166,81 @@ const Cloud = (() => {
     return refreshing;
   }
 
-  /* ---- signing in ---- */
+  /* ---- signing in ----
+
+     PASSWORD is the front door. The magic link below still works and is
+     kept for password resets, but it cannot be the only way in: Supabase
+     rate-limits outbound auth email hard on the free tier, and a deck
+     that can only be unlocked by an email that will not send is a deck
+     nobody can open. A password costs one round trip, no inbox, and no
+     quota.
+
+     Both paths end in the same place — saveSession() with a refresh
+     token — so everything downstream is unchanged. */
+
+  const addressOf = email => {
+    const addr = String(email || '').trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) throw new Error('That does not look like an email address.');
+    return addr;
+  };
+
+  /* Supabase says what went wrong; the raw status code does not. */
+  async function fail(res){
+    let why = `${res.status}`;
+    try{
+      const j = await res.json();
+      why = j.error_description || j.msg || j.message || j.error || why;
+    }catch{}
+    throw new Error(why);
+  }
+
+  async function signInPassword(email, password){
+    if(!configured()) throw new Error('Set the Supabase URL and anon key first.');
+    const addr = addressOf(email);
+    if(!password) throw new Error('Enter your password.');
+
+    const res = await api('/auth/v1/token?grant_type=password', {
+      method:'POST',
+      body: JSON.stringify({email: addr, password: String(password)})
+    });
+    if(!res.ok) await fail(res);
+
+    saveSession(await res.json());
+    writeCfg({lastEmail: addr});
+    setStatus('syncing', '');
+    return true;
+  }
+
+  async function signUp(email, password){
+    if(!configured()) throw new Error('Set the Supabase URL and anon key first.');
+    const addr = addressOf(email);
+    /* Supabase's own floor is 6. Saying so up front beats a round trip
+       that comes back with the same sentence. */
+    if(String(password || '').length < 8) throw new Error('Use at least 8 characters.');
+
+    const res = await api('/auth/v1/signup', {
+      method:'POST',
+      body: JSON.stringify({email: addr, password: String(password)})
+    });
+    if(!res.ok) await fail(res);
+
+    const out = await res.json();
+    writeCfg({lastEmail: addr});
+
+    /* With "Confirm email" ON, signup returns a user and NO session, and
+       fires a confirmation email — straight back into the rate limit
+       this whole change exists to escape. Say that plainly instead of
+       leaving a spinner on a screen that will never advance. */
+    if(!out.access_token){
+      setStatus('signed-out', 'Account made, but it needs email confirmation. Turn off "Confirm email" in Supabase → Authentication → Sign In / Providers, then sign in.');
+      return {confirmRequired: true};
+    }
+
+    saveSession(out);
+    setStatus('syncing', '');
+    return {confirmRequired: false};
+  }
+
   async function signIn(email){
     if(!configured()) throw new Error('Set the Supabase URL and anon key first.');
     const addr = String(email || '').trim();
@@ -179,13 +253,32 @@ const Cloud = (() => {
       method:'POST',
       body: JSON.stringify({email: addr, create_user: true})
     });
-    if(!res.ok){
-      let why = `${res.status}`;
-      try{ const j = await res.json(); why = j.error_description || j.msg || j.message || why; }catch{}
-      throw new Error(why);
-    }
+    if(!res.ok) await fail(res);
     writeCfg({lastEmail: addr});
     setStatus('sent', `Check ${addr} for the link.`);
+    return true;
+  }
+
+  /* Put a password on the account that is already signed in.
+
+     This is the bridge off magic links. An account created by clicking
+     an emailed link has no password, so it can only ever be reopened by
+     another emailed link — and once Supabase's send quota is spent, that
+     is a locked door. Setting a password here keeps the same user id,
+     and therefore the same rows: the alternative, making a fresh account
+     with a password, silently strands every plan and note under the old
+     id where row-level security will never show them again. */
+  async function setPassword(password){
+    const t = await token();
+    if(!t) throw new Error('Sign in first — a password can only be set on a live session.');
+    if(String(password || '').length < 8) throw new Error('Use at least 8 characters.');
+
+    const res = await api('/auth/v1/user', {
+      method:'PUT',
+      headers:{Authorization:`Bearer ${t}`},
+      body: JSON.stringify({password: String(password)})
+    });
+    if(!res.ok) await fail(res);
     return true;
   }
 
@@ -435,7 +528,7 @@ const Cloud = (() => {
   }
 
   return {
-    boot, signIn, signOut, markDirty, pushEverything,
+    boot, signIn, signInPassword, signUp, setPassword, signOut, markDirty, pushEverything,
     /* Exported for gate.js, which has to consume the emailed link BEFORE
        it can ask whether anyone is signed in — boot() reads the fragment
        too, but by then the gate has already decided what to paint. */

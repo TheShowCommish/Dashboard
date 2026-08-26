@@ -300,6 +300,14 @@ const App = (() => {
     });
     on('btnSyncOut','click',  async () => { await Cloud.signOut(); Store.toast('Signed out on this device.'); });
     on('btnSyncNow','click',  () => { Cloud.sync(); Store.toast('Syncing…'); });
+    on('btnSyncPass','click', async () => {
+      const box = document.getElementById('k_syncPass');
+      try{
+        await Cloud.setPassword(box.value);
+        box.value = '';                 // not left sitting in the drawer
+        Store.toast('Password set. You can sign in with it on any device.');
+      }catch(e){ Store.toast(e.message); }
+    });
     on('btnSyncPush','click', () => {
       const n = Cloud.pushEverything();
       Store.toast(`Queued ${n} ${n === 1 ? 'thing' : 'things'} to upload.`);
