@@ -44,7 +44,6 @@ const App = (() => {
       if(name === 'sports')    SportsView.render();
       if(name === 'portfolio') Stocks.load();
       if(name === 'movies')  { MoviesView.render(); Letterboxd.load(); }
-      if(name === 'notes')     StickyNotes.renderArchive();
       if(name === 'fantasy')   Fantasy.load();
       if(name === 'todo')      TodoList.render();
       if(name === 'menu')      MenuView.load();
@@ -221,18 +220,11 @@ const App = (() => {
        unscheduled note would have nowhere to appear on this tab now that
        the tray is gone. */
     on('btnAddNote','click',  () => StickyNotes.add(CalendarView.focusDay));
-    on('btnAddNote2','click', () => StickyNotes.add());
 
     on('btnLbRefresh','click', () => Letterboxd.load(true));
     on('lbInput','change', e => {
       if(e.target.files[0]) Letterboxd.ingestCsv(e.target.files[0]);
       e.target.value = '';
-    });
-    on('notesFilter','click', e => {
-      const order = ['all','open','done'];
-      const next = order[(order.indexOf(StickyNotes.filterMode) + 1) % order.length];
-      StickyNotes.setFilter(next);
-      e.currentTarget.textContent = `Showing: ${next}`;
     });
 
     on('btnSettings','click',    openDrawer);

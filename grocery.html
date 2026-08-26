@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Built for a phone held in one hand in a supermarket aisle: the
+     viewport is the device's own, nothing scales, and the layout never
+     grows past a comfortable column. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EEF1F5">
+<meta name="color-scheme" content="light">
+<title>Grocery list</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=dev">
+</head>
+<body class="shop">
+
+<div class="shop-wrap">
+  <header class="shop-head">
+    <div class="shop-title">
+      <h1>Grocery list</h1>
+      <p id="shopRange" class="shop-range">&hellip;</p>
+    </div>
+    <div class="shop-counts">
+      <span class="chip" id="shopLeft">&hellip;</span>
+      <span class="chip ok" id="shopDone" hidden></span>
+    </div>
+  </header>
+
+  <div id="shopBody" class="shop-body">
+    <p class="empty">Loading the plan&hellip;</p>
+  </div>
+
+  <footer class="shop-foot">
+    <button class="ghost-btn sm" data-act="stow">Put ticked away</button>
+    <button class="ghost-btn sm" data-act="clearTicks">Clear ticks</button>
+    <a class="ghost-btn sm" href="index.html">Full deck</a>
+  </footer>
+</div>
+
+<!-- Only what a shopping list actually needs. No ticker, no sky, no
+     kiosk, no tabs — this page exists to be read at arm's length with a
+     trolley in the other hand. -->
+<script src="js/store.js?v=dev"></script>
+<script src="js/themes.js?v=dev"></script>
+<script src="js/food.js?v=dev"></script>
+<script src="js/recipes.js?v=dev"></script>
+<script src="js/pantry.js?v=dev"></script>
+<script src="js/menu.js?v=dev"></script>
+<script src="js/shop.js?v=dev"></script>
+</body>
+</html>

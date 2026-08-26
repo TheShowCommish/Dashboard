@@ -51,6 +51,13 @@ const MenuView = (() => {
      planned would be unusable. */
   let railScroll = 0;
 
+  /* One ingredient the whole strip is narrowed to. Session-only: a filter
+     you left on last week is a strip that looks broken today. */
+  let railFilter = '';
+
+  /* The strip drifts on its own. See startDrift. */
+  let drift = null;
+
   /* What is being dragged. The HTML drag API will not let you read
      dataTransfer during dragover — only on drop — so the slot under the
      cursor cannot ask what is coming. It has to have been told. */
@@ -155,20 +162,91 @@ const MenuView = (() => {
      highlight in place (see markRail) or the strip jumps back to the
      left under your hand. */
 
-  const RAIL_GROUPS = [
+  const LENSES = [
     {id:'weather', label:'Suits today'},
     {id:'reuse',   label:'Reuses your week'},
     {id:'now',     label:'Cook tonight'},
     {id:'near',    label:'1–2 away'}
   ];
 
+  /* Filtering collapses the four lenses into one stretch, and that is
+     deliberate. Every lens is a question about your kitchen — what can
+     I cook, what reuses the week, what am I two ingredients from — and
+     all four therefore refuse anything you cannot nearly make. Typing an
+     ingredient is a different question: show me the aubergine recipes.
+     Run through the lenses it answered "none" four times over, which
+     reads as a broken filter rather than an honest one. So while a
+     filter is on the strip is one run of everything that uses it,
+     nearest-to-cookable first, and the lens buttons stand down. */
+  const railGroups = () => railFilter.trim()
+    ? [{id:'find', label:`With ${railFilter.trim()}`}]
+    : LENSES;
+
   /* Whatever the theme engine is currently reading the sky as. The Menu
      tab used to be the one screen that ignored it. */
   const sky = () => (window.Weather && Weather.current) || null;
 
+  /* Four whole-library scans, and suggestions() and wireRail() both want
+     the answer. Recomputing it twice per repaint was most of the second
+     the tab took to open.
+
+     Keyed on everything the answer actually depends on, so it survives a
+     drag, a repaint or a trip to another tab and back, and is thrown away
+     the moment the kitchen, the plan, the weather or the filter moves. */
+  let railCache = null;
+
+  function railKey(){
+    const w = sky();
+    return JSON.stringify([
+      Pantry.items().length, Store.get('menu.pantry', []).map(i => `${i.key}:${i.qty}${i.unit}`).join(),
+      Object.keys(Menu.plan).length, JSON.stringify(Menu.plan).length,
+      w && w.main, w && w.temp, railFilter, Recipes.count
+    ]);
+  }
+
   function railLists(){
+    const key = railKey();
+    if(railCache && railCache.key === key) return railCache.groups;
+    const groups = buildRailLists();
+    railCache = {key, groups};
+    return groups;
+  }
+
+  function buildRailLists(){
     const seeds = Menu.recipesIn(days());
     const have  = Pantry.stock();
+
+    /* The filter narrows the POOL each lens scans, not the handful each
+       one ends up showing. Narrowing the results was the obvious way to
+       write it and it was wrong: every lens caps itself at thirty, so
+       filtering afterwards asked "which of the top thirty happen to use
+       aubergine", and the answer was almost always none. Filtering first
+       asks the question actually meant — "of the recipes with aubergine
+       in them, which suit today, which reuse the week, which can I cook
+       tonight" — and each stretch keeps its own meaning. */
+    const q = railFilter.trim();
+
+    /* One stretch: everything using it, whether or not the kitchen is
+       close. Sorted by how much shopping it would take, so the ones you
+       could almost cook come first and the rest are still there to be
+       looked at. */
+    if(q){
+      const find = Recipes.resolver(have);
+      const hits = Recipes.using(q, Recipes.all())
+        .map(r => ({recipe:r, ...Recipes.against(r, have, find)}))
+        .sort((a,b) => a.need - b.need || b.matched - a.matched
+                    || (b.recipe.rating || 0) - (a.recipe.rating || 0))
+        .slice(0, 40);
+      return {
+        find: {
+          list: hits,
+          note: hits.length
+            ? `${hits.length === 40 ? 'The closest 40' : hits.length} ${hits.length === 1 ? 'recipe uses' : 'recipes use'} ${q}, least shopping first.`
+            : `Nothing in the book uses ${q}.`,
+          empty: `No recipe in the book asks for ${q}. Try another spelling.`
+        }
+      };
+    }
 
     const reuse = seeds.length
       ? Recipes.reusing(seeds, have, {within:2, limit:30})
@@ -208,12 +286,15 @@ const MenuView = (() => {
   function suggestions(){
     const sel = selected();
     const groups = railLists();
+    /* A filter appearing or clearing changes which stretches exist, so
+       the highlighted one may no longer be among them. */
+    if(!groups[suggestTab]) suggestTab = railGroups()[0].id;
 
     const target = sel
       ? `Adding to <b>${esc(new Date(sel.date + 'T00:00:00').toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'}))}</b> · ${esc(sel.slot)}`
       : 'Drag a card onto any day — or pick a slot above and click one.';
 
-    const strip = RAIL_GROUPS.map(g => {
+    const strip = railGroups().map(g => {
       const {list, empty} = groups[g.id];
       return `<div class="mv-rail-group" data-group="${g.id}">${
         list.length
@@ -228,12 +309,16 @@ const MenuView = (() => {
       <div class="mv-rail">
         <div class="mv-rail-head">
           <nav class="subtabs sm" id="mvRailTabs">
-            ${RAIL_GROUPS.map(g =>
+            ${railGroups().map(g =>
               `<button class="ghost-btn sm${suggestTab === g.id ? ' primary' : ''}" data-suggest="${g.id}">${g.label}</button>`).join('')}
           </nav>
           <span class="mv-target">${target}</span>
+          <label class="mv-rail-find">
+            <input id="mvRailFind" type="search" autocomplete="off" placeholder="has an ingredient&hellip;"
+                   value="${esc(railFilter)}" aria-label="Only show recipes using this ingredient">
+          </label>
         </div>
-        <p class="empty" id="mvRailNote">${esc(groups[suggestTab].note)}</p>
+        <p class="empty" id="mvRailNote">${esc((groups[suggestTab] || groups[railGroups()[0].id]).note)}</p>
         <div class="mv-carousel">
           <button class="mv-rail-arrow" data-rail="-1" aria-label="Scroll back">‹</button>
           <div class="mv-rail-strip" id="mvRailStrip">${strip}</div>
@@ -260,6 +345,7 @@ const MenuView = (() => {
      scrollLeft, which is the very thing that decided the highlight. */
   function markRail(id, notes){
     if(id === suggestTab) return;
+    if(!railGroups().some(g => g.id === id)) return;
     suggestTab = id;
     document.querySelectorAll('#mvRailTabs [data-suggest]').forEach(b =>
       b.classList.toggle('primary', b.dataset.suggest === id));
@@ -276,7 +362,7 @@ const MenuView = (() => {
 
     const notes = {};
     const lists = railLists();
-    for(const g of RAIL_GROUPS) notes[g.id] = lists[g.id].note;
+    for(const g of railGroups()) notes[g.id] = (lists[g.id] || {}).note;
 
     /* `instant`, not a bare assignment: the strip is smooth-scrolling by
        stylesheet, so plain scrollLeft would animate all the way back
@@ -296,11 +382,79 @@ const MenuView = (() => {
     strip.addEventListener('wheel', e => {
       if(Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
       e.preventDefault();
+      stopDrift(true);
       strip.scrollBy({left: e.deltaY, behavior:'instant'});
     }, {passive:false});
 
+    /* Anything that means "I am using this" stops the drift; letting go
+       starts the clock on it coming back. */
+    const carousel = strip.closest('.mv-carousel') || strip;
+    carousel.addEventListener('pointerenter', () => stopDrift(false));
+    carousel.addEventListener('pointerleave', () => stopDrift(true));
+    carousel.addEventListener('pointerdown',  () => stopDrift(false));
+    strip.addEventListener('dragstart', () => stopDrift(false));
+
     markRail(railGroupAt(strip), notes);
+    startDrift();
   }
+
+  /* ---- the drift ----
+     The strip moves on its own, slowly, so the plan screen is something
+     you can watch rather than something you have to operate. A pixel and
+     a half a frame is about a card every four seconds: fast enough that
+     the screen is alive, slow enough to read a title as it goes past.
+
+     It stops the moment you touch it — hover, drag, a wheel, the arrows,
+     the filter box — because a strip that keeps sliding while you are
+     trying to grab a card off it is worse than one that never moved. It
+     starts again a few seconds after you let go.
+
+     At the end it turns around rather than snapping back to zero: a jump
+     would break exactly the continuity the four stretches are laid out
+     end to end to preserve. */
+  const DRIFT_PX    = 1.5;      // per frame
+  const DRIFT_IDLE  = 4000;     // how long after you stop before it resumes
+
+  function stopDrift(pause){
+    if(drift && drift.raf) cancelAnimationFrame(drift.raf);
+    if(drift && drift.timer) clearTimeout(drift.timer);
+    if(!drift) return;
+    drift.raf = null;
+    if(pause) drift.timer = setTimeout(() => runDrift(), DRIFT_IDLE);
+  }
+
+  function runDrift(){
+    if(!drift) return;
+    const strip = document.getElementById('mvRailStrip');
+    if(!strip){ drift = null; return; }
+    if(drift.raf) cancelAnimationFrame(drift.raf);
+
+    const step = () => {
+      const el = document.getElementById('mvRailStrip');
+      if(!el || !drift) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if(max <= 4){ drift.raf = requestAnimationFrame(step); return; }
+
+      let next = el.scrollLeft + DRIFT_PX * drift.dir;
+      if(next >= max){ next = max; drift.dir = -1; }
+      else if(next <= 0){ next = 0; drift.dir = 1; }
+
+      /* scrollTo, not scrollBy, and instant: the stylesheet smooth-scrolls
+         this box, and asking it to smoothly travel 1.5px sixty times a
+         second fights itself into a stutter. */
+      el.scrollTo({left: next, behavior:'instant'});
+      drift.raf = requestAnimationFrame(step);
+    };
+    drift.raf = requestAnimationFrame(step);
+  }
+
+  function startDrift(){
+    if(prefersStill()) return;             // reduced motion: it sits still
+    if(!drift) drift = {dir:1, raf:null, timer:null};
+    runDrift();
+  }
+
+  const prefersStill = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* Glide to a stretch, rather than switching to it. Same strip either
      way — the only difference is that you did not have to drag. */
@@ -537,7 +691,8 @@ const MenuView = (() => {
     if(filters.within != null){
       scored = Recipes.cookable(have, filters.within, list);
     }else{
-      scored = list.map(r => ({recipe:r, ...Recipes.against(r, have)}));
+      const find = Recipes.resolver(have);
+      scored = list.map(r => ({recipe:r, ...Recipes.against(r, have, find)}));
     }
 
     if(filters.sort === 'quick')   scored.sort((a,b) => (a.recipe.minutes || 999) - (b.recipe.minutes || 999));
@@ -607,10 +762,12 @@ const MenuView = (() => {
     body().innerHTML = `
       <div class="mv-grocery">
         <div class="mv-plan-head">
-          <span class="chip">${count} to buy</span>
-          ${ticked ? `<span class="chip ok">${ticked} ticked</span>` : ''}
+          <span class="chip">${count - ticked} to buy</span>
+          <span class="chip ok">${ticked} ticked</span>
           <button class="ghost-btn sm" data-act="stow"${ticked ? '' : ' disabled'}>Put ticked away in the kitchen</button>
           <button class="ghost-btn sm" data-act="copyList">Copy list</button>
+          <a class="ghost-btn sm" href="grocery.html" target="_blank" rel="noopener"
+             title="The same list, on its own page, sized for a phone">Open on my phone</a>
           <button class="ghost-btn sm" data-act="clearTicks">Clear ticks</button>
         </div>
         ${count ? groups.map(g => `
@@ -877,10 +1034,11 @@ const MenuView = (() => {
       }
 
       const sug = t.closest('[data-suggest]');
-      if(sug) return railTo(sug.dataset.suggest);
+      if(sug){ stopDrift(true); return railTo(sug.dataset.suggest); }
 
       const arrow = t.closest('[data-rail]');
       if(arrow){
+        stopDrift(true);
         const strip = document.getElementById('mvRailStrip');
         if(strip) strip.scrollBy({left: (+arrow.dataset.rail) * Math.round(strip.clientWidth * 0.8), behavior:'smooth'});
         return;
@@ -1108,7 +1266,26 @@ const MenuView = (() => {
       if(t.id === 'mvCuisine'){ filters.cuisine = t.value; filters.limit = 60; return render(); }
       if(t.id === 'mvTime'){ filters.maxMin = +t.value; filters.limit = 60; return render(); }
       if(t.id === 'mvSort'){ filters.sort = t.value; return render(); }
-      if(t.dataset.buy != null){ Menu.setBought(t.dataset.buy, t.checked); return render(); }
+      /* Same reasoning as the phone list (js/shop.js): a tick cannot
+         reorder anything, so redrawing the screen only serves to destroy
+         the box that was just clicked. */
+      if(t.dataset.buy != null){
+        Menu.setBought(t.dataset.buy, t.checked);
+        const row = t.closest('.mv-buy');
+        if(row) row.classList.toggle('is-bought', t.checked);
+        const head = document.querySelector('.mv-grocery .mv-plan-head');
+        if(head){
+          const boxes = [...document.querySelectorAll('.mv-buy input[data-buy]')];
+          const ticked = boxes.filter(b => b.checked).length;
+          const chips = head.querySelectorAll('.chip');
+          if(chips[0]) chips[0].textContent = `${boxes.length - ticked} to buy`;
+          const ok = head.querySelector('.chip.ok');
+          if(ok) ok.textContent = `${ticked} ticked`;
+          const stow = head.querySelector('[data-act="stow"]');
+          if(stow) stow.disabled = !ticked;
+        }
+        return;
+      }
     });
 
     /* The combobox. Typing filters the library's own ingredient list and
@@ -1167,6 +1344,28 @@ const MenuView = (() => {
       if(combo) combo.classList.remove('is-open');
     });
 
+    /* The strip's ingredient filter. Debounced like the backlog search,
+       and for the same reason: every keystroke re-scans the library. The
+       caret is restored afterwards because the whole plan screen redraws.
+       Scroll goes back to the left — a narrowed strip is a different
+       strip, and holding the old offset would land you in the middle of
+       nothing. */
+    let narrowing = null;
+    host.addEventListener('input', e => {
+      if(e.target.id !== 'mvRailFind') return;
+      stopDrift(false);
+      clearTimeout(narrowing);
+      const v = e.target.value;
+      narrowing = setTimeout(() => {
+        if(v.trim() === railFilter.trim()) return;
+        railFilter = v;
+        railScroll = 0;
+        render();
+        const box = document.getElementById('mvRailFind');
+        if(box){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+      }, 260);
+    });
+
     /* Search is the one control that must not re-render on every
        keystroke against four thousand recipes. */
     let typing = null;
@@ -1192,6 +1391,9 @@ const MenuView = (() => {
 
   function render(){
     if(!body()) return;
+    /* The old strip is about to be thrown away; its animation frame must
+       not outlive it, or two drifts end up racing on one screen. */
+    stopDrift(false);
     renderModes();
     wire();
     const chip = document.getElementById('menuCount');

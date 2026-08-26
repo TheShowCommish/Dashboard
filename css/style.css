@@ -2711,6 +2711,13 @@ body.fx-sun .pf-card{
 }
 .mv-rail-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .mv-target{font-size:12px;color:var(--muted);}
+.mv-rail-find{margin-left:auto;display:flex;}
+.mv-rail-find input{
+  width:150px;background:var(--panel-2);border:1px solid var(--edge);color:var(--text);
+  border-radius:999px;padding:3px 11px;font:inherit;font-size:11.5px;
+}
+.mv-rail-find input:focus{outline:none;border-color:var(--accent);width:190px;}
+.mv-rail-find input::placeholder{color:var(--muted);}
 .mv-target b{color:var(--text);font-weight:600;}
 .mv-rail .empty{margin:0;}
 /* The carousel proper. One scroll box holding three groups laid end to
@@ -2904,12 +2911,22 @@ body.fx-sun .pf-card{
   margin:0 0 8px;font-family:var(--display);font-size:12px;font-weight:500;
   letter-spacing:.1em;text-transform:uppercase;color:var(--accent);
 }
+/* A grid, not a flex row. The box and the name are the two things you
+   are actually reading, so they get the first two columns and the name
+   takes all the slack — which is what makes the names line up down the
+   left edge instead of each one sitting wherever the row before it
+   happened to end. Everything else is pushed out to the right. */
 .mv-buy{
-  display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;
+  display:grid;grid-template-columns:16px minmax(0,1fr) auto minmax(0,auto);
+  align-items:center;gap:10px;padding:5px 0;cursor:pointer;
   border-bottom:1px solid color-mix(in srgb,var(--edge) 60%,transparent);
 }
 .mv-buy:last-child{border-bottom:none;}
-.mv-buy-name{flex:0 0 auto;font-size:13.5px;text-transform:capitalize;}
+.mv-buy input{margin:0;}
+.mv-buy-name{
+  min-width:0;font-size:13.5px;text-transform:capitalize;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 .mv-buy-amt{
   font-family:var(--mono);font-size:11px;color:var(--muted);
   border:1px solid var(--edge);border-radius:999px;padding:0 7px;white-space:nowrap;
@@ -2920,7 +2937,7 @@ body.fx-sun .pf-card{
   color:var(--accent);border-color:color-mix(in srgb,var(--accent) 55%,transparent);
 }
 .mv-buy-for{
-  flex:1;min-width:0;text-align:right;font-size:11px;color:var(--muted);
+  min-width:0;max-width:34ch;text-align:right;font-size:11px;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .mv-buy.is-bought .mv-buy-name{text-decoration:line-through;color:var(--muted);}
@@ -2976,3 +2993,85 @@ body.fx-sun .pf-card{
   .rd-head img{width:130px;height:100px;}
   .mv-cols{grid-template-columns:1fr;}
 }
+
+/* ============================================================
+   grocery.html — the list, on a phone, in a shop.
+
+   Its own page rather than a responsive mode of the deck: the deck is a
+   wall display with a ticker, a weather canvas and seven tabs, and none
+   of that survives contact with one hand and a trolley. Here there is
+   one column, big targets, and nothing that moves.
+
+   The palette arrives from the Daylight theme at boot (see shop.js) so
+   these rules only do layout — the colours are the deck's own tokens
+   and stay in step with it.
+   ============================================================ */
+body.shop{
+  margin:0;background:var(--ink);color:var(--text);
+  font-family:var(--body,Inter,system-ui,sans-serif);
+  -webkit-text-size-adjust:100%;
+}
+.shop-wrap{
+  /* Wider than a phone only so it is not silly on a desktop; on the
+     device itself this is simply the screen. */
+  max-width:520px;margin:0 auto;min-height:100dvh;
+  display:flex;flex-direction:column;
+  padding:max(12px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));
+}
+.shop-head{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding-bottom:10px;border-bottom:1px solid var(--edge);
+  position:sticky;top:0;z-index:5;background:var(--ink);
+}
+.shop-title h1{
+  margin:0;font-family:var(--display,'Space Grotesk',sans-serif);
+  font-size:23px;font-weight:600;letter-spacing:-.01em;
+}
+.shop-range{margin:2px 0 0;font-family:var(--mono,monospace);font-size:11px;color:var(--muted);}
+.shop-counts{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 auto;}
+
+.shop-body{flex:1;display:flex;flex-direction:column;gap:16px;padding:14px 0;}
+.shop-aisle{display:flex;flex-direction:column;}
+.shop-aisle h2{
+  margin:0 0 4px;font-family:var(--display,'Space Grotesk',sans-serif);
+  font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);
+  position:sticky;top:56px;background:var(--ink);padding:6px 0 4px;z-index:4;
+}
+
+/* Box and name hard left, in a column that lines up all the way down.
+   The row is deliberately tall: this is a touch target for someone not
+   looking closely at it. */
+.shop-row{
+  display:grid;grid-template-columns:24px minmax(0,1fr) auto;
+  grid-template-areas:'box name amt' '. for for';
+  align-items:center;gap:2px 12px;
+  padding:11px 2px;cursor:pointer;
+  border-bottom:1px solid color-mix(in srgb,var(--edge) 65%,transparent);
+}
+.shop-row:last-child{border-bottom:none;}
+.shop-row input{
+  grid-area:box;width:22px;height:22px;margin:0;accent-color:var(--accent);
+}
+.shop-name{
+  grid-area:name;min-width:0;font-size:17px;line-height:1.25;text-transform:capitalize;
+}
+.shop-amt{
+  grid-area:amt;font-family:var(--mono,monospace);font-size:12px;color:var(--muted);
+  border:1px solid var(--edge);border-radius:999px;padding:1px 9px;white-space:nowrap;
+}
+.shop-amt.is-short{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 55%,transparent);}
+.shop-for{
+  grid-area:for;font-size:11.5px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.shop-row.is-bought .shop-name{text-decoration:line-through;color:var(--muted);}
+.shop-row.is-bought .shop-for,.shop-row.is-bought .shop-amt{opacity:.5;}
+
+.shop-foot{
+  position:sticky;bottom:0;display:flex;gap:8px;flex-wrap:wrap;
+  padding:10px 0 0;border-top:1px solid var(--edge);background:var(--ink);
+}
+.shop-foot .ghost-btn{flex:1 1 auto;text-align:center;padding:9px 12px;font-size:13px;}
+body.shop .empty{font-size:14px;color:var(--muted);text-align:center;padding:40px 10px;}
+body.shop .mv-error{margin-bottom:12px;}

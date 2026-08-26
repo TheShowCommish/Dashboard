@@ -29,7 +29,6 @@
     <button class="tab-btn"       data-tab="portfolio" role="tab" aria-selected="false">Portfolio</button>
     <button class="tab-btn"       data-tab="movies"    role="tab" aria-selected="false">Movies</button>
     <button class="tab-btn"       data-tab="menu"      role="tab" aria-selected="false">Menu</button>
-    <button class="tab-btn"       data-tab="notes"     role="tab" aria-selected="false">Notes</button>
     <button class="tab-btn"       data-tab="fantasy"   role="tab" aria-selected="false">Fantasy</button>
     <button class="tab-btn"       data-tab="todo"      role="tab" aria-selected="false">To Do</button>
   </nav>
@@ -158,21 +157,6 @@
       <div class="view-tools" id="menuModes"></div>
     </div>
     <div id="menuBody" class="mv-body"><p class="empty">Loading the recipe backlog&hellip;</p></div>
-  </section>
-
-  <!-- ===================== Notes ===================== -->
-  <section class="view" id="view-notes" role="tabpanel" hidden>
-    <div class="view-head slim">
-      <div class="view-title">
-        <h2>Every note</h2>
-        <span class="chip" id="notesCount">0</span>
-      </div>
-      <div class="view-tools">
-        <button id="notesFilter" class="ghost-btn sm" data-mode="all">Showing: all</button>
-        <button id="btnAddNote2" class="ghost-btn sm">New note</button>
-      </div>
-    </div>
-    <div id="notesArchive" class="archive"></div>
   </section>
 
   <!-- ===================== Fantasy ===================== -->
@@ -338,6 +322,7 @@
         <button class="ghost-btn sm" data-preview="movies">Movies</button>
         <button class="ghost-btn sm" data-preview="notes">Notes</button>
         <button class="ghost-btn sm" data-preview="fantasy">Fantasy</button>
+        <button class="ghost-btn sm" data-preview="menu">Menu</button>
       </div>
       <p class="note-line">Opens one full-screen AD and holds it there — no rotation, no timer — so it can be styled without waiting for its slot. Close with the ✕ or Escape. Works whether AUTO is on or off; from the console it is <code>Kiosk.previewAd('sports')</code>.</p>
     </fieldset>

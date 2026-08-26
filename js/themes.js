@@ -226,10 +226,25 @@ function gamedayGame(c){
     if(g.state === 'in') live.push(g);
     else if(g.state === 'pre') soon.push(g);
   }
-  if(live.length)
-    return live.sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff))[0];
-  return soon.sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff))[0] || null;
+  /* A game in progress still beats one that has not started — the deck
+     should be painted for what is actually on. Within each of those two
+     groups the league order decides, because a Sunday with an NFL game
+     and a baseball game on it is an NFL Sunday whichever happened to
+     kick off first. Anything unlisted sorts last but still counts. */
+  const rank = g => {
+    const i = LEAGUE_ORDER.indexOf(g.league);
+    return i === -1 ? LEAGUE_ORDER.length : i;
+  };
+  const pick = list => list.sort((a,b) =>
+    rank(a) - rank(b) || new Date(a.kickoff) - new Date(b.kickoff))[0];
+
+  if(live.length) return pick(live);
+  return pick(soon) || null;
 }
+
+/* Which sport owns the deck when more than one is on. */
+const LEAGUE_ORDER = ['nfl', 'college-football', 'nba', 'mlb',
+                      'mens-college-basketball', 'nhl'];
 
 const isToday = d => {
   if(!d) return false;

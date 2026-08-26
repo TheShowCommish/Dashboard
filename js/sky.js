@@ -108,7 +108,19 @@ const Sky = (() => {
        a drift measured off a moving card twitches every time it is
        re-measured. The shelf is the box they sit in, so the snow settles
        on its top edge above the heading, the way it would on a ledge. */
-    '.mv-strip', '.sp-card', '.sp-mini', '.sp-panel'
+    '.mv-strip', '.sp-card', '.sp-mini', '.sp-panel',
+    /* The Menu tab. It was the one screen the weather walked straight
+       past: no drifts on the fortnight, nothing dripping off the fridge.
+       Every ledge here is a real one — the top edge of a day column, a
+       recipe card in the grid, a shelf in the kitchen, an aisle heading.
+
+       Note what is NOT here: the recipe cards inside the suggestion rail.
+       That strip scrolls, and a drift measured off a moving card twitches
+       every time it is re-measured — the same reason the poster shelf is
+       in this list and the posters are not. The rail itself is the ledge;
+       .mv-carousel is the box the cards run through. */
+    '.mv-day', '.mv-cards .rc', '.mv-carousel', '.mv-col', '.mv-item',
+    '.mv-aisle', '.mv-entry-row', '.mv-plan-head', '.mv-buy'
   ].join(', ');
 
   function measurePiles(){

@@ -22,10 +22,11 @@ const Kiosk = (() => {
 
   /* The tab order. What actually rotates is this filtered by Settings —
      see ROTATION below. */
-  const TABS = ['calendar','sports','portfolio','movies','notes','fantasy','todo'];
+  const TABS = ['calendar','sports','portfolio','movies','fantasy','todo'];
 
-  /* ADs are no longer one-per-tab: weather earns a full screen without
-     owning a tab, and To Do is working notes nobody wants on a wall. */
+  /* ADs are no longer one-per-tab: weather, notes and menu each earn a
+     full screen without owning a tab, and To Do is working notes nobody
+     wants on a wall. */
   const ADS = ['calendar','sports','weather','portfolio','movies','notes','fantasy','menu'];
 
   /* Everything the rotation can show, and whether it is on by default.
@@ -37,7 +38,10 @@ const Kiosk = (() => {
     {name:'weather',   label:'Weather',   tab:false, ad:true},
     {name:'portfolio', label:'Portfolio', tab:true,  ad:true},
     {name:'movies',    label:'Movies',    tab:true,  ad:true},
-    {name:'notes',     label:'Notes',     tab:true,  ad:true},
+    /* Notes lost its own tab — they live on the calendar day cells, which
+       is where they are written and read. The AD outlived it: what is
+       coming up is still worth a full screen. */
+    {name:'notes',     label:'Notes',     tab:false, ad:true},
     {name:'fantasy',   label:'Fantasy',   tab:true,  ad:true},
     /* Menu has a tab of its own, but the tab is a planner and the AD is
        a poster — what you are cooking next, big enough to read from the

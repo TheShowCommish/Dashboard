@@ -324,9 +324,39 @@ const Recipes = (() => {
      `stock` is the Map from Pantry.stock(). A bare Set of keys is still
      accepted — it means presence only, no amounts — because that is what
      a caller with nothing but keys can honestly offer. */
-  function against(recipe, stock){
+  /* ---------- resolving an ingredient to a shelf ----------
+
+     against() used to answer "is this on a shelf" by walking every
+     pantry key and running covers() — which splits both strings — for
+     each one. Per recipe that is keys x ingredients; across the library
+     it was over half a million string splits per filter pass, and four
+     filters run on every repaint of the plan screen. That was the
+     second-long stall when the Menu tab opened.
+
+     The saving is that ingredient keys repeat enormously: garlic is in a
+     thousand recipes and the answer for garlic is the same every time.
+     So the walk happens once per DISTINCT key and is remembered. A
+     thousand-odd lookups replace half a million.
+
+     The cache belongs to the kitchen it was built from, so it is handed
+     out with the resolver rather than kept in a module variable that
+     could outlive the shelf it describes. */
+  function resolver(stock){
     const isMap = stock instanceof Map;
     const keys  = isMap ? [...stock.keys()] : [...(stock || [])];
+    const memo  = new Map();
+
+    return key => {
+      if(memo.has(key)) return memo.get(key);
+      const hit = keys.find(k => covers(k, key));
+      const row = hit == null ? null : {hit, held: isMap ? stock.get(hit) : null};
+      memo.set(key, row);
+      return row;
+    };
+  }
+
+  function against(recipe, stock, find){
+    find = find || resolver(stock);
 
     const have = [], missing = [], staples = [], short = [];
     let buyable = 0, assumed = 0;
@@ -335,14 +365,14 @@ const Recipes = (() => {
       if(!ing.key) continue;
       buyable++;
 
-      const hit = keys.find(k => covers(k, ing.key));
-      if(!hit){
+      const row = find(ing.key);
+      if(!row){
         if(ing.optional) continue;            // "chives, optional" is not a shopping trip
         (ing.staple ? staples : missing).push(ing);
         continue;
       }
 
-      const held = isMap ? stock.get(hit) : null;
+      const held = row.held;
       const cmp  = held ? Food.enoughFor(ing, held, ing.key) : {ok:null};
       if(cmp.ok === false){
         /* On the shelf, but not enough of it. That is still a shopping
@@ -371,19 +401,18 @@ const Recipes = (() => {
      the recipe's own yield to the servings actually cooked. Only things
      the kitchen has: you cannot spend what you never had. */
   function toSpend(recipe, stock, servings){
-    const isMap = stock instanceof Map;
-    const keys  = isMap ? [...stock.keys()] : [...(stock || [])];
-    const per   = Math.max(1, recipe.servings || 1);
+    const find = resolver(stock);
+    const per  = Math.max(1, recipe.servings || 1);
     const scale = Math.max(1, servings || per) / per;
 
     const out = [];
     for(const ing of recipe.ingredients || []){
       if(!ing.key) continue;
-      const hit = keys.find(k => covers(k, ing.key));
-      if(!hit) continue;
-      const held = isMap ? stock.get(hit) : null;
+      const row = find(ing.key);
+      if(!row) continue;
+      const held = row.held;
       out.push({
-        key: hit,
+        key: row.hit,
         label: (held && held.label) || Food.pretty(ing.item, ing.key),
         qty:  ing.qty != null ? Math.round(ing.qty * scale * 1000) / 1000 : null,
         unit: ing.unit || (ing.qty != null ? 'ea' : null),
@@ -398,8 +427,9 @@ const Recipes = (() => {
      `within` caps how many missing ingredients is still interesting. */
   function cookable(haveKeys, within = 0, list){
     const out = [];
+    const find = resolver(haveKeys);
     for(const r of (list || all())){
-      const m = against(r, haveKeys);
+      const m = against(r, haveKeys, find);
       if(m.need > within) continue;
       /* Nothing of yours went into it, so it is not something the
          kitchen can make — it is something the kitchen was never asked
@@ -419,7 +449,7 @@ const Recipes = (() => {
      the plan, so a week built around one bunch of cilantro and one tub of
      yogurt stays a week that uses them up. */
   function reusing(seedRecipes, haveKeys, opts = {}){
-    const {within = 2, limit = 24} = opts;
+    const {within = 2, limit = 24, list} = opts;
     const seedIds = new Set(seedRecipes.map(r => r.id));
 
     /* An ingredient is worth reusing in proportion to how awkward it is
@@ -436,9 +466,10 @@ const Recipes = (() => {
     if(!weight.size) return [];
 
     const out = [];
-    for(const r of all()){
+    const find = resolver(haveKeys);
+    for(const r of (list || all())){
       if(seedIds.has(r.id)) continue;
-      const m = against(r, haveKeys);
+      const m = against(r, haveKeys, find);
       if(m.need > within) continue;
 
       let shared = 0, score = 0;
@@ -521,7 +552,7 @@ const Recipes = (() => {
      things the kitchen can nearly manage, because a perfect stew you
      cannot shop for is not a suggestion. */
   function suiting(ctx, stock, opts = {}){
-    const {within = 2, limit = 30} = opts;
+    const {within = 2, limit = 30, list} = opts;
     const mood = weatherMood(ctx);
     if(!mood) return {mood:null, list:[]};
 
@@ -529,7 +560,8 @@ const Recipes = (() => {
     const anti = mood.want === 'warming' ? COOLING : mood.want === 'cooling' ? WARMING : null;
 
     const out = [];
-    for(const r of all()){
+    const find = resolver(stock);
+    for(const r of (list || all())){
       const hay = `${r.title} ${r.category || ''} ${r.cuisine || ''} ${(r.tags || []).join(' ')}`;
       let score = 0;
       if(re.test(hay)) score += 3;
@@ -543,12 +575,26 @@ const Recipes = (() => {
       }
       if(score <= 0) continue;
 
-      const m = against(r, stock);
+      const m = against(r, stock, find);
       if(m.need > within || !m.matched) continue;
       out.push({recipe:r, ...m, score: score - m.need * 0.8});
     }
     out.sort((a,b) => b.score - a.score || a.need - b.need || (b.recipe.rating || 0) - (a.recipe.rating || 0));
     return {mood, list: out.slice(0, limit)};
+  }
+
+  /* Everything in the library that calls for a given ingredient.
+
+     Matched with covers() rather than a substring, so "chicken" finds
+     the recipes asking for chicken thigh, and "corn" still does not find
+     corned beef — the same rule the fridge matches on, so the strip and
+     the kitchen never disagree about what counts. A plain substring is
+     kept as a last resort for partial words someone is still typing. */
+  function using(query, list){
+    const q = String(query || '').toLowerCase().trim();
+    if(!q) return list || all();
+    return (list || all()).filter(r => (r.ingredients || []).some(i =>
+      i.key && (i.key === q || covers(q, i.key) || i.key.includes(q))));
   }
 
   /* ---------- the ingredient vocabulary ----------
@@ -646,7 +692,7 @@ const Recipes = (() => {
     });
   }
 
-  return { load, all, everything, byId, steps, details, search, cookable, reusing, suiting, weatherMood, against, toSpend, covers, vocabulary, suggest, nearest,
+  return { load, all, everything, byId, steps, details, search, cookable, reusing, suiting, weatherMood, against, resolver, toSpend, covers, using, vocabulary, suggest, nearest,
            forgetIndex, fromUrl, fromNode, addCustom, removeCustom,
            get count(){ return all().length; },
            get hidden(){ return componentCount(); },
