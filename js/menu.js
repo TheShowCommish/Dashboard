@@ -103,6 +103,35 @@ const Menu = (() => {
     return null;
   }
 
+  /* Everything the advert needs about the next meal, in one call, so the
+     kiosk renderer does not have to know how the plan is shaped. Null
+     when there is nothing coming — which is what lets the AD be skipped
+     rather than shown blank. */
+  function upNext(){
+    const up = nextMeal();
+    if(!up) return null;
+    const recipe = Recipes.byId(up.entry.recipeId);
+    if(!recipe) return null;
+
+    const stock = Pantry.stock();
+    const match = Recipes.against(recipe, stock);
+
+    /* Anything it needs that is currently a brick. Matched with the same
+       covers() the rest of the tab matches on, so "chicken" in the
+       freezer answers a recipe asking for "chicken thigh". */
+    const cold = Pantry.inLocation('freezer');
+    const frozen = [], seen = new Set();
+    for(const ing of recipe.ingredients || []){
+      if(!ing.key) continue;
+      for(const item of cold){
+        if(!Recipes.covers(item.key, ing.key)) continue;
+        if(!seen.has(item.key)){ seen.add(item.key); frozen.push(item); }
+        break;
+      }
+    }
+    return {...up, recipe, match, frozen, stock};
+  }
+
   /* Moving a meal from one slot to another — what dragging a chip across
      the fortnight does. Kept here rather than as a remove + add in the
      view so the entry keeps its id, its servings and its cooked flag. */
@@ -145,7 +174,16 @@ const Menu = (() => {
 
   /* Ingredients spoken for by meals that are planned but not yet cooked.
      A key appears once however many meals want it: two recipes both
-     wanting onions is one line on the shopping list. */
+     wanting onions is one line on the shopping list — but the amounts
+     add up, because two recipes wanting 300 g of chicken each want 600 g
+     of chicken and a list that says "chicken" sends you home with one
+     pack.
+
+     Staples are in here now. They used to be filtered out on the
+     assumption that the cupboard already had them; that assumption is
+     gone, so cumin you do not own is cumin you have to buy. It is
+     flagged rather than hidden, so the grocery screen can keep the spice
+     run separate from the food shop. */
   function committed(days){
     const out = new Map();
     for(const d of days)
@@ -153,10 +191,18 @@ const Menu = (() => {
         if(e.cooked) continue;
         const r = Recipes.byId(e.recipeId);
         if(!r) continue;
+        const per   = Math.max(1, r.servings || 1);
+        const scale = Math.max(1, e.servings || per) / per;
+
         for(const ing of r.ingredients || []){
-          if(ing.staple || !ing.key) continue;
-          const at = out.get(ing.key) || {key: ing.key, item: Food.pretty(ing.item, ing.key), recipes: []};
+          if(!ing.key) continue;
+          const at = out.get(ing.key) ||
+            {key: ing.key, item: Food.pretty(ing.item, ing.key),
+             staple: !!ing.staple, grams: 0, unmeasured: false, recipes: []};
           if(!at.recipes.includes(r.title)) at.recipes.push(r.title);
+          const g = Food.toGrams(ing.qty == null ? null : ing.qty * scale, ing.unit || 'ea', ing.key);
+          if(g == null) at.unmeasured = true; else at.grams += g;
+          if(!ing.staple) at.staple = false;
           out.set(ing.key, at);
         }
       }
@@ -204,19 +250,32 @@ const Menu = (() => {
      aisle, each line carrying the meals that asked for it. Things
      already ticked off stay ticked until the plan changes under them. */
   function grocery(days){
-    const have = Pantry.keys();
-    const need = committed(days);
+    const stock  = Pantry.stock();
+    const keys   = [...stock.keys()];
+    const need   = committed(days);
     const bought = Store.get('menu.bought', {});
     const aisles = new Map();
 
     for(const [key, entry] of need){
-      if([...have].some(k => Recipes.covers(k, key))) continue;
-      const aisle = Food.aisleFor(key);
+      const hit = keys.find(k => Recipes.covers(k, key));
+      let short = null;
+      if(hit){
+        const held = stock.get(hit);
+        /* On the shelf is not the same as enough. Where the plan knows
+           how much it wants and the shelf knows how much it has, the
+           gap is what goes on the list — and the line says so, because
+           "chicken (600 g needed, 400 g in)" is a different errand from
+           "chicken". */
+        if(entry.unmeasured || held.grams == null) continue;
+        if(held.grams >= entry.grams * 0.92) continue;
+        short = {needG: entry.grams, haveG: held.grams, gapG: entry.grams - held.grams};
+      }
+      const aisle = entry.staple ? 'Spices' : Food.aisleFor(key);
       if(!aisles.has(aisle)) aisles.set(aisle, []);
-      aisles.get(aisle).push({...entry, bought: !!bought[key]});
+      aisles.get(aisle).push({...entry, short, bought: !!bought[key]});
     }
 
-    const order = ['Produce','Meat & fish','Dairy & eggs','Bakery','Frozen','Pantry','Other'];
+    const order = ['Produce','Meat & fish','Dairy & eggs','Bakery','Frozen','Pantry','Spices','Other'];
     return order
       .filter(a => aisles.has(a))
       .map(a => ({aisle: a, items: aisles.get(a).sort((x,y) => x.key.localeCompare(y.key))}));
@@ -231,19 +290,22 @@ const Menu = (() => {
   function clearBought(){ Store.set('menu.bought', {}); }
 
   /* ---------- cooking ----------
-     Marks the meal cooked and takes the named ingredients out of the
-     kitchen. The caller decides which ones actually ran out — see the
-     cook dialog in menuview.js. */
-  function cook(date, slot, entryId, usedKeys){
+     Marks the meal cooked and takes what it used out of the kitchen, by
+     amount: a recipe wanting 400 g of a 900 g pack leaves 500 g behind,
+     not an empty shelf. `spend` is [{key, qty, unit}] — the caller
+     decides what was really used and how much, see the cook dialog in
+     menuview.js. Returns Pantry's line-by-line account of what it did,
+     so the view can say what came out rather than just redrawing. */
+  function cook(date, slot, entryId, spend){
     update(date, slot, entryId, {cooked: true, cookedAt: new Date().toISOString()});
-    if(usedKeys && usedKeys.length) Pantry.consume(usedKeys);
+    return (spend && spend.length) ? Pantry.consume(spend) : [];
   }
 
   function uncook(date, slot, entryId){
     update(date, slot, entryId, {cooked: false, cookedAt: null});
   }
 
-  return { SLOTS, iso, fortnight, entries, add, remove, update, move, nextMeal,
+  return { SLOTS, iso, fortnight, entries, add, remove, update, move, nextMeal, upNext,
            recipesIn, committed, macrosFor, macrosPerPerson,
            grocery, setBought, clearBought, cook, uncook,
            get plan(){ return plan(); } };

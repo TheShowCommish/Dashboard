@@ -22,7 +22,6 @@ const MenuView = (() => {
   const body = () => document.getElementById('menuBody');
 
   const MODES = [
-    {id:'next',    label:'Up next'},
     {id:'plan',    label:'Plan'},
     {id:'fridge',  label:'Fridge'},
     {id:'recipes', label:'Recipes'},
@@ -30,13 +29,19 @@ const MenuView = (() => {
   ];
 
   /* ---- state that is worth surviving a reload ---- */
-  const mode      = () => Store.get('menu.mode', 'next');
+  /* 'next' used to be a screen in here before it became a kiosk AD.
+     Anyone who left the tab on it would otherwise come back to a deck
+     with no tab lit, so an unknown mode falls back to the plan. */
+  const mode = () => {
+    const m = Store.get('menu.mode', 'plan');
+    return MODES.some(x => x.id === m) ? m : 'plan';
+  };
   const setMode   = m => { Store.set('menu.mode', m); render(); };
   const startDate = () => new Date(Store.get('menu.start', Menu.iso(new Date())) + 'T00:00:00');
   const selected  = () => Store.get('menu.sel', null);
 
   /* ---- transient: filters live for the session, not forever ---- */
-  let suggestTab = 'reuse';                 // reuse | now | near — now *derived* from scroll
+  let suggestTab = 'weather';                 // reuse | now | near — now *derived* from scroll
   let filters = {q:'', within:null, cuisine:'', maxMin:0, sort:'best', limit:60};
 
   /* The rail is one continuous strip and the tab under the cursor is
@@ -76,7 +81,10 @@ const MenuView = (() => {
     const badge = need === 0
         ? (match.matched ? '<span class="chip ok">have it all</span>'
                          : '<span class="chip">nothing to buy</span>')
-        : need != null ? `<span class="chip warn">${need} to buy</span>` : '';
+        : need != null
+          ? `<span class="chip warn">${match.needFood || need} to buy</span>` +
+            (match.needStaples ? `<span class="chip" title="From the spice rack — put yours in the Fridge screen and these stop counting">+${match.needStaples} rack</span>` : '')
+          : '';
     const shared = match.shared ? `<span class="chip">reuses ${match.shared}</span>` : '';
     const n = r.nutrition || {};
     return `
@@ -148,20 +156,35 @@ const MenuView = (() => {
      left under your hand. */
 
   const RAIL_GROUPS = [
-    {id:'reuse', label:'Reuses your week'},
-    {id:'now',   label:'Cook tonight'},
-    {id:'near',  label:'1–2 away'}
+    {id:'weather', label:'Suits today'},
+    {id:'reuse',   label:'Reuses your week'},
+    {id:'now',     label:'Cook tonight'},
+    {id:'near',    label:'1–2 away'}
   ];
+
+  /* Whatever the theme engine is currently reading the sky as. The Menu
+     tab used to be the one screen that ignored it. */
+  const sky = () => (window.Weather && Weather.current) || null;
 
   function railLists(){
     const seeds = Menu.recipesIn(days());
-    const have  = Pantry.keys();
+    const have  = Pantry.stock();
 
     const reuse = seeds.length
       ? Recipes.reusing(seeds, have, {within:2, limit:30})
       : Recipes.cookable(have, 0).slice(0, 30);
 
+    const suits = Recipes.suiting(sky(), have, {within:2, limit:30});
+
     return {
+      weather: {
+        list: suits.list,
+        note: suits.mood ? suits.mood.why
+            : 'No weather reading yet — this stretch fills in once the forecast lands.',
+        empty: suits.mood
+          ? 'Nothing in the kitchen fits the weather yet. Put a shop away and this fills up.'
+          : 'No weather reading yet.'
+      },
       reuse: {
         list: reuse,
         note: seeds.length
@@ -310,187 +333,191 @@ const MenuView = (() => {
   }
 
   /* ============================================================
-     Up next — the advert
-     ============================================================
-
-     The one screen in this tab that is not a tool. It has a single job:
-     you walk past the dashboard at five o'clock and it tells you what
-     you are cooking, everything you need down the left, everything you
-     do at the right, and a picture so it reads from across the room.
-
-     The sticky note is the part that earns it. A plan that says "chicken
-     thighs — in the kitchen" is technically right and practically
-     useless when the chicken is a brick at the back of the freezer, and
-     the moment to learn that is the morning, not when the pan is hot. So
-     anything the recipe needs that is in the freezer gets slapped on the
-     front of the ad in the same handwriting you would have used.
-     ============================================================ */
-
-  /* Everything the recipe wants that is currently frozen. Matched with
-     the same covers() the whole tab matches on, so "chicken" in the
-     freezer answers a recipe asking for "chicken thigh". */
-  function frozenFor(recipe){
-    const cold = Pantry.inLocation('freezer');
-    if(!cold.length) return [];
-    const out = [], seen = new Set();
-    for(const ing of recipe.ingredients || []){
-      if(ing.staple || !ing.key) continue;
-      for(const item of cold){
-        if(!Recipes.covers(item.key, ing.key)) continue;
-        if(seen.has(item.key)) break;
-        seen.add(item.key);
-        out.push(item);
-        break;
-      }
-    }
-    return out;
-  }
-
-  /* How long before the meal, in whole days — a thaw note that says
-     "tomorrow" is worth more than one that says "soon". */
-  function whenLabel(date){
-    const d = new Date(date); d.setHours(0,0,0,0);
-    const t = new Date();    t.setHours(0,0,0,0);
-    const days = Math.round((d - t) / 86400000);
-    if(days <= 0) return 'Tonight';
-    if(days === 1) return 'Tomorrow';
-    return d.toLocaleDateString(undefined, {weekday:'long'});
-  }
-
-  function thawNote(frozen, date){
-    if(!frozen.length) return '';
-    const names = frozen.map(i => i.label || Food.pretty(null, i.key));
-    const list = names.length === 1 ? names[0]
-      : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-    const when = whenLabel(date);
-    const lead = when === 'Tonight' ? 'Get it out now' : `${when}'s dinner`;
-    return `
-      <aside class="mv-ad-note" role="note">
-        <span class="mv-ad-note-pin" aria-hidden="true"></span>
-        <b>Thaw ${esc(list)}</b>
-        <span>${esc(lead)} — ${names.length === 1 ? 'it is' : 'they are'} in the freezer.</span>
-      </aside>`;
-  }
-
-  async function renderNext(){
-    const up = Menu.nextMeal();
-    if(!up){
-      body().innerHTML = `
-        <div class="mv-ad is-blank">
-          <p class="empty">Nothing on the menu yet. Plan a meal and this becomes the poster for it.</p>
-          <button class="ghost-btn sm primary" data-act="goPlan">Open the plan</button>
-        </div>`;
-      return;
-    }
-
-    const r = recipeById(up.entry.recipeId);
-    if(!r){
-      body().innerHTML = '<div class="mv-ad is-blank"><p class="empty">The next meal points at a recipe that is no longer in the book.</p></div>';
-      return;
-    }
-
-    const have = Pantry.keys();
-    const m    = Recipes.against(r, have);
-    const n    = r.nutrition || {};
-    const frozen = frozenFor(r);
-    const when = up.date.toLocaleDateString(undefined, {weekday:'long', month:'long', day:'numeric'});
-
-    /* Drawn once off the index so it is on screen instantly, then the
-       method drops into the right-hand column when its shard lands. */
-    body().innerHTML = `
-      <div class="mv-ad${frozen.length ? ' has-note' : ''}">
-        ${thawNote(frozen, up.date)}
-        <header class="mv-ad-head">
-          <div class="mv-ad-title">
-            <p class="mv-ad-eyebrow">${esc(whenLabel(up.date))} · ${esc(when)} · ${esc(up.slotLabel)}</p>
-            <h1>${esc(r.title)}</h1>
-            <p class="mv-ad-meta">${[
-              r.servings ? `serves ${r.servings}` : '',
-              up.entry.servings ? `${up.entry.servings} planned` : '',
-              r.minutes ? `${r.minutes} min` : '',
-              r.cuisine || r.category || '',
-              r.source
-            ].filter(Boolean).map(esc).join('  ·  ')}</p>
-            ${n.kcal ? `<p class="mv-ad-macros"><b>${n0(n.kcal)}</b> kcal &nbsp; ${n0(n.protein)}g protein &nbsp; ${n0(n.carbs)}g carbs &nbsp; ${n0(n.fat)}g fat <i>per serving</i></p>` : ''}
-            <div class="mv-ad-actions">
-              <button class="ghost-btn sm primary" data-act="cook"
-                      data-day="${esc(up.dateKey)}" data-slot="${esc(up.slot)}" data-entry="${esc(up.entry.id)}">Cooked it</button>
-              <button class="ghost-btn sm" data-act="openRecipe" data-recipe="${esc(r.id)}">Open the card</button>
-              ${r.url ? `<a class="ghost-btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">The original</a>` : ''}
-            </div>
-          </div>
-          ${r.image
-            ? `<div class="mv-ad-shot"><img src="${esc(r.image)}" alt="" referrerpolicy="no-referrer"></div>`
-            : '<div class="mv-ad-shot mv-ad-noshot">🍳</div>'}
-        </header>
-
-        <div class="mv-ad-split">
-          <section class="mv-ad-ing">
-            <h2>What goes in <span class="chip${m.need ? ' warn' : ' ok'}">${m.need ? `${m.need} still to buy` : 'all in'}</span></h2>
-            <ul class="rd-ing" id="mvAdIng">${ingredientList(r, m, null)}</ul>
-          </section>
-          <section class="mv-ad-steps">
-            <h2>What you do</h2>
-            <ol class="rd-steps" id="mvAdSteps"><li class="empty">Loading the method…</li></ol>
-          </section>
-        </div>
-      </div>`;
-
-    const detail = await Recipes.details(r.id);
-    if(mode() !== 'next') return;
-
-    const ol = document.getElementById('mvAdSteps');
-    if(ol) ol.innerHTML = detail.steps.length
-      ? detail.steps.map(x => `<li>${esc(x)}</li>`).join('')
-      : `<li class="empty">This one keeps its method on the original page.${r.url ? ' The link is up there.' : ''}</li>`;
-
-    const ul = document.getElementById('mvAdIng');
-    if(ul && detail.lines.length) ul.innerHTML = ingredientList(r, m, detail.lines);
-  }
-
-  /* ============================================================
      Fridge
      ============================================================ */
+
+  /* What is on screen while an ingredient is being typed. Kept out of
+     Store because a half-finished line is not worth surviving a reload. */
+  let entry = {text:'', qty:'', unit:'ea', loc:'fridge', open:false, hi:0, bulk:false, focus:false};
+  let fridgeError = null;      // {title, lines:[]} — why something would not go away
+
+  /* The type-ahead list, drawn from the ingredients the recipes actually
+     ask for. Free text here is how a kitchen ends up holding "corriander"
+     that no recipe will ever match; offering the library's own vocabulary
+     is how the fridge and the backlog stay able to talk to each other. */
+  function entryOptions(){
+    return Recipes.ready ? Recipes.suggest(entry.text, 8) : [];
+  }
 
   function renderFridge(){
     const g = Pantry.grouped();
     const committed = Menu.committed(days());
     const total = Pantry.count;
+    const opts = entryOptions();
 
-    const column = (loc, title) => `
-      <section class="mv-col">
-        <h4>${title} <span class="chip">${g[loc].length}</span></h4>
+    const column = loc => `
+      <section class="mv-col" data-col="${loc}">
+        <h4>${esc(Pantry.LOCATION_LABELS[loc])} <span class="chip">${g[loc].length}</span></h4>
+        ${loc === 'spices' && !g.spices.length
+          ? `<p class="mv-col-hint">Nothing is assumed to be in your cupboard any more. Put your spice rack
+             in here and recipes stop asking you to buy salt.
+             <button class="ghost-btn sm" data-act="stockSpices">Add a standard rack</button></p>` : ''}
         <div class="mv-items">${g[loc].map(i => {
           const spoken = committed.get(i.key);
+          const amount = i.qty != null ? Food.amount(i.qty, i.unit) : '';
           return `<div class="mv-item${spoken ? ' is-committed' : ''}" data-item="${esc(i.id)}">
             <span class="mv-item-name">${esc(i.label)}</span>
-            <span class="mv-item-qty">${i.qty != null ? esc(`${i.qty}${i.unit ? ' ' + i.unit : ''}`) : ''}</span>
+            <button class="mv-item-qty${i.qty == null ? ' is-unknown' : ''}" data-act="editAmount"
+                    title="${i.qty == null ? 'No amount recorded. It still counts as having some, but nothing can be measured against it. Click to set one.' : 'Click to change'}"
+                    >${esc(amount || 'some')}</button>
             ${spoken ? `<span class="chip" title="Planned for ${esc(spoken.recipes.join(', '))}">planned</span>` : ''}
-            <button class="mv-item-x" data-act="drop" aria-label="Remove ${esc(i.label)}">×</button>
+            <button class="mv-item-x" data-act="drop" aria-label="Remove ${esc(i.label)}">&times;</button>
           </div>`;
-        }).join('') || '<p class="empty">Empty.</p>'}</div>
+        }).join('') || (loc === 'spices' && !g.spices.length ? '' : '<p class="empty">Empty.</p>')}</div>
       </section>`;
 
     body().innerHTML = `
       <div class="mv-fridge">
-        <div class="mv-add">
-          <textarea id="mvAdd" rows="2" placeholder="2 lbs chicken thighs&#10;bag of spinach&#10;half a jar of salsa — one per line"></textarea>
-          <div class="mv-add-tools">
-            <select id="mvAddLoc">
-              <option value="fridge">Fridge</option>
-              <option value="freezer">Freezer</option>
-              <option value="pantry">Pantry</option>
+        <div class="mv-entry">
+          <div class="mv-entry-row">
+            <div class="mv-combo${entry.open && opts.length ? ' is-open' : ''}">
+              <input id="mvFood" class="td-input" type="text" autocomplete="off" spellcheck="false"
+                     role="combobox" aria-expanded="${entry.open && opts.length ? 'true' : 'false'}"
+                     aria-controls="mvFoodList"
+                     placeholder="Start typing a food &mdash; chicken thighs, cumin, spinach&hellip;"
+                     value="${esc(entry.text)}">
+              <ul class="mv-combo-list" id="mvFoodList" role="listbox">${
+                opts.map((o, i) => `
+                  <li role="option" class="${i === entry.hi ? 'is-hi' : ''}" data-pick="${esc(o.key)}"
+                      aria-selected="${i === entry.hi}">
+                    <span class="mv-combo-name">${esc(o.key)}</span>
+                    <span class="mv-combo-meta">${esc(o.staple ? 'spice rack' : o.aisle)} &middot; ${o.count.toLocaleString()} ${o.count === 1 ? 'recipe' : 'recipes'}</span>
+                  </li>`).join('')
+              }</ul>
+            </div>
+            <input id="mvQty" class="mv-qty" type="number" min="0" step="any" placeholder="amount"
+                   value="${esc(entry.qty)}" aria-label="How much">
+            <select id="mvUnit" class="mv-unit" aria-label="Units">
+              ${Food.UNIT_CHOICES.map(u => `<option value="${u.id}"${entry.unit === u.id ? ' selected' : ''}>${esc(u.label)}</option>`).join('')}
             </select>
-            <button class="ghost-btn sm primary" data-act="addItems">Put it away</button>
-            <span class="hint">${total} ${total === 1 ? 'thing' : 'things'} in the kitchen · quantities are for you to read, matching is on the item itself</span>
+            <select id="mvAddLoc" class="mv-unit" aria-label="Where it goes">
+              ${Pantry.LOCATIONS.map(l => `<option value="${l}"${entry.loc === l ? ' selected' : ''}>${esc(Pantry.LOCATION_LABELS[l])}</option>`).join('')}
+            </select>
+            <button class="ghost-btn sm primary" data-act="putAway">Put it away</button>
           </div>
+          <p class="hint">${total} ${total === 1 ? 'thing' : 'things'} in the kitchen &middot;
+             leave the amount blank for &ldquo;some&rdquo;, and nothing will be measured against it &middot;
+             <button class="ghost-btn sm" data-act="bulkToggle">${entry.bulk ? 'One at a time' : 'Paste a whole shop'}</button></p>
+          ${fridgeError ? `
+            <div class="mv-error" role="alert">
+              <b>${esc(fridgeError.title)}</b>
+              <ul>${fridgeError.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>
+              <button class="ghost-btn sm" data-act="dismissError">Dismiss</button>
+            </div>` : ''}
+          ${entry.bulk ? `
+            <div class="mv-bulk">
+              <textarea id="mvAdd" rows="4" placeholder="2 lbs chicken thighs&#10;bag of spinach&#10;half a jar of salsa &mdash; one per line"></textarea>
+              <button class="ghost-btn sm" data-act="addItems">Put all of it away</button>
+            </div>` : ''}
         </div>
-        <div class="mv-cols">
-          ${column('fridge','Fridge')}
-          ${column('freezer','Freezer')}
-          ${column('pantry','Pantry')}
-        </div>
+        <div class="mv-cols">${Pantry.LOCATIONS.map(column).join('')}</div>
       </div>`;
+
+    const box = document.getElementById('mvFood');
+    if(box && entry.focus){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+    entry.focus = false;
+  }
+
+  /* A starting spice rack, for the very common case of "I own the obvious
+     things but I am not typing forty of them". Everything here is a
+     Food.STAPLES member — exactly the set that used to be assumed — so
+     this button is the old behaviour, made explicit and opted into
+     rather than decided on your behalf. */
+  const STARTER_RACK = [
+    'salt','black pepper','olive oil','vegetable oil','flour','sugar','brown sugar',
+    'baking powder','baking soda','cornstarch','vinegar','vanilla extract',
+    'garlic powder','onion powder','paprika','cumin','chili powder','oregano',
+    'basil','thyme','rosemary','bay leaf','cinnamon','nutmeg','cayenne',
+    'red pepper flake','italian seasoning','curry powder','turmeric','soy sauce',
+    'honey','ketchup','mustard','mayonnaise','hot sauce','sesame oil'
+  ];
+
+  function stockSpices(){
+    const failed = [];
+    let n = 0;
+    for(const key of STARTER_RACK){
+      try{ Pantry.add(key, 'spices'); n++; }
+      catch(e){ failed.push(`${key} — ${e.message}`); }
+    }
+    fridgeError = failed.length
+      ? {title:`${failed.length} of them could not go on the shelf.`, lines:failed} : null;
+    Store.toast(`Put ${n} ${n === 1 ? 'thing' : 'things'} on the spice shelf.`);
+    render();
+  }
+
+  /* Putting one thing away. Every way this can fail is something the
+     person typing can fix, so every failure says what went wrong and what
+     to do about it, rather than the form simply not responding. */
+  function putAway(){
+    const text = entry.text.trim();
+    const qty  = entry.qty === '' ? null : Number(entry.qty);
+    try{
+      if(entry.qty !== '' && !Number.isFinite(qty))
+        throw new Pantry.PantryError(`"${entry.qty}" is not a number.`);
+      const r = Pantry.add(text, entry.loc, {qty, unit: entry.unit});
+      fridgeError = null;
+      Store.toast(r.note || `${r.item.label} → ${Pantry.LOCATION_LABELS[entry.loc].toLowerCase()}${
+        r.item.qty != null ? ` (${Food.amount(r.item.qty, r.item.unit)})` : ''}`);
+      entry = {...entry, text:'', qty:'', open:false, hi:0, focus:true};
+    }catch(e){
+      fridgeError = {title:'That could not go in the kitchen.', lines:[e.message]};
+    }
+    render();
+  }
+
+  /* A whole shop at once. Nothing is all-or-nothing: what parses goes in,
+     and every line that did not is named with its reason, so a receipt
+     with two odd lines in it does not have to be retyped. */
+  function putAwayMany(){
+    const box = document.getElementById('mvAdd');
+    if(!box) return;
+    const res = Pantry.addMany(box.value, entry.loc);
+    fridgeError = res.failed.length
+      ? {title:`${res.failed.length} ${res.failed.length === 1 ? 'line' : 'lines'} could not go in the kitchen.`,
+         lines: res.failed.map(f => `"${f.line}" — ${f.why}`)}
+      : null;
+    if(res.added.length) box.value = '';
+    Store.toast(res.added.length
+      ? `Put ${res.added.length} ${res.added.length === 1 ? 'thing' : 'things'} away.`
+      : 'Nothing readable in that.');
+    render();
+  }
+
+  /* Changing what is on a shelf after the fact — a pack half used, a
+     guess corrected. Blank means "some", which is the honest answer when
+     nobody weighed it. */
+  function editAmount(id){
+    const it = Pantry.items().find(x => x.id === id);
+    if(!it) return;
+    const raw = prompt(`How much ${it.label}? Blank for "some".`,
+                       it.qty != null ? `${it.qty} ${it.unit || ''}`.trim() : '');
+    if(raw === null) return;
+    const text = raw.trim();
+    try{
+      if(!text){ Pantry.setAmount(id, null, null); }
+      else{
+        const m = text.match(/^([\d.]+)\s*([a-z]*)$/i);
+        if(!m) throw new Pantry.PantryError(`Could not read "${text}". Try something like "2 lb" or "400 g".`);
+        const unit = (m[2] || it.unit || 'ea').toLowerCase();
+        if(!Object.prototype.hasOwnProperty.call(Food.UNITS, unit))
+          throw new Pantry.PantryError(`"${unit}" is not a unit this kitchen knows. Try one of: ${Food.UNIT_CHOICES.map(u => u.id).join(', ')}.`);
+        Pantry.setAmount(id, Number(m[1]), unit);
+      }
+      fridgeError = null;
+    }catch(e){
+      fridgeError = {title:'That amount would not go in.', lines:[e.message]};
+    }
+    render();
   }
 
   /* ============================================================
@@ -498,7 +525,7 @@ const MenuView = (() => {
      ============================================================ */
 
   function filtered(){
-    const have = Pantry.keys();
+    const have = Pantry.stock();
     let list = Recipes.search(filters.q);
 
     if(filters.cuisine)
@@ -561,6 +588,17 @@ const MenuView = (() => {
      Grocery
      ============================================================ */
 
+  /* Grams are what the plan adds up in, but nobody shops in grams for
+     everything. Anything over half a kilo reads in kilos, anything under
+     a hundred grams is not worth a number at all — you are buying a jar
+     of it either way. */
+  function bulkLabel(g){
+    if(g >= 1000) return `${Math.round(g / 100) / 10} kg`;
+    if(g >= 100)  return `${Math.round(g / 10) * 10} g`;
+    return 'a little';
+  }
+  const shortLabel = i => bulkLabel(i.short.gapG);
+
   function renderGrocery(){
     const groups = Menu.grocery(days());
     const count = groups.reduce((n,g) => n + g.items.length, 0);
@@ -577,11 +615,17 @@ const MenuView = (() => {
         </div>
         ${count ? groups.map(g => `
           <section class="mv-aisle">
-            <h4>${esc(g.aisle)}</h4>
+            <h4>${esc(g.aisle)}${g.aisle === 'Spices'
+              ? ' <i class="hint">nothing is assumed to be in your cupboard — put what you own on the Spices shelf</i>' : ''}</h4>
             ${g.items.map(i => `
               <label class="mv-buy${i.bought ? ' is-bought' : ''}">
                 <input type="checkbox" data-buy="${esc(i.key)}"${i.bought ? ' checked' : ''}>
                 <span class="mv-buy-name">${esc(i.item || i.key)}</span>
+                ${i.short
+                  ? `<span class="mv-buy-amt is-short" title="The plan wants ${Math.round(i.short.needG)} g and the kitchen holds ${Math.round(i.short.haveG)} g">
+                       ${esc(shortLabel(i))} more</span>`
+                  : i.grams && !i.unmeasured
+                    ? `<span class="mv-buy-amt">${esc(bulkLabel(i.grams))}</span>` : ''}
                 <span class="mv-buy-for">${esc(i.recipes.slice(0,3).join(' · '))}${i.recipes.length > 3 ? ' …' : ''}</span>
               </label>`).join('')}
           </section>`).join('')
@@ -598,8 +642,8 @@ const MenuView = (() => {
     if(!r) return;
     const modal = document.getElementById('recipeModal');
     const host  = document.getElementById('recipeModalBody');
-    const have  = Pantry.keys();
-    const m     = Recipes.against(r, have);
+    const stock = Pantry.stock();
+    const m     = Recipes.against(r, stock);
     const n     = r.nutrition || {};
     const per   = Store.get('menu.servings', 2);
 
@@ -628,7 +672,9 @@ const MenuView = (() => {
         </div>
         <div class="rd-split">
           <section>
-            <h3>Ingredients <span class="chip${m.need ? ' warn' : ' ok'}">${m.need ? `${m.need} to buy` : 'all in'}</span></h3>
+            <h3>Ingredients <span class="chip${m.need ? ' warn' : ' ok'}">${m.need ? `${m.need} to buy` : 'all in'}</span>${
+              m.short.length ? `<span class="chip warn">${m.short.length} short</span>` : ''}${
+              m.assumed ? `<span class="chip" title="On the shelf, but with no amount recorded — nothing could be measured">${m.assumed} unmeasured</span>` : ''}</h3>
             <ul class="rd-ing" id="rdIng">${ingredientList(r, m, null)}</ul>
           </section>
           <section>
@@ -653,26 +699,63 @@ const MenuView = (() => {
     if(ul && detail.lines.length) ul.innerHTML = ingredientList(r, m, detail.lines);
   }
 
-  /* The cook dialog. Everything the recipe used that the kitchen has is
-     ticked; untick whatever survived, because half an onion is still an
-     onion and a planner that silently empties the fridge stops being
-     believed after about a week. */
+  /* The cook dialog.
+
+     It used to ask a yes/no question — did this run out — and answer it
+     by deleting the row. Now it asks the real one: how much of it went
+     in. Each line shows what the recipe wanted, scaled from its own yield
+     to the servings actually cooked, and what will be left on the shelf
+     afterwards. Untick a line and that ingredient is not touched, because
+     you had your own onion and used that instead.
+
+     Where an amount cannot be worked out on either side, the line says
+     so and cooking empties that row rather than inventing a number.
+     "Some spinach" minus "two cups" has no honest answer, and the wrong
+     kind of confidence here is what makes a fridge stop being believed. */
   function openCook(dateKey, slot, entryId){
     const e = Menu.entries(new Date(dateKey + 'T00:00:00'), slot).find(x => x.id === entryId);
     if(!e) return;
     const r = recipeById(e.recipeId);
     if(!r) return;
-    const have = Pantry.keys();
-    const used = (r.ingredients || []).filter(i => !i.staple && i.key && [...have].some(k => Recipes.covers(k, i.key)));
+
+    const stock = Pantry.stock();
+    const spend = Recipes.toSpend(r, stock, e.servings);
+
+    const line = sp => {
+      const held  = sp.held;
+      const after = (held && held.qty != null && sp.qty != null)
+        ? Food.subtractFrom({qty: held.qty, unit: held.unit}, {qty: sp.qty, unit: sp.unit}, sp.key)
+        : null;
+      const wants = sp.qty != null ? Food.amount(sp.qty, sp.unit) : 'an unrecorded amount';
+      const leaves = after
+        ? (after.qty === 0 ? 'uses it up' : `leaves ${Food.amount(after.qty, after.unit)}`)
+        : 'no amount on the shelf — ticking this empties it';
+      /* Lines that can be measured are ticked, because taking the right
+         amount out is the whole point. Lines that cannot are NOT, because
+         the only thing this dialog can do with them is empty the shelf,
+         and emptying a spice rack every time someone cooks is how you
+         lose a cupboard you spent ten minutes typing in. Tick one
+         deliberately and it means "that ran out" — which is the question
+         this dialog used to ask about everything. */
+      return `
+        <label class="mv-cook-row${after ? '' : ' is-vague-row'}">
+          <input type="checkbox" data-spend="${esc(sp.key)}"${after ? ' checked' : ''}>
+          <span class="mv-cook-name">${esc(sp.label)}${sp.staple ? ' <i class="hint">spice rack</i>' : ''}</span>
+          <span class="mv-cook-take">${esc(wants)}</span>
+          <span class="mv-cook-left${after ? '' : ' is-vague'}">${esc(leaves)}</span>
+        </label>`;
+    };
 
     const host = document.getElementById('recipeModalBody');
     host.innerHTML = `
       <div class="rd">
         <h2>Cooked ${esc(r.title)}?</h2>
-        <p class="empty">Tick what ran out. Anything left unticked stays in the kitchen.</p>
-        <div class="mv-cook">${used.length ? used.map(i => `
-          <label class="fx-row"><input type="checkbox" data-used="${esc(i.key)}" checked> ${esc(i.item || i.key)}</label>`).join('')
-          : '<p class="empty">None of its ingredients are in the kitchen right now — nothing to use up.</p>'}</div>
+        <p class="empty">${spend.length
+          ? `These come out of the kitchen, scaled to ${e.servings} ${e.servings === 1 ? 'serving' : 'servings'}.
+             Untick anything you used your own of. The unticked ones are things with no amount recorded —
+             tick one only if it actually ran out, because that is all this can do with them.`
+          : 'None of its ingredients are in the kitchen right now — nothing to use up.'}</p>
+        <div class="mv-cook">${spend.map(line).join('')}</div>
         <div class="modal-actions">
           <button class="ghost-btn sm" data-act="cookCancel">Not yet</button>
           <button class="ghost-btn sm primary" data-act="cookConfirm"
@@ -680,7 +763,12 @@ const MenuView = (() => {
         </div>
       </div>`;
     document.getElementById('recipeModal').hidden = false;
+    cookPending = spend;
   }
+
+  /* What openCook worked out, held for the confirm click so the amounts
+     do not have to be recomputed from a DOM that only carries keys. */
+  let cookPending = [];
 
   /* The meal chip's own little menu: cook it, unplan it. */
   function openMeal(dateKey, slot, entryId){
@@ -708,13 +796,23 @@ const MenuView = (() => {
      after the card opens; until then the normalised name stands in, so
      the list never appears empty. */
   function ingredientList(r, m, lines){
+    const shortOf = new Map(m.short.map(x => [x.key, x]));
+    const gone = new Set([...m.missing, ...m.staples].map(x => x.key));
     return (r.ingredients || []).map((i, idx) => {
-      const state = i.staple ? 'staple'
-        : m.missing.some(x => x.key === i.key) ? 'missing' : 'have';
+      const short = shortOf.get(i.key);
+      /* Three states, not two: on the shelf, not on the shelf, and on
+         the shelf but not enough of it — which is the one that used to
+         be silently counted as having it. */
+      const state = short ? 'short' : gone.has(i.key) ? 'missing' : 'have';
       const label = (lines && lines[idx]) || Food.pretty(i.item, i.key);
-      const why = state === 'staple' ? 'Assumed always in the cupboard'
-                : state === 'have'   ? 'In the kitchen' : 'Not in the kitchen';
-      return `<li class="is-${state}" title="${why}">${esc(label)}</li>`;
+      const why = state === 'have'
+            ? 'In the kitchen'
+            : state === 'short'
+              ? `Only ${Math.round(short.gotG)} g in the kitchen, this wants ${Math.round(short.wantG)} g`
+              : i.staple ? 'Not in the kitchen — put it on the Spices shelf if you have it'
+                         : 'Not in the kitchen';
+      const tag = state === 'short' ? ' <i class="rd-short">not enough</i>' : '';
+      return `<li class="is-${state}${i.staple ? ' is-rack' : ''}" title="${esc(why)}">${esc(label)}${tag}</li>`;
     }).join('');
   }
 
@@ -807,20 +905,25 @@ const MenuView = (() => {
         return render();
       }
 
+      const pick = t.closest('[data-pick]');
+      if(pick){
+        entry.text = pick.dataset.pick;
+        entry.open = false; entry.hi = 0; entry.focus = true;
+        return render();
+      }
+
       const rc = t.closest('[data-recipe]');
       const act = t.closest('[data-act]');
 
       if(act){
         const a = act.dataset.act;
 
-        if(a === 'addItems'){
-          const box = document.getElementById('mvAdd');
-          const loc = document.getElementById('mvAddLoc').value;
-          const n = Pantry.addMany(box.value, loc);
-          box.value = '';
-          Store.toast(n ? `Put ${n} ${n === 1 ? 'thing' : 'things'} away.` : 'Nothing readable in that.');
-          return render();
-        }
+        if(a === 'putAway')      return putAway();
+        if(a === 'addItems')     return putAwayMany();
+        if(a === 'stockSpices')  return stockSpices();
+        if(a === 'editAmount')   return editAmount(act.closest('[data-item]').dataset.item);
+        if(a === 'dismissError'){ fridgeError = null; return render(); }
+        if(a === 'bulkToggle'){ entry.bulk = !entry.bulk; return render(); }
         if(a === 'drop'){
           Pantry.remove(act.closest('[data-item]').dataset.item);
           return render();
@@ -845,9 +948,20 @@ const MenuView = (() => {
         if(a === 'cook')   return openCook(act.dataset.day, act.dataset.slot, act.dataset.entry);
         if(a === 'cookCancel') return closeModal();
         if(a === 'cookConfirm'){
-          const used = [...document.querySelectorAll('[data-used]:checked')].map(b => b.dataset.used);
-          Menu.cook(new Date(act.dataset.day + 'T00:00:00'), act.dataset.slot, act.dataset.entry, used);
-          closeModal(); return render();
+          const ticked = new Set([...document.querySelectorAll('[data-spend]:checked')].map(b => b.dataset.spend));
+          const spend  = cookPending.filter(sp => ticked.has(sp.key));
+          const report = Menu.cook(new Date(act.dataset.day + 'T00:00:00'), act.dataset.slot, act.dataset.entry, spend);
+          cookPending = [];
+          closeModal();
+          /* Say what came out. A fridge that silently changes under you is
+             the thing people stop trusting first. */
+          const emptied = report.filter(x => x.action === 'emptied');
+          const reduced = report.filter(x => x.action === 'reduced');
+          Store.toast(report.length
+            ? [reduced.length ? `Took from ${reduced.length}` : '', emptied.length ? `used up ${emptied.length}` : '']
+                .filter(Boolean).join(', ') + '.'
+            : 'Marked as cooked.');
+          return render();
         }
         if(a === 'uncook'){
           Menu.uncook(new Date(act.dataset.day + 'T00:00:00'), act.dataset.slot, act.dataset.entry);
@@ -861,11 +975,23 @@ const MenuView = (() => {
         if(a === 'clearTicks'){ Menu.clearBought(); return render(); }
         if(a === 'stow'){
           /* Ticked items are in the bags; put them in the kitchen and
-             they stop being on the list at all. */
+             they stop being on the list at all. Each one can fail on its
+             own — a unit that will not convert into what is already on
+             the shelf — so they are put away one at a time and whatever
+             would not go is named rather than lost. */
           const bought = Object.keys(Store.get('menu.bought', {}));
-          for(const k of bought) Pantry.add(k, 'fridge');
+          const failed = [];
+          let n = 0;
+          for(const k of bought){
+            try{ Pantry.add(k, Food.STAPLES.has(k) ? 'spices' : Food.aisleFor(k) === 'Frozen' ? 'freezer' : 'fridge'); n++; }
+            catch(e){ failed.push(`${k} — ${e.message}`); }
+          }
           Menu.clearBought();
-          Store.toast(`Put ${bought.length} ${bought.length === 1 ? 'thing' : 'things'} away.`);
+          if(failed.length){
+            fridgeError = {title:`${failed.length} could not be put away.`, lines:failed};
+            Store.set('menu.mode', 'fridge');
+          }
+          Store.toast(`Put ${n} ${n === 1 ? 'thing' : 'things'} away.`);
           return render();
         }
         if(a === 'copyList'){
@@ -976,10 +1102,69 @@ const MenuView = (() => {
     host.addEventListener('change', e => {
       const t = e.target;
       if(t.id === 'mvPeople'){ Store.set('menu.people', Math.max(1, +t.value || 2)); return render(); }
+      if(t.id === 'mvQty'){  entry.qty  = t.value; return; }
+      if(t.id === 'mvUnit'){ entry.unit = t.value; return; }
+      if(t.id === 'mvAddLoc'){ entry.loc = t.value; return; }
       if(t.id === 'mvCuisine'){ filters.cuisine = t.value; filters.limit = 60; return render(); }
       if(t.id === 'mvTime'){ filters.maxMin = +t.value; filters.limit = 60; return render(); }
       if(t.id === 'mvSort'){ filters.sort = t.value; return render(); }
       if(t.dataset.buy != null){ Menu.setBought(t.dataset.buy, t.checked); return render(); }
+    });
+
+    /* The combobox. Typing filters the library's own ingredient list and
+       redraws only the list, so the caret never moves under the hand;
+       Enter takes the highlighted row, or what was typed if none is. */
+    host.addEventListener('keydown', e => {
+      const box = e.target;
+      if(box.id !== 'mvFood') return;
+      const n = entryOptions().length;
+      if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+        if(!n) return;
+        e.preventDefault();
+        entry.open = true;
+        entry.hi = (entry.hi + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+        entry.focus = true;
+        return render();
+      }
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        const opts = entryOptions();
+        if(entry.open && opts[entry.hi]){
+          entry.text = opts[entry.hi].key;
+          entry.open = false; entry.hi = 0; entry.focus = true;
+          return render();
+        }
+        return putAway();
+      }
+      if(e.key === 'Escape' && entry.open){ entry.open = false; entry.focus = true; return render(); }
+    });
+
+    host.addEventListener('input', e => {
+      if(e.target.id !== 'mvFood') return;
+      entry.text = e.target.value;
+      entry.open = true; entry.hi = 0;
+      /* Redraw the list in place: a full render would rebuild the input
+         and lose the caret mid-word. */
+      const list = document.getElementById('mvFoodList');
+      const combo = document.querySelector('.mv-combo');
+      const opts = entryOptions();
+      if(!list || !combo) return;
+      combo.classList.toggle('is-open', !!opts.length);
+      list.innerHTML = opts.map((o, i) => `
+        <li role="option" class="${i === entry.hi ? 'is-hi' : ''}" data-pick="${esc(o.key)}"
+            aria-selected="${i === entry.hi}">
+          <span class="mv-combo-name">${esc(o.key)}</span>
+          <span class="mv-combo-meta">${esc(o.staple ? 'spice rack' : o.aisle)} &middot; ${o.count.toLocaleString()} ${o.count === 1 ? 'recipe' : 'recipes'}</span>
+        </li>`).join('');
+    });
+
+    /* Clicking away closes the list without stealing the click. */
+    document.addEventListener('click', e => {
+      if(!entry.open) return;
+      if(e.target.closest && e.target.closest('.mv-combo')) return;
+      entry.open = false;
+      const combo = document.querySelector('.mv-combo');
+      if(combo) combo.classList.remove('is-open');
     });
 
     /* Search is the one control that must not re-render on every
@@ -1013,11 +1198,7 @@ const MenuView = (() => {
     if(chip) chip.textContent = Recipes.ready ? `${Recipes.count.toLocaleString()} recipes` : 'loading…';
 
     try{
-      if(mode() === 'next')         renderNext().catch(err => {
-        console.error('Menu render failed:', err);
-        body().innerHTML = `<p class="empty">That screen could not be drawn: ${esc(err.message)}</p>`;
-      });
-      else if(mode() === 'fridge')  renderFridge();
+      if(mode() === 'fridge')       renderFridge();
       else if(mode() === 'recipes') renderRecipes();
       else if(mode() === 'grocery') renderGrocery();
       else                          renderPlan();

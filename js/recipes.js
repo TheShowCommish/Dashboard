@@ -300,24 +300,98 @@ const Recipes = (() => {
     return false;
   }
 
-  /* Which of a recipe's ingredients are covered by a set of keys.
-     Staples never count as missing — see Food.STAPLES for why. */
-  function against(recipe, haveKeys){
-    const have = [], missing = [];
-    let buyable = 0;                          // non-staple lines that mean a shopping trip
+  /* Which of a recipe's ingredients the kitchen can actually supply.
+
+     Two things changed here and they are the same change: nothing is
+     assumed any more.
+
+     Staples used to be free — salt, oil, cumin and forty other things
+     were treated as always in the cupboard, so a recipe needing them
+     read as "have it all" whether or not you owned any. That is a guess
+     about someone else's kitchen dressed up as a fact. Now a staple is
+     just an ingredient that lives on the Spices shelf, and it counts
+     against you until you say you have it. It is still *reported*
+     separately, because "two things to buy, both spices" and "two
+     things to buy, both meat" are different Tuesdays.
+
+     And having a thing is no longer the same as having enough of it.
+     Where both the recipe and the shelf know their amounts, they are
+     compared in grams (Food.enoughFor); where either does not, the
+     answer is "cannot tell", and cannot-tell counts as yes. A fridge
+     that refused to make a stir fry because a bag of spinach had no
+     weight written on it would be worse than useless.
+
+     `stock` is the Map from Pantry.stock(). A bare Set of keys is still
+     accepted — it means presence only, no amounts — because that is what
+     a caller with nothing but keys can honestly offer. */
+  function against(recipe, stock){
+    const isMap = stock instanceof Map;
+    const keys  = isMap ? [...stock.keys()] : [...(stock || [])];
+
+    const have = [], missing = [], staples = [], short = [];
+    let buyable = 0, assumed = 0;
+
     for(const ing of recipe.ingredients || []){
-      if(ing.staple) continue;
       if(!ing.key) continue;
       buyable++;
-      if([...haveKeys].some(k => covers(k, ing.key))) have.push(ing);
-      else if(ing.optional) continue;         // "chives, optional" is not a shopping trip
-      else missing.push(ing);
+
+      const hit = keys.find(k => covers(k, ing.key));
+      if(!hit){
+        if(ing.optional) continue;            // "chives, optional" is not a shopping trip
+        (ing.staple ? staples : missing).push(ing);
+        continue;
+      }
+
+      const held = isMap ? stock.get(hit) : null;
+      const cmp  = held ? Food.enoughFor(ing, held, ing.key) : {ok:null};
+      if(cmp.ok === false){
+        /* On the shelf, but not enough of it. That is still a shopping
+           trip, and it is a more annoying one than an empty shelf
+           because you would not have thought to check. */
+        const line = {...ing, held, wantG: cmp.want, gotG: cmp.got};
+        short.push(line);
+        (ing.staple ? staples : missing).push(line);
+        continue;
+      }
+      if(cmp.ok == null) assumed++;
+      have.push(ing);
     }
+
     /* `buyable` is what stops "0 missing" from meaning "you have it all"
-       for a recipe that never asked for anything in the first place — a
-       spice blend against an empty fridge is not dinner you can cook
-       tonight, it is a recipe with nothing to check. */
-    return {have, missing, need: missing.length, matched: have.length, buyable};
+       for a recipe that never asked for anything in the first place, and
+       `assumed` is what stops the screen from claiming it checked
+       amounts it could not read. */
+    return {have, missing, staples, short,
+            need: missing.length + staples.length,
+            needFood: missing.length, needStaples: staples.length,
+            matched: have.length, buyable, assumed};
+  }
+
+  /* What cooking this recipe should take out of the kitchen, scaled from
+     the recipe's own yield to the servings actually cooked. Only things
+     the kitchen has: you cannot spend what you never had. */
+  function toSpend(recipe, stock, servings){
+    const isMap = stock instanceof Map;
+    const keys  = isMap ? [...stock.keys()] : [...(stock || [])];
+    const per   = Math.max(1, recipe.servings || 1);
+    const scale = Math.max(1, servings || per) / per;
+
+    const out = [];
+    for(const ing of recipe.ingredients || []){
+      if(!ing.key) continue;
+      const hit = keys.find(k => covers(k, ing.key));
+      if(!hit) continue;
+      const held = isMap ? stock.get(hit) : null;
+      out.push({
+        key: hit,
+        label: (held && held.label) || Food.pretty(ing.item, ing.key),
+        qty:  ing.qty != null ? Math.round(ing.qty * scale * 1000) / 1000 : null,
+        unit: ing.unit || (ing.qty != null ? 'ea' : null),
+        staple: !!ing.staple,
+        held
+      });
+    }
+    return out;
   }
 
   /* The whole library, scored against what is in the kitchen.
@@ -402,7 +476,163 @@ const Recipes = (() => {
   /* Called whenever the hand-added list changes: the rarity weights and
      the id lookup are both derived from the whole library, this one
      included. */
-  function forgetIndex(){ freq = null; forgetIds(); }
+  function forgetIndex(){ freq = null; vocab = null; forgetIds(); }
+
+  /* ---------- what the weather is asking for ----------
+
+     The rest of the deck repaints itself for the weather — the palette,
+     the sky, the rail label all follow whatever is outside. The Menu tab
+     was the one screen that did not care, which is odd, because what to
+     eat is more weather-dependent than what colour a panel is.
+
+     So: a lens over the library, scored on how well a dish suits the
+     conditions the theme engine is already reading. It is deliberately
+     shallow — title, category, cuisine and tags, no cleverness — because
+     the honest signal here is coarse. Nobody needs a model to know that
+     stew is for the rain.
+
+     ctx is Weather.current, or null, in which case there is no lens and
+     callers fall back to whatever they showed before. */
+
+  const WARMING = /\b(soup|stew|chili|chilli|braise|braised|roast|roasted|casserole|bake|baked|pot pie|curry|ramen|pho|broth|chowder|gratin|dumpling|hotpot|hot pot|cottage pie|shepherd|goulash|risotto|porridge|oatmeal|slow cooker|dutch oven|pot roast)\b/i;
+  const COOLING = /\b(salad|slaw|gazpacho|ceviche|chilled|cold|no-bake|no bake|grill|grilled|bbq|barbecue|skewer|kebab|wrap|roll|smoothie|popsicle|ice|sorbet|fresh|summer|poke|tartare|carpaccio)\b/i;
+  const QUICK   = /\b(quick|easy|30 minute|20 minute|15 minute|weeknight|one pan|sheet pan|skillet|stir fry|stir-fry)\b/i;
+
+  /* What today wants, in words the scorer understands. */
+  function weatherMood(ctx){
+    if(!ctx) return null;
+    const temp = Number(ctx.temp);
+    const main = String(ctx.main || '');
+    const wet  = ['Rain','Drizzle','Thunderstorm','Snow'].includes(main);
+    const cold = Number.isFinite(temp) && temp <= 55;
+    const hot  = Number.isFinite(temp) && temp >= 78;
+
+    if(main === 'Snow')  return {want:'warming', why:'Snow outside — something that has been in the oven a while.'};
+    if(main === 'Thunderstorm') return {want:'warming', why:'Storm outside — a night for a pot on the stove.'};
+    if(cold && wet)      return {want:'warming', why:`${main} and ${Math.round(temp)}° — soup, stew, something braised.`};
+    if(cold)             return {want:'warming', why:`${Math.round(temp)}° out — the oven earns its keep.`};
+    if(hot)              return {want:'cooling', why:`${Math.round(temp)}° out — nothing that needs the oven on.`};
+    if(wet)              return {want:'warming', why:`${main} outside — comfort food weather.`};
+    if(main === 'Clear') return {want:'cooling', why:'Clear out — grill it, or eat it cold.'};
+    return {want:'quick', why:'Mild out — something quick, then.'};
+  }
+
+  /* The lens itself: the library re-sorted for the weather, and only
+     things the kitchen can nearly manage, because a perfect stew you
+     cannot shop for is not a suggestion. */
+  function suiting(ctx, stock, opts = {}){
+    const {within = 2, limit = 30} = opts;
+    const mood = weatherMood(ctx);
+    if(!mood) return {mood:null, list:[]};
+
+    const re = mood.want === 'warming' ? WARMING : mood.want === 'cooling' ? COOLING : QUICK;
+    const anti = mood.want === 'warming' ? COOLING : mood.want === 'cooling' ? WARMING : null;
+
+    const out = [];
+    for(const r of all()){
+      const hay = `${r.title} ${r.category || ''} ${r.cuisine || ''} ${(r.tags || []).join(' ')}`;
+      let score = 0;
+      if(re.test(hay)) score += 3;
+      if(anti && anti.test(hay)) score -= 3;
+      /* On a hot day a thing that takes two hours is the wrong answer
+         however it is described, and on a cold one it is half the point. */
+      if(r.minutes){
+        if(mood.want === 'cooling' && r.minutes <= 30) score += 1;
+        if(mood.want === 'warming' && r.minutes >= 60) score += 1;
+        if(mood.want === 'quick'   && r.minutes <= 30) score += 2;
+      }
+      if(score <= 0) continue;
+
+      const m = against(r, stock);
+      if(m.need > within || !m.matched) continue;
+      out.push({recipe:r, ...m, score: score - m.need * 0.8});
+    }
+    out.sort((a,b) => b.score - a.score || a.need - b.need || (b.recipe.rating || 0) - (a.recipe.rating || 0));
+    return {mood, list: out.slice(0, limit)};
+  }
+
+  /* ---------- the ingredient vocabulary ----------
+     Every ingredient the library actually calls for, commonest first.
+     This is what the fridge's type-ahead offers: there is no point
+     letting someone put "corriander" away under a key no recipe will
+     ever ask for, and a list built from the recipes themselves cannot
+     drift from them.
+
+     Built once, from the whole library including the components — a
+     sauce recipe is not dinner but its ingredients are still real
+     things that live in a real cupboard. */
+  let vocab = null;
+  function vocabulary(){
+    if(vocab) return vocab;
+    const n = new Map(), pretty = new Map();
+    for(const r of everything())
+      for(const ing of r.ingredients || []){
+        if(!ing.key) continue;
+        n.set(ing.key, (n.get(ing.key) || 0) + 1);
+        if(ing.staple) pretty.set(ing.key, true);
+      }
+    /* One-offs are almost always the parser having a bad time with a
+       badly written line — "sprinking cumin", "ground cumin powder" —
+       rather than a real ingredient. Offering them would have people
+       stocking a cupboard under a key that one recipe in three thousand
+       uses, which is the same as stocking it under nothing. */
+    vocab = [...n.entries()]
+      .filter(([, count]) => count >= 3)
+      .map(([key, count]) => ({key, count, staple: !!pretty.get(key) || Food.STAPLES.has(key),
+                               aisle: Food.aisleFor(key)}))
+      .sort((a,b) => b.count - a.count || a.key.localeCompare(b.key));
+    return vocab;
+  }
+
+  /* The type-ahead itself. Prefix matches first — someone typing "chick"
+     means chicken, not "cream of chicken soup" — then word-start, then
+     anywhere, each band by how common the ingredient is. */
+  function suggest(query, limit = 10){
+    const q = String(query || '').toLowerCase().trim();
+    const all = vocabulary();
+    if(!q) return all.slice(0, limit);
+    /* No regex: the query is whatever someone typed, and a stray
+       bracket in it should narrow a list, not throw. */
+    const atWordStart = k => k.startsWith(q) || k.includes(' ' + q) || k.includes('-' + q);
+    const band = v => v.key.startsWith(q) ? 0
+                    : atWordStart(v.key) ? 1
+                    : v.key.includes(q) ? 2 : 3;
+    return all
+      .map(v => ({...v, band: band(v)}))
+      .filter(v => v.band < 3)
+      .sort((a,b) => a.band - b.band || b.count - a.count || a.key.length - b.key.length)
+      .slice(0, limit);
+  }
+
+  /* Closest known ingredients to something that matched nothing —
+     "corriander", "chikcen brest". Plain edit distance over a thousand
+     keys is nothing to compute and turns a dead end into a fix. Capped
+     at a third of the word's length so it suggests corrections, not
+     random other foods. */
+  function nearest(query, limit = 3){
+    const q = String(query || '').toLowerCase().trim();
+    if(q.length < 3) return [];
+    const cap = Math.max(2, Math.floor(q.length / 3));
+
+    const dist = (a, b) => {
+      if(Math.abs(a.length - b.length) > cap) return cap + 1;
+      let prev = Array.from({length: b.length + 1}, (_, i) => i);
+      for(let i = 1; i <= a.length; i++){
+        const row = [i];
+        for(let j = 1; j <= b.length; j++)
+          row[j] = Math.min(prev[j] + 1, row[j-1] + 1, prev[j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+        prev = row;
+      }
+      return prev[b.length];
+    };
+
+    return vocabulary()
+      .map(v => ({v, d: Math.min(dist(q, v.key), ...v.key.split(' ').map(w => dist(q, w)))}))
+      .filter(x => x.d <= cap)
+      .sort((a,b) => a.d - b.d || b.v.count - a.v.count)
+      .slice(0, limit)
+      .map(x => x.v.key);
+  }
 
   /* ---------- search ---------- */
   function search(query, list){
@@ -416,7 +646,7 @@ const Recipes = (() => {
     });
   }
 
-  return { load, all, everything, byId, steps, details, search, cookable, reusing, against, covers,
+  return { load, all, everything, byId, steps, details, search, cookable, reusing, suiting, weatherMood, against, toSpend, covers, vocabulary, suggest, nearest,
            forgetIndex, fromUrl, fromNode, addCustom, removeCustom,
            get count(){ return all().length; },
            get hidden(){ return componentCount(); },

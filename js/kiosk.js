@@ -26,7 +26,7 @@ const Kiosk = (() => {
 
   /* ADs are no longer one-per-tab: weather earns a full screen without
      owning a tab, and To Do is working notes nobody wants on a wall. */
-  const ADS = ['calendar','sports','weather','portfolio','movies','notes','fantasy'];
+  const ADS = ['calendar','sports','weather','portfolio','movies','notes','fantasy','menu'];
 
   /* Everything the rotation can show, and whether it is on by default.
      Settings writes kiosk.show.<name>; both lists are filtered through it,
@@ -39,6 +39,10 @@ const Kiosk = (() => {
     {name:'movies',    label:'Movies',    tab:true,  ad:true},
     {name:'notes',     label:'Notes',     tab:true,  ad:true},
     {name:'fantasy',   label:'Fantasy',   tab:true,  ad:true},
+    /* Menu has a tab of its own, but the tab is a planner and the AD is
+       a poster — what you are cooking next, big enough to read from the
+       kitchen door. It is only ever an AD. */
+    {name:'menu',      label:'Menu',      tab:false, ad:true},
     {name:'todo',      label:'To Do',     tab:true,  ad:false, off:true}
   ];
 
@@ -353,7 +357,8 @@ const Kiosk = (() => {
     portfolio:adPortfolio,
     movies:   adMovies,
     notes:    adNotes,
-    fantasy:  adFantasy
+    fantasy:  adFantasy,
+    menu:     adMenu
   };
 
   /* Only ADs that can be genuinely blank need an entry; everything else
@@ -364,7 +369,10 @@ const Kiosk = (() => {
        anything: the movie AD would be a blank screen. */
     movies:   () => movieChoices().length > 0,
     /* No reading yet means no forecast to put on a full screen. */
-    weather:  () => !!(window.Weather && Weather.current)
+    weather:  () => !!(window.Weather && Weather.current),
+    /* Nothing planned, or the backlog has not loaded: a poster for a
+       meal that does not exist is worse than one fewer poster. */
+    menu:     () => !!(window.Menu && window.Recipes && Recipes.ready && Menu.upNext())
   };
 
   /* Whole days from today to a YYYY-MM-DD date, counted midday to midday
@@ -1057,6 +1065,104 @@ const Kiosk = (() => {
         <p class="ad-sub">${esc(when)} · ${esc(rel)}</p>
         <p class="ad-note-text">${esc(n.text || '(empty note)')}</p>
       </div>`;
+  }
+
+  /* ---- Menu ----
+     The next meal, as a poster: everything that goes in down the left,
+     everything you do down the right, the shot across the top, and a
+     sticky note stuck over the corner when something has to come out of
+     the freezer first.
+
+     The freezer note is the part that earns the screen. A plan that says
+     "chicken thighs — in the kitchen" is technically right and
+     practically useless when the chicken is a brick, and the moment to
+     learn that is while walking past at breakfast, not when the pan is
+     already hot.
+
+     The picture is deliberately its own column rather than a banner
+     above the columns: as a banner it pushed the ingredients and the
+     method down the screen until the fit pass shrank the words to
+     nothing, which on a wall display means the poster stops being
+     readable exactly when the recipe gets interesting. */
+  function adMenu(host){
+    const up = Menu.upNext();
+    if(!up){
+      host.innerHTML = `<p class="ad-empty ad-big">Nothing on the menu.</p>`;
+      return;
+    }
+    const {recipe: r, match: m, frozen, entry} = up;
+
+    const day  = new Date(up.dateKey + 'T12:00:00');
+    const days = daysUntil(up.dateKey);
+    const when = days <= 0 ? 'Tonight' : days === 1 ? 'Tomorrow'
+               : day.toLocaleDateString(undefined, {weekday:'long'});
+
+    const n = r.nutrition || {};
+    const meta = [
+      up.slotLabel,
+      entry.servings ? `${entry.servings} servings` : '',
+      r.minutes ? `${r.minutes} min` : '',
+      n.kcal ? `${Math.round(n.kcal).toLocaleString()} kcal each` : ''
+    ].filter(Boolean).join('  ·  ');
+
+    const thaw = frozen.length ? (() => {
+      const names = frozen.map(i => i.label || i.key);
+      const list = names.length === 1 ? names[0]
+        : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+      return `
+        <aside class="ad-menu-note">
+          <span class="ad-menu-pin" aria-hidden="true"></span>
+          <b>Thaw ${esc(list)}</b>
+          <span>${esc(days <= 0 ? 'Get it out now' : when + "'s dinner")} — ${names.length === 1 ? 'it is' : 'they are'} in the freezer.</span>
+        </aside>`;
+    })() : '';
+
+    const shortOf = new Map((m.short || []).map(x => [x.key, x]));
+    const gone = new Set([...m.missing, ...m.staples].map(x => x.key));
+
+    const ings = (r.ingredients || []).map(i => {
+      const state = shortOf.has(i.key) ? 'short' : gone.has(i.key) ? 'missing' : 'have';
+      const amount = i.qty != null ? Food.amount(i.qty, i.unit || 'ea') : '';
+      return `<li class="is-${state}">
+                ${amount ? `<i>${esc(amount)}</i> ` : ''}${esc(Food.pretty(i.item, i.key))}
+              </li>`;
+    }).join('');
+
+    host.innerHTML = `
+      <div class="ad-menu${frozen.length ? ' has-note' : ''}">
+        ${thaw}
+        <div class="ad-menu-head">
+          <div class="ad-menu-title">
+            <p class="ad-sub">${esc(when)} · ${esc(day.toLocaleDateString(undefined,{month:'long', day:'numeric'}))}</p>
+            <h1 class="ad-h1">${esc(r.title)}</h1>
+            <p class="ad-menu-meta">${esc(meta)}</p>
+          </div>
+          ${r.image
+            ? `<div class="ad-menu-shot"><img src="${esc(r.image)}" alt="" referrerpolicy="no-referrer"></div>`
+            : ''}
+        </div>
+        <div class="ad-menu-cols">
+          <section>
+            <h3 class="ad-h3">In it${m.need ? ` · ${m.need} to buy` : ''}</h3>
+            <ul class="ad-menu-ing">${ings}</ul>
+          </section>
+          <section>
+            <h3 class="ad-h3">Method</h3>
+            <ol class="ad-menu-steps" id="adMenuSteps"><li>…</li></ol>
+          </section>
+        </div>
+      </div>`;
+
+    /* The method lives in a shard. The poster is already on screen; the
+       steps drop in when they land, and the fit pass is watching for
+       exactly that. */
+    Recipes.details(r.id).then(d => {
+      const ol = document.getElementById('adMenuSteps');
+      if(!ol) return;
+      ol.innerHTML = d.steps.length
+        ? d.steps.map(x => `<li>${esc(x)}</li>`).join('')
+        : `<li>The method is on ${esc(r.source || 'the original page')}.</li>`;
+    }).catch(() => {});
   }
 
   function adFantasy(host){

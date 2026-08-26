@@ -397,18 +397,128 @@ const Food = (() => {
      through the ingredient's own cup weight: a cup of oil is 216 g and a
      cup of spinach is 30, and averaging those is worse than saying
      nothing at all. */
+  /* Grams per millilitre for things the nutrition table has no cup
+     weight for. Water is the wrong answer for a spice jar by more than a
+     factor of two — a tablespoon of ground cumin is about 6 g, not 15 —
+     and "do I have enough" is a question that gets asked of spices more
+     than of anything else. Coarse on purpose: the point is to be in the
+     right order of magnitude, not to weigh anything. */
+  const LOOSE = [
+    [/(powder|ground|seasoning|spice|flake|granule)|^(cumin|paprika|turmeric|cinnamon|nutmeg|cayenne|oregano|basil|thyme|rosemary|sage|coriander|cardamom|allspice|clove|curry powder|chili powder|garlic powder|onion powder)$/, 0.45],
+    [/(oil|vinegar|juice|wine|beer|stock|broth|water|milk|cream|sauce|syrup)/, 1.0],
+    [/(salt)/, 1.2],
+    [/(sugar|rice|flour|oats)/, 0.6]
+  ];
+
+  function density(key){
+    for(const [re, g] of LOOSE) if(re.test(key || '')) return g;
+    return null;
+  }
+
+  /* Grams, or null when the honest answer is "no idea". Volume resolves
+     through the ingredient's own cup weight where the table has one — a
+     cup of oil is 216 g and a cup of spinach is 30, and averaging those
+     is worse than saying nothing — then through the coarse density
+     above, then water. */
+  /* The nutrition row for a key, falling back to its head noun. The
+     table cannot hold every variety anyone writes down — "green chilli",
+     "persian cucumber", "roma tomato" — but the head noun is the same
+     food and weighs about the same, and a count weight is the difference
+     between "two chillies" converting and not. Exact entries always win;
+     this only fills gaps. */
+  function foodFor(key){
+    if(!key) return null;
+    if(FOODS[key]) return FOODS[key];
+    const head = String(key).split(' ').pop();
+    return FOODS[head] || FOODS[ALIAS[head]] || null;
+  }
+
   function toGrams(qty, unit, key){
     if(qty == null) return null;
-    const f = FOODS[key];
+    const f = foodFor(key);
     if(unit && UNITS[unit]) return qty * UNITS[unit];
     if(unit && ML[unit]){
       const perCup = f && f.cup ? f.cup : null;
       if(perCup) return qty * (ML[unit] / 240) * perCup;
-      return qty * ML[unit];                       // fall back to water
+      return qty * ML[unit] * (density(key) ?? 1);
     }
-    if(f && f.ea && (!unit || ['ea','piece','pieces','slice','slices'].includes(unit)))
-      return qty * f.ea;
+    if(f && f.ea && (!unit || COUNT_UNITS.has(unit))) return qty * f.ea;
     return null;
+  }
+
+  const COUNT_UNITS = new Set(['ea','piece','pieces','slice','slices']);
+
+  /* ---------- do I have enough? ----------
+
+     The whole reason quantities are in the index. Both sides go to grams
+     and the comparison happens there, so a jar holding 10 oz of cumin
+     can answer a recipe asking for one tablespoon of it without either
+     side having to know what the other was measured in.
+
+     Three outcomes, and the third matters as much as the other two:
+
+       true   grams known on both sides, and there is enough
+       false  grams known on both sides, and there is not
+       null   one of them could not be weighed — an untyped "some
+              spinach" in the fridge, or a recipe line with no number
+
+     null is not "no". A fridge that holds a bag of spinach of unrecorded
+     size should not refuse to make the salad; it should say it cannot
+     tell, and be believed when it does say no. Every caller treats null
+     as "assume yes, but do not claim to have checked".
+
+     `slack` forgives the last few percent: a recipe wanting 500 g and a
+     pack holding 480 g is a recipe you can cook. */
+  function enoughFor(need, have, key, slack = 0.08){
+    const want = toGrams(need && need.qty, need && need.unit, key);
+    const got  = toGrams(have && have.qty, have && have.unit, key);
+    if(want == null || got == null || !(want > 0)) return {ok:null, want, got, ratio:null};
+    return {ok: got >= want * (1 - slack), want, got, ratio: got / want};
+  }
+
+  /* What is left in the jar after cooking, in the unit the jar is
+     labelled in — a fridge that silently reroutes everything into grams
+     stops being readable. Null when the sum cannot be done honestly,
+     which the caller must treat as "unknown", never as zero. */
+  function subtractFrom(have, need, key){
+    const got  = toGrams(have && have.qty, have && have.unit, key);
+    const want = toGrams(need && need.qty, need && need.unit, key);
+    if(got == null || want == null) return null;
+    const left = got - want;
+    if(left <= got * 0.02) return {qty: 0, unit: have.unit, grams: 0};
+    /* Back out of grams through whatever one of the jar's own units
+       weighs, so "2 lbs" minus 400 g reads as "1.12 lb" and not "507 g". */
+    const per = toGrams(1, have.unit, key);
+    if(!per || !(per > 0)) return {qty: null, unit: have.unit, grams: left};
+    return {qty: Math.round((left / per) * 100) / 100, unit: have.unit, grams: left};
+  }
+
+  /* The units worth offering in a dropdown, in the order a person thinks
+     of them. `g` is what everything converts through; `ea` is the honest
+     answer for three onions. */
+  const UNIT_CHOICES = [
+    {id:'ea',    label:'count'},
+    {id:'g',     label:'g'},
+    {id:'kg',    label:'kg'},
+    {id:'oz',    label:'oz'},
+    {id:'lb',    label:'lb'},
+    {id:'ml',    label:'ml'},
+    {id:'l',     label:'l'},
+    {id:'cup',   label:'cups'},
+    {id:'tbsp',  label:'tbsp'},
+    {id:'tsp',   label:'tsp'},
+    {id:'floz',  label:'fl oz'},
+    {id:'pint',  label:'pints'},
+    {id:'quart', label:'quarts'}
+  ];
+
+  /* How an amount should read back to a person. */
+  function amount(qty, unit){
+    if(qty == null) return '';
+    const n = Math.round(qty * 100) / 100;
+    if(!unit || COUNT_UNITS.has(unit)) return `${n}`;
+    const label = (UNIT_CHOICES.find(u => u.id === unit) || {}).label || unit;
+    return `${n} ${label}`;
   }
 
   function nutritionFor(key){ return FOODS[key] || null; }
@@ -535,7 +645,8 @@ const Food = (() => {
 
   return { STAPLES, FOODS, ALIAS, UNITS, normalize, singular, isStaple, aisleFor, pretty,
            parseIngredient, toGrams, nutritionFor, macros, isoMinutes,
-           isComponent, COMPONENT_CATEGORIES, COMPONENT_HEADS };
+           isComponent, COMPONENT_CATEGORIES, COMPONENT_HEADS,
+           enoughFor, subtractFrom, amount, density, foodFor, UNIT_CHOICES, COUNT_UNITS };
 })();
 
 /* Works in both worlds: a <script> tag in the browser, a require() in

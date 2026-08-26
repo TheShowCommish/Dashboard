@@ -402,13 +402,21 @@ function writeOut(recipes){
       cuisine: r.cuisine, tags: r.tags, rating: r.rating,
       nutrition: r.nutrition,
       /* Ingredients in the index, but reduced to what the matcher needs:
-         the normalised key and the two flags. Every screen in the tab —
-         what can I cook, what am I missing, what reuses tonight's
-         chicken — asks about keys, and none of them should have to fetch
-         a shard to answer. The line as the author wrote it is only ever
-         read on an open card, so it travels with the method. */
+         the normalised key, how much, and the two flags. Every screen in
+         the tab — what can I cook, what am I missing, have I got enough,
+         what reuses tonight's chicken — asks about these, and none of
+         them should have to fetch a shard to answer. The line as the
+         author wrote it is only ever read on an open card, so it travels
+         with the method.
+
+         The quantity is here rather than in the shard because "do I have
+         enough cumin" is a question the whole-library filters ask, and
+         they cannot fetch three thousand shards to find out. `ea` is
+         left off: it is what a bare number means anyway. */
       ingredients: r.ingredients.map(i => {
         const out = {key: i.key};
+        if(i.qty != null)             out.qty = Math.round(i.qty * 1000) / 1000;
+        if(i.unit && i.unit !== 'ea') out.unit = i.unit;
         if(i.staple)   out.staple = true;
         if(i.optional) out.optional = true;
         return out;
