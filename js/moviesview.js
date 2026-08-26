@@ -30,17 +30,21 @@ const MoviesView = (() => {
       : '<div class="mv-poster mv-noart">🎬</div>';
     const genres = (f.genres || []).join(' · ');
     /* What the people I follow made of it, if any of them have seen it —
-       the same gold frame and the same sticker the AD uses, so a poster
-       means the same thing wherever it turns up. */
+       the same marks the AD uses, so a poster means the same thing
+       wherever it turns up. The crowd's own average lands on these cards
+       too, but it costs a page fetch each, so it arrives later: see
+       decorateCrowd. */
     const v = window.Letterboxd ? Letterboxd.verdict(f.title, f.year, f.slug) : null;
     return `<button class="mv-card${v?.love ? ' is-five' : ''}${v?.hate ? ' is-poop' : ''}"
                     data-film="${esc(f.tmdbId || '')}"
+                    data-title="${esc(f.title)}" data-year="${esc(String(f.year || ''))}"
+                    data-slug="${esc(f.slug || '')}"
                     data-url="${esc(f.url || '')}" title="${esc(f.title)}${
                       v?.love ? ` — ${v.love.who || 'you'} gave it ${v.love.rated}` : ''}${
                       v?.hate ? ` — ${v.hate.who || 'you'} gave it ${v.hate.rated}` : ''}">
       ${art}
-      ${v?.hate ? `<span class="mv-poop" title="${esc(v.hate.who || 'you')} gave it ${
-        v.hate.rated}">💩</span>` : ''}
+      ${v?.love ? markHtml('gold', `${v.love.who || 'you'} gave it ${v.love.rated}`) : ''}
+      ${v?.hate ? markHtml('poop', `${v.hate.who || 'you'} gave it ${v.hate.rated}`) : ''}
       ${badge ? `<span class="mv-chip${badge.warn ? ' warn' : ''}">${esc(badge.text)}</span>` : ''}
       <span class="mv-info">
         <span class="mv-title">${esc(f.title)}</span>
@@ -137,9 +141,10 @@ const MoviesView = (() => {
           ${f.poster
             ? `<img class="mv-seen-art" src="${esc(f.poster)}" alt="" loading="lazy">`
             : '<span class="mv-seen-art mv-noart">🎬</span>'}
+          ${f.rated >= Letterboxd.LOVE
+            ? markHtml('gold', `${f.who || 'you'} gave it ${f.rated}`) : ''}
           ${f.rated != null && f.rated <= Letterboxd.HATE
-            ? `<span class="mv-poop" title="${esc(f.who || 'you')} gave it ${f.rated}">💩</span>`
-            : ''}
+            ? markHtml('poop', `${f.who || 'you'} gave it ${f.rated}`) : ''}
           <span class="mv-seen-body">
             <span class="mv-seen-title">${esc(f.title)}${f.year ? ` <i>${f.year}</i>` : ''}</span>
             <span class="mv-seen-meta">
@@ -210,6 +215,79 @@ const MoviesView = (() => {
       if(id && window.Movies) return Movies.openTmdb(id);
       if(b.dataset.url) window.open(b.dataset.url, '_blank', 'noopener');
     });
+
+    decorateCrowd();
+  }
+
+  /* One sticker, one shape, everywhere on this tab. */
+  function markHtml(kind, why){
+    const mark = kind === 'gold' ? Letterboxd.GOLD_MARK : Letterboxd.POOP_MARK;
+    return `<span class="mv-mark is-${kind}" title="${esc(why)}">${mark}</span>`;
+  }
+
+  /* ---- the crowd's verdict, after the fact ----
+     A film's site-wide Letterboxd average is one page fetch through the
+     proxy, so it cannot hold up the first paint of a forty-poster rail.
+     The cards render on what the diary already knows, and the crowd's
+     marks land on them as the numbers arrive.
+
+     Every answer is cached forever per slug by Letterboxd itself, so this
+     is a one-time cost per film and a no-op on every later render. */
+  const crowd = new Map();        // title|year -> rating, this session
+
+  async function decorateCrowd(){
+    if(!window.Letterboxd || !Letterboxd.hasProxy || !body) return;
+
+    /* One request per FILM, not per card: a rail draws two copies of
+       every poster and the same film can sit on more than one shelf. */
+    const wanted = new Map();
+    for(const c of body.querySelectorAll('.mv-card[data-title]')){
+      const k = `${c.dataset.title}|${c.dataset.year}`;
+      if(!wanted.has(k)) wanted.set(k, c.dataset);
+    }
+
+    const keys = [...wanted.keys()];
+    /* Four at a time: enough to fill a rail quickly, few enough that the
+       proxy is not hit with forty page loads at once. */
+    for(let i = 0; i < keys.length; i += 4){
+      const batch = keys.slice(i, i + 4);
+      await Promise.all(batch.map(async k => {
+        if(crowd.has(k)) return;
+        const d = wanted.get(k);
+        try{
+          const v = d.slug
+            ? await Letterboxd.rating(d.slug)
+            : await Letterboxd.ratingFor(d.title, d.year);
+          /* Only an answer is remembered. A miss is not cached here
+             because Letterboxd already caches its own misses — caching
+             it twice would mean a proxy that was down for one render
+             stayed blank until the page was reloaded. */
+          if(v != null) crowd.set(k, v);
+        }catch(e){ /* the next render asks again */ }
+      }));
+      /* Paint each batch as it lands rather than making the whole rail
+         wait on the slowest film in it. */
+      applyCrowd();
+      if(!body.isConnected) return;
+    }
+  }
+
+  function applyCrowd(){
+    for(const c of body.querySelectorAll('.mv-card[data-title]')){
+      const v = crowd.get(`${c.dataset.title}|${c.dataset.year}`);
+      if(v == null) continue;
+      const kind = v >= Letterboxd.LOVE ? 'gold' : v <= Letterboxd.HATE ? 'poop' : null;
+      if(!kind) continue;
+      c.classList.add(kind === 'gold' ? 'is-five' : 'is-poop');
+      /* A film my friends already marked keeps the one sticker: two
+         medals on one poster says nothing the first did not. */
+      if(c.querySelector(`.mv-mark.is-${kind}`)) continue;
+      const s = document.createElement('span');
+      s.className = `mv-mark is-${kind} is-crowd`;
+      s.title = `Letterboxd rates it ${v.toFixed(1)}`;
+      s.textContent = kind === 'gold' ? Letterboxd.GOLD_MARK : Letterboxd.POOP_MARK;
+      c.appendChild(s);
+    }
   }
 
   const STAR = '★';

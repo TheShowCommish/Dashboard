@@ -923,6 +923,20 @@ const Kiosk = (() => {
       </blockquote>`).join('')}</div>`;
   }
 
+  /* A column of stickers down one edge of the poster — medals on the
+     left, the other thing on the right, one per person who said so, each
+     carrying the name that earned it. */
+  function markStack(kind, rows){
+    if(!rows.length) return '';
+    const mark = kind === 'gold'
+      ? (window.Letterboxd ? Letterboxd.GOLD_MARK : '🥇')
+      : (window.Letterboxd ? Letterboxd.POOP_MARK : '💩');
+    return `<span class="ad-marks is-${kind}">${rows.map(r => `
+      <span class="ad-mark${r.crowd ? ' is-crowd' : ''}"
+            title="${esc(whoOf(r))} rated it ${r.rated}">${mark}<i>${
+        esc(whoOf(r))}</i></span>`).join('')}</span>`;
+  }
+
   function adMovieHtml(f, rates){
     const relDate = f.date
       ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined,
@@ -941,29 +955,34 @@ const Kiosk = (() => {
     const rate = (label, val) => `
       <span class="ad-rate"><i>${label}</i><b>${val || '&mdash;'}</b></span>`;
 
-    /* The two ends of what my friends made of it. The screen turns gold
-       for a 4.5 or a 5, and a film somebody wrote off at 2.5 or under
-       gets their name on a sticker. */
-    const rated = (f.saids || []).filter(r => r.rated != null);
+    /* Everyone who rated it, with the crowd counted as one more voice:
+       the site-wide average is an opinion like any other, so Letterboxd
+       earns a sticker on the same thresholds my friends do.
+
+       Every reviewer gets their own sticker rather than only the loudest
+       one — three friends calling a film a masterpiece is three medals,
+       and collapsing that to one threw away the whole point. */
     const LOVE = window.Letterboxd ? Letterboxd.LOVE : 4.5;
     const HATE = window.Letterboxd ? Letterboxd.HATE : 2.5;
-    const best  = rated.length ? rated.reduce((a,b) => b.rated > a.rated ? b : a) : null;
-    const worst = rated.length ? rated.reduce((a,b) => b.rated < a.rated ? b : a) : null;
-    const love = best  && best.rated  >= LOVE ? best  : null;
-    const hate = worst && worst.rated <= HATE ? worst : null;
+    const rated = (f.saids || []).filter(r => r.rated != null);
+    const voices = rates?.lb != null
+      ? [...rated, {who:'Letterboxd', rated:rates.lb, crowd:true}]
+      : rated;
+
+    const loved  = voices.filter(r => r.rated >= LOVE);
+    const loathed = voices.filter(r => r.rated <= HATE);
 
     const source = f.upcoming ? ''
       : f.source === 'talked' ? ' · Just watched' : ' · Watchlist';
 
     return `
-      <div class="ad-movie${love ? ' is-gold' : ''}">
-        ${love ? `<div class="ad-gold-bar">${esc(whoOf(love))} gave it ${
-          esc(starsOf(love.rated))}</div>` : ''}
+      <div class="ad-movie${loved.length ? ' is-gold' : ''}">
         <div class="ad-poster-wrap">
           ${f.poster
             ? `<img class="ad-poster" src="${esc(f.poster)}" alt="">`
             : `<div class="ad-poster ad-noart">🎬</div>`}
-          ${hate ? `<span class="ad-poop">💩<i>${esc(whoOf(hate))}</i></span>` : ''}
+          ${markStack('gold', loved)}
+          ${markStack('poop', loathed)}
         </div>
         <div class="ad-movie-info">
           <h1 class="ad-h1">${esc(f.title)}</h1>
