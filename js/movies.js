@@ -65,15 +65,70 @@ const Movies = (() => {
     return d;
   }
 
-  /* How many pages of /movie/upcoming to walk. TMDB returns 20 a page and
-     the endpoint's natural horizon is a few months, so this reaches the end
-     of its range rather than stopping at an arbitrary date. */
-  const PAGES = 5;
+  /* ---------- the release window ----------
+
+     This used to walk /movie/upcoming, which looks like a release
+     calendar and is not one. Two things about that endpoint made the
+     calendar under-report, and they compounded:
+
+       1. It sorts by POPULARITY, not by date. Walking five pages got the
+          hundred most popular films across its whole window, so a Friday
+          with fifteen releases showed only whichever three or four were
+          famous enough to make that hundred. Everything else existed in
+          TMDB and was simply never fetched.
+
+       2. It is a curated subset over a narrow, TMDB-chosen date range —
+          the `dates.minimum`/`dates.maximum` block in its own response —
+          rather than "every film out on the day you asked about".
+
+     So this asks /discover/movie directly, which is what /movie/upcoming
+     calls internally anyway, but with the window and the ordering set
+     deliberately:
+
+       release_date.gte/lte   an explicit range, so completeness is a
+                              property of the query rather than a hope
+       region=US              regional release dates, not primary ones
+       with_release_type=2|3  theatrical, limited and wide. Same pair
+                              /movie/upcoming uses by default; the order
+                              2|3 means a film that opened limited first
+                              is dated from its limited opening, which is
+                              the day you could actually go and see it.
+       sort_by=…date.asc      nearest first, so if the page cap is ever
+                              reached what is lost is the far future
+                              rather than this weekend.
+
+     Backwards as well as forwards: the grid draws a fortnight starting
+     on Sunday, so days already past are on screen and want their films
+     too. */
+  const WINDOW_BACK    = 21;     // days behind today
+  const WINDOW_FORWARD = 75;     // days ahead
+  const MAX_PAGES      = 25;     // 500 films, far past any real fortnight
+
+  const isoDay = d => {
+    const x = new Date(d);
+    return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+  };
+
+  function discoverUrl(from, to, page){
+    return 'https://api.themoviedb.org/3/discover/movie'
+         + `?api_key=${key()}&language=en-US&region=US`
+         + '&include_adult=false&include_video=false'
+         + '&with_release_type=2%7C3'
+         + `&release_date.gte=${from}&release_date.lte=${to}`
+         + '&sort_by=primary_release_date.asc'
+         + `&page=${page}`;
+  }
 
   /* Detail lookups are one request per film, so they are reserved for the
      films the calendar can actually show. The rest keep their list-payload
-     fields, which is all the poster rails need. */
-  const DETAIL = 24;
+     fields — poster, genres and score — which is everything the carousel
+     draws except the director line, and that line is optional.
+
+     Counted from TODAY rather than from the start of the window: the
+     window now reaches three weeks back so past days on the grid carry
+     their films, and spending the whole detail budget on films that came
+     out a fortnight ago would leave this weekend bare. */
+  const DETAIL = 30;
 
   async function load(){
     if(!key()) return;                      // no key: the calendar simply carries no films
@@ -81,28 +136,42 @@ const Movies = (() => {
     await loadGenres();
 
     try{
-      const first = guard(await getJSON(
-        `https://api.themoviedb.org/3/movie/upcoming?language=en-US&page=1&region=US&api_key=${key()}`));
+      const today = new Date();
+      const from = isoDay(new Date(today.getTime() - WINDOW_BACK    * 864e5));
+      const to   = isoDay(new Date(today.getTime() + WINDOW_FORWARD * 864e5));
 
-      const pages = Math.min(PAGES, first.total_pages || 1);
+      const first = guard(await getJSON(discoverUrl(from, to, 1)));
+
+      /* Page through the whole window rather than a fixed few. The bound
+         is the date range, so "all of it" is a finite and usually modest
+         number — the cap only exists so a pathological range cannot fire
+         off hundreds of requests. */
+      const pages = Math.min(MAX_PAGES, first.total_pages || 1);
       const rest = await Promise.all(
         Array.from({length: Math.max(0, pages - 1)}, (_, i) =>
-          getJSON('https://api.themoviedb.org/3/movie/upcoming' +
-            `?language=en-US&page=${i+2}&region=US&api_key=${key()}`)
+          getJSON(discoverUrl(from, to, i + 2))
             .then(guard)
-            .catch(e => { console.error('Upcoming page', i+2, 'failed:', e.message); return null; })));
+            .catch(e => { console.error('Release page', i+2, 'failed:', e.message); return null; })));
+
+      if((first.total_pages || 0) > MAX_PAGES)
+        console.warn(`Release calendar: ${first.total_results} films in range, reading the first ${MAX_PAGES * 20} by date.`);
 
       const results = [first, ...rest.filter(Boolean)].flatMap(d => d.results || []);
 
-      /* One row per film — paging can repeat a title as the window slides. */
+      /* One row per film — a film can appear on more than one page as the
+         window slides under a sort. */
       const byId = new Map();
       for(const m of results) if(m.id != null && !byId.has(m.id)) byId.set(m.id, m);
 
+      /* Date first, then popularity WITHIN a day, so a Friday with
+         fifteen releases leads with the ones you have heard of and still
+         carries the other eleven. */
       const soon = [...byId.values()]
-        .filter(m => m.release_date && new Date(m.release_date+'T12:00:00') >= new Date(Date.now()-864e5))
-        .sort((a,b) => a.release_date.localeCompare(b.release_date));
+        .filter(m => m.release_date)
+        .sort((a,b) => a.release_date.localeCompare(b.release_date)
+                    || (b.popularity || 0) - (a.popularity || 0));
 
-      if(!soon.length){ films = []; return; }
+      if(!soon.length){ films = []; listed = []; return; }
 
       /* Everything is kept for the Movies tab; only the nearest handful is
          enriched with credits. */
@@ -118,7 +187,11 @@ const Movies = (() => {
 
       /* One detail call per film, in parallel. A film whose details fail
          still renders from the list payload it already has. */
-      films = await Promise.all(soon.slice(0, DETAIL).map(async m => {
+      const todayKey = isoDay(new Date());
+      const ahead = soon.filter(m => m.release_date >= todayKey);
+      const enrich = (ahead.length ? ahead : soon).slice(0, DETAIL);
+
+      films = await Promise.all(enrich.map(async m => {
         try{
           const full = guard(await getJSON(
             `https://api.themoviedb.org/3/movie/${m.id}?language=en-US` +

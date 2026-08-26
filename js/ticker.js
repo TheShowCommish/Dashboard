@@ -9,7 +9,12 @@
    and its best and worst name; the three unread lamps — and a CRAWL
    that takes whatever width is left. The crawl holds two identical
    copies of its content and slides by exactly half its width, so the
-   loop is seamless without measuring anything.
+   loop is seamless.
+
+   Both crawls move at the same fixed speed in pixels per second — see
+   SPEED. Matching their DURATIONS instead is the obvious thing and it is
+   wrong: a mail line is roughly four times the width of a stock line, so
+   equal durations mean the inbox travels four times as fast.
    ============================================================ */
 
 const Ticker = (() => {
@@ -18,18 +23,55 @@ const Ticker = (() => {
   const mHead  = document.getElementById('headMarket');
   const iHead  = document.getElementById('headMail');
 
+  /* How fast a crawl travels, in pixels a second. One number for both
+     bars, which is the entire point.
+
+     They used to be paced by ITEM COUNT — `items.length * 4` seconds —
+     and that looks like it should give matching speeds because both bars
+     ran the same formula. It does not, because the keyframe slides the
+     track by half of ITS OWN width, and the two bars hold very different
+     widths. "AAPL ▲ 1.23%" is about 110px; "❗ Priya Raghunathan — Re: Q3
+     planning notes and the revised timeline" is nearer 450. Fifteen of
+     each over the same sixty seconds put the inbox at 102px/s against
+     the market's 27 — measurably, and visibly, close to four times
+     faster.
+
+     So: pace by the distance actually being travelled. Duration is
+     width over speed, which makes speed the thing that stays fixed and
+     the loop length the thing that varies — the right way round.
+
+     27px/s is what the market bar was already doing, so that bar is
+     unchanged and the inbox slows to meet it.
+
+     No minimum duration any more. The old floor existed to stop a short
+     bar racing, which was only a problem because duration was set
+     without reference to width; a short bar now travels at the same
+     speed as a long one and simply comes round sooner, which is what
+     constant speed means. */
+  const SPEED = 27;
+
+  /* Set from the track's real width, so it must run after the content is
+     in the DOM. Reading scrollWidth forces layout — twice per render, on
+     two elements, which is nothing. */
+  function pace(track){
+    if(!track || !track.dataset.crawl) return;
+    const half = track.scrollWidth / 2;       // one of the two copies
+    if(!half) return;                         // not laid out yet; fonts.ready will retry
+    track.style.animation = `crawl ${(half / SPEED).toFixed(1)}s linear infinite`;
+  }
+
   function fill(track, items, idle){
     if(!track) return;
     if(!items.length){
       track.innerHTML = `<span class="t-item t-idle">${esc(idle)}</span>`;
       track.style.animation = 'none';
+      delete track.dataset.crawl;
       return;
     }
     const html = items.map(i => `<span class="t-item ${i.cls}">${esc(i.text)}</span>`).join('');
     track.innerHTML = html + html;             // two copies → seamless wrap
-
-    /* Pace by content length so a short bar does not race. */
-    track.style.animation = `crawl ${Math.max(24, items.length * 4)}s linear infinite`;
+    track.dataset.crawl = '1';
+    pace(track);
   }
 
   const pct = n => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(2)}%`;
@@ -123,6 +165,14 @@ const Ticker = (() => {
     inboxHead();
     fill(market, marketItems(), 'Import a portfolio to fill this bar.');
     fill(mail,   mailItems(),   'Connect Google to see unread mail here.');
+  }
+
+  /* The bars are usually filled before the mono webfont has arrived, and
+     a fallback face measures differently — enough to have one bar
+     noticeably off the other, which is the bug this whole thing is
+     about. So measure again once the real font is in. */
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(() => { pace(market); pace(mail); }).catch(() => {});
   }
 
   return { render };
