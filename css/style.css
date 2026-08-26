@@ -1317,14 +1317,30 @@ body.kiosk-on #adOverlay.is-on ~ *{}
 .mv-card:hover .mv-poster{transform:translateY(-3px);border-color:var(--accent);}
 
 /* ---- what the network made of it, on the poster itself ----
-   A gold frame for a film somebody rated 4.5 or 5, a sticker for one
-   somebody rated 2.5 or less. The crawling rails carry no card chrome —
-   the poster IS the card there — so the frame goes on the art. */
+   A gold frame for a loved film, a sticker for a loathed one. The
+   crawling rails carry no card chrome — the poster IS the card there —
+   so the frame goes on the art. */
 .mv-card.is-five .mv-poster{
   border-color:var(--gold);
   box-shadow:0 0 0 2px var(--gold), 0 0 16px color-mix(in srgb,var(--gold) 45%,transparent);
 }
-.mv-card.is-five{background:transparent;}
+
+/* A rail card has no background and no border, so the grid card's gold
+   ring had nothing to trace but the card's own box — which read as an
+   outline drawn around the title text. Fill it instead, with the same
+   wash the diary rows and the reviews use, so a loved film looks the
+   same under a poster as it does under a quote.
+
+   No padding and no border: the fill has to sit inside the width the
+   rail already gave the card, or a gold poster ends up a different size
+   from the ones beside it and the crawl jumps. */
+.mv-card.is-five{
+  background:linear-gradient(180deg,
+    color-mix(in srgb,var(--gold) 20%,transparent),
+    color-mix(in srgb,var(--gold) 7%,transparent));
+  border-radius:9px;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--gold) 30%,transparent) inset;
+}
 /* One sticker, both verdicts: a medal for the top of the scale, the
    other thing for the bottom. 25px, a quarter up from the 20px it read
    at — at poster size the old one disappeared into the art. */
