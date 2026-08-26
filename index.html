@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=44">
+<link rel="stylesheet" href="css/style.css?v=45">
 </head>
 <body>
 
@@ -28,6 +28,7 @@
     <button class="tab-btn"       data-tab="sports"    role="tab" aria-selected="false">Sports</button>
     <button class="tab-btn"       data-tab="portfolio" role="tab" aria-selected="false">Portfolio</button>
     <button class="tab-btn"       data-tab="movies"    role="tab" aria-selected="false">Movies</button>
+    <button class="tab-btn"       data-tab="menu"      role="tab" aria-selected="false">Menu</button>
     <button class="tab-btn"       data-tab="notes"     role="tab" aria-selected="false">Notes</button>
     <button class="tab-btn"       data-tab="fantasy"   role="tab" aria-selected="false">Fantasy</button>
     <button class="tab-btn"       data-tab="todo"      role="tab" aria-selected="false">To Do</button>
@@ -145,6 +146,20 @@
     <div id="moviesBody" class="mv-body"><p class="empty">Loading…</p></div>
   </section>
 
+  <!-- ===================== Menu ===================== -->
+  <!-- Four screens behind one tab: the fortnight, the kitchen, the
+       backlog, and the shopping. See js/menuview.js. -->
+  <section class="view" id="view-menu" role="tabpanel" hidden>
+    <div class="view-head slim">
+      <div class="view-title">
+        <h2>Menu</h2>
+        <span class="chip" id="menuCount">loading&hellip;</span>
+      </div>
+      <div class="view-tools" id="menuModes"></div>
+    </div>
+    <div id="menuBody" class="mv-body"><p class="empty">Loading the recipe backlog&hellip;</p></div>
+  </section>
+
   <!-- ===================== Notes ===================== -->
   <section class="view" id="view-notes" role="tabpanel" hidden>
     <div class="view-head slim">
@@ -255,6 +270,14 @@
       <label>Scrape proxy URL<input id="k_lbProxy" type="text" autocomplete="off" placeholder="https://your-worker.workers.dev"></label>
       <p class="note-line">Rotten Tomatoes has no public API. The movie AD reads its score from <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">OMDb</a> instead — a free key, 1,000 lookups a day, cached per film forever. Without it the AD shows one fewer rating rather than an error. Letterboxd's own average comes through the scrape proxy below.</p>
       <p class="note-line">Letterboxd publishes no watchlist API and GitHub Pages cannot read letterboxd.com directly — the browser blocks it. Point this at the same Cloudflare Worker as Fantasy (redeploy it after this update; it now forwards <code>/letterboxd/*</code>) and the watchlist and recent-diary feed are both read server-side. With no proxy set, use <b>Import watchlist CSV</b> on the Movies tab instead: Letterboxd → Settings → Data → Export.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Menu</legend>
+      <label>How many people eat here<input id="k_mvPeople" type="number" min="1" max="12" placeholder="2"></label>
+      <label>Default servings per meal<input id="k_mvServings" type="number" min="1" max="24" placeholder="2"></label>
+      <label>Scrape proxy URL<input id="k_mvProxy" type="text" autocomplete="off" placeholder="https://your-worker.workers.dev"></label>
+      <p class="note-line">The backlog in <code>data/recipes.json</code> is baked by <code>node tools/build-recipes.js</code> and needs nothing at run time. The proxy is only for <b>+ Add by link</b>: a browser on GitHub Pages cannot read another site&rsquo;s page directly. Point it at the same Cloudflare Worker as Fantasy and Letterboxd &mdash; redeploy it after this update, it now forwards <code>/recipe?url=&hellip;</code>. Leave it blank and only sites that publish CORS headers will import.</p>
     </fieldset>
 
     <fieldset>
@@ -400,6 +423,15 @@
   </div>
 </div>
 
+<!-- one recipe, its ingredients against the kitchen, and its method -->
+<div id="recipeModal" class="modal" hidden>
+  <div class="modal-card xwide">
+    <button class="modal-x" data-close="recipeModal" aria-label="Close">&times;</button>
+    <div id="recipeModalBody"></div>
+    <div class="modal-actions"><button class="ghost-btn sm" data-close="recipeModal">Close</button></div>
+  </div>
+</div>
+
 <!-- team picker -->
 <div id="teamModal" class="modal" hidden>
   <div class="modal-card">
@@ -418,32 +450,37 @@
   </div>
 </div>
 
-<script src="js/store.js?v=44"></script>
-<script src="js/themes.js?v=44"></script>
-<script src="js/sky.js?v=44"></script>
-<script src="js/weather.js?v=44"></script>
-<script src="js/google.js?v=44"></script>
-<script src="js/stocks.js?v=44"></script>
-<script src="js/ffdata.js?v=44"></script>
-<script src="js/ffplayer.js?v=44"></script>
-<script src="js/ffdraft.js?v=44"></script>
-<script src="js/ffboard.js?v=44"></script>
-<script src="js/ffseason.js?v=44"></script>
-<script src="js/ffseasonview.js?v=44"></script>
-<script src="js/fantasy.js?v=44"></script>
-<script src="js/sports.js?v=44"></script>
-<script src="js/teams.js?v=44"></script>
-<script src="js/movies.js?v=44"></script>
-<script src="js/letterboxd.js?v=44"></script>
-<script src="js/moviesview.js?v=44"></script>
-<script src="js/notes.js?v=44"></script>
-<script src="js/todo.js?v=44"></script>
-<script src="js/gamestrip.js?v=44"></script>
-<script src="js/gamecard.js?v=44"></script>
-<script src="js/sportsview.js?v=44"></script>
-<script src="js/calendarview.js?v=44"></script>
-<script src="js/ticker.js?v=44"></script>
-<script src="js/app.js?v=44"></script>
-<script src="js/kiosk.js?v=44"></script>
+<script src="js/store.js?v=45"></script>
+<script src="js/themes.js?v=45"></script>
+<script src="js/sky.js?v=45"></script>
+<script src="js/weather.js?v=45"></script>
+<script src="js/google.js?v=45"></script>
+<script src="js/stocks.js?v=45"></script>
+<script src="js/ffdata.js?v=45"></script>
+<script src="js/ffplayer.js?v=45"></script>
+<script src="js/ffdraft.js?v=45"></script>
+<script src="js/ffboard.js?v=45"></script>
+<script src="js/ffseason.js?v=45"></script>
+<script src="js/ffseasonview.js?v=45"></script>
+<script src="js/fantasy.js?v=45"></script>
+<script src="js/sports.js?v=45"></script>
+<script src="js/teams.js?v=45"></script>
+<script src="js/movies.js?v=45"></script>
+<script src="js/letterboxd.js?v=45"></script>
+<script src="js/moviesview.js?v=45"></script>
+<script src="js/food.js?v=45"></script>
+<script src="js/recipes.js?v=45"></script>
+<script src="js/pantry.js?v=45"></script>
+<script src="js/menu.js?v=45"></script>
+<script src="js/menuview.js?v=45"></script>
+<script src="js/notes.js?v=45"></script>
+<script src="js/todo.js?v=45"></script>
+<script src="js/gamestrip.js?v=45"></script>
+<script src="js/gamecard.js?v=45"></script>
+<script src="js/sportsview.js?v=45"></script>
+<script src="js/calendarview.js?v=45"></script>
+<script src="js/ticker.js?v=45"></script>
+<script src="js/app.js?v=45"></script>
+<script src="js/kiosk.js?v=45"></script>
 </body>
 </html>

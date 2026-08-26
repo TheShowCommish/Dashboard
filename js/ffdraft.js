@@ -417,14 +417,46 @@ const FFDraft = (() => {
     const c = data.clock;
     host.innerHTML =
       '<div class="ff-draft">' +
+        countsStrip(c) +
+        '<div class="fdb-left">' + targetPanel(data) + rosterPanel() + '</div>' +
         '<div class="fdb-col">' + filterBar(data) + headerRow() +
           '<div class="fdb-list" id="ffBoard">' + rows(data) + '</div>' +
         '</div>' +
-        '<div class="fdb-side">' + clockPanel(c, data) + suggestPanel() + targetPanel(data) +
-          rosterPanel() + runPanel() + sourcePanel(b) + '</div>' +
+        '<div class="fdb-side">' + clockPanel(c, data) + suggestPanel() +
+          runPanel() + sourcePanel(b) + '</div>' +
       '</div>';
 
     wire(host);
+  }
+
+  /* ---- what every team has drafted ----
+     The one thing you cannot read off the board itself: the shape of the
+     other eleven rosters. A room where four teams still have no quarterback
+     is a different room from one where they all do, and it changes what will
+     be gone by the time your pick comes back round. */
+  const SHAPE_POS = ['QB', 'RB', 'WR', 'TE'];
+
+  function countsStrip(c){
+    return '<div class="fdb-top"><div class="ff-counts">' +
+      Array.from({length: teamCount()}, (_, i) => {
+        const seat = i + 1;
+        const roster = rosterOf(seat);
+        const have = {};
+        for(const p of roster) have[p.pos] = (have[p.pos] || 0) + 1;
+        const onClock = !c.done && seat === c.slotOnClock;
+
+        return '<div class="ff-cteam' + (seat === slot() ? ' is-me' : '') +
+               (onClock ? ' is-clock' : '') + '" title="' + esc(teamName(seat)) + ' — ' +
+               roster.length + ' picked' + (onClock ? ', on the clock' : '') + '">' +
+          '<span class="ff-cname">' + esc(teamName(seat)) +
+            '<i>' + roster.length + '</i></span>' +
+          '<span class="ff-cpos">' + SHAPE_POS.map(pos => {
+            const n = have[pos] || 0;
+            return '<b class="' + (n ? '' : 'zero') + '" title="' + n + ' ' + pos + '">' +
+                   pos + '<u>' + n + '</u></b>';
+          }).join('') + '</span>' +
+        '</div>';
+      }).join('') + '</div></div>';
   }
 
   function filterBar(data){

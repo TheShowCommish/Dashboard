@@ -278,7 +278,7 @@ const Movies = (() => {
       <span class="mv-saids-head">Letterboxd${
         said.length > 1 ? ` <i>${said.length}</i>` : ''}</span>
       ${said.map(r => `
-        <blockquote class="mv-said${r.mine ? ' is-mine' : ''}">
+        <blockquote class="mv-said${r.mine ? ' is-mine' : ''}${r.rated >= 5 ? ' is-five' : ''}">
           <span class="mv-said-head">${esc(r.who || 'you')}${
             r.rated != null ? ` <em>${stars(r.rated)}</em>` : ''}${
             when(r) ? ` <i>${esc(when(r))}</i>` : ''}</span>

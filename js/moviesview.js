@@ -120,7 +120,7 @@ const MoviesView = (() => {
       <h3 class="pf-h3">Recently watched <span class="pf-h3-n">${feed.length}</span>
         <span class="plot-key">yours and your network</span></h3>
       <div class="mv-diary-list">${seen.map(f => `
-        <a class="mv-seen-row${f.mine ? ' is-mine' : ''}" href="${esc(f.link)}" target="_blank" rel="noopener">
+        <a class="mv-seen-row${f.mine ? ' is-mine' : ''}${f.rated >= 5 ? ' is-five' : ''}" href="${esc(f.link)}" target="_blank" rel="noopener">
           ${f.poster
             ? `<img class="mv-seen-art" src="${esc(f.poster)}" alt="" loading="lazy">`
             : '<span class="mv-seen-art mv-noart">🎬</span>'}
@@ -130,8 +130,7 @@ const MoviesView = (() => {
               <span class="mv-seen-who">${esc(f.who || 'you')}</span>
               <span class="mv-seen-when">${esc(when(f))}</span>
               ${f.rated != null
-                ? `<span class="mv-stars">${STAR.repeat(Math.round(f.rated))}${
-                     HOLLOW.repeat(Math.max(0, 5 - Math.round(f.rated)))}</span>`
+                ? `<span class="mv-stars">${stars(f.rated)}</span>`
                 : ''}
             </span>
             ${f.review ? `<span class="mv-seen-review">${esc(f.review)}</span>` : ''}
@@ -199,6 +198,14 @@ const MoviesView = (() => {
 
   const STAR = '★';
   const HOLLOW = '☆';
+
+  /* Letterboxd rates in halves, so a rounded whole star misreports what
+     someone actually gave a film: 4.5 is not five. */
+  function stars(n){
+    const full = Math.floor(n), half = n - full >= .5;
+    return STAR.repeat(full) + (half ? '½' : '') +
+           HOLLOW.repeat(Math.max(0, 5 - full - (half ? 1 : 0)));
+  }
 
   return { render };
 })();

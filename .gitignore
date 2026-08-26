@@ -6,3 +6,6 @@ holdings.csv
 # wrangler build cache
 proxy/.wrangler/
 .claude/
+
+# recipe scrape cache: makes a re-run incremental, not worth committing
+tools/.recipe-cache.json

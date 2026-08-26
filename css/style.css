@@ -458,6 +458,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{
 }
 .pf-unpriced .plot-key{flex:1 1 100%;}
 
+/* ---- symbol filter pins ---- */
+.pf-pins{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 var(--gap);}
+.pf-pins .mv-label{margin:0;}
+.pin{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--accent);border-radius:99px;padding:3px 9px;
+  background:color-mix(in srgb,var(--accent) 12%,transparent);
+  color:var(--text);cursor:pointer;
+  transition:background .15s var(--ease),border-color .15s var(--ease);
+}
+.pin i{font-style:normal;font-size:12px;line-height:1;color:var(--muted);}
+.pin:hover{background:color-mix(in srgb,var(--accent) 22%,transparent);}
+.pin:hover i{color:var(--text);}
+.pin.is-clear{border-color:var(--edge);background:none;color:var(--muted);}
+.pin.is-clear:hover{border-color:var(--muted);color:var(--text);}
+
 .plot-empty{padding:26px;text-align:center;}
 
 /* ---- note tray ---- */
@@ -816,7 +833,7 @@ body{
 .view-head{flex:0 0 auto;}
 
 /* Every view's main body is the part that flexes and, if it must, scrolls. */
-#sportsBody,#pfBody,#moviesBody,#notesArchive,#ffBody{
+#sportsBody,#pfBody,#moviesBody,#notesArchive,#ffBody,#menuBody{
   flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
   scrollbar-width:thin;
 }
@@ -984,6 +1001,12 @@ body{
 .plot-pt.is-dark .plot-lab{fill:var(--muted);}
 .plot-pt{cursor:pointer;outline:none;}
 .plot-pt:focus-visible circle{stroke:var(--accent);stroke-width:2;}
+/* Pinned holdings ring in the accent colour; everything else fades back but
+   stays clickable, so more can be added to the filter. */
+.plot-pt.is-picked circle{opacity:1;stroke:var(--accent);stroke-width:2.5;}
+.plot-pt.is-mute circle{opacity:.2;}
+.plot-pt.is-mute .plot-lab{opacity:.35;}
+.plot-pt.is-mute:hover circle{opacity:.6;}
 
 .plot-tip{
   position:absolute;z-index:6;pointer-events:none;
@@ -1031,7 +1054,21 @@ body{
 }
 .mv-seen-row:hover .row-title{color:var(--accent);}
 .mv-seen-row .row-title i{font-style:normal;color:var(--muted);font-size:11px;}
-.mv-stars{color:var(--accent);font-size:11px;letter-spacing:.06em;}
+.mv-stars{color:var(--accent);font-size:14px;letter-spacing:.04em;line-height:1;}
+
+/* A five-star film — the top of the scale, and rare enough to be worth
+   spotting from across the column. */
+:root{--gold:#F5C542;}
+.mv-seen-row.is-five,
+.mv-said.is-five{
+  background:linear-gradient(180deg,
+    color-mix(in srgb,var(--gold) 20%,transparent),
+    color-mix(in srgb,var(--gold) 7%,transparent));
+  border-color:color-mix(in srgb,var(--gold) 65%,transparent);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--gold) 30%,transparent) inset;
+}
+.mv-seen-row.is-five .mv-stars,
+.mv-said.is-five .mv-said-head em{color:var(--gold);text-shadow:0 0 6px color-mix(in srgb,var(--gold) 45%,transparent);}
 
 /* ============================================================
    Kiosk rotation — the AUTO toggle, the skip control, and the
@@ -1212,8 +1249,9 @@ body.kiosk-on #adOverlay.is-on ~ *{}
 /* ---- portfolio: everything on one screen ---- */
 #pfBody{overflow-y:hidden;}
 .pf-body{display:flex;flex-direction:column;min-height:0;padding-bottom:0;}
-.pf-grid,.plot-head,.pf-foot,.pf-unpriced{flex:0 0 auto;}
+.pf-grid,.plot-head,.pf-foot,.pf-unpriced,.pf-pins{flex:0 0 auto;}
 .pf-grid{gap:10px;}
+.pf-pins{margin-bottom:8px;}
 .pf-card{padding:10px 12px;}
 .pf-pct{font-size:23px;}
 .pf-h3{margin:12px 0 6px;}
@@ -1996,6 +2034,15 @@ body.fx-sun .pf-card{
 .mv-seen-row .mv-seen-who{color:var(--good);}
 .mv-seen-row.is-mine{border-left-color:var(--accent);}
 .mv-seen-row.is-mine .mv-seen-who{color:var(--accent);font-weight:700;}
+/* The gold box wins over the network/mine stripe: five stars is the
+   louder fact about the row. */
+.mv-seen-row.is-five,
+.mv-seen-row.is-five.is-mine{
+  border-color:color-mix(in srgb,var(--gold) 65%,transparent);
+  border-left-color:var(--gold);
+}
+.mv-seen-row.is-five .mv-seen-who,
+.mv-seen-row.is-five.is-mine .mv-seen-who{color:var(--gold);}
 
 /* ============================================================
    M-batch: ticker head sizing, a rail that clears the tickers.
@@ -2053,7 +2100,7 @@ body.fx-sun .pf-card{
   font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--accent);
 }
-.mv-said-head em{font-style:normal;color:var(--text);letter-spacing:0;margin-left:5px;}
+.mv-said-head em{font-style:normal;color:var(--text);letter-spacing:0;margin-left:5px;font-size:13.5px;}
 .mv-said-head i{font-style:normal;color:var(--muted);margin-left:5px;}
 .mv-said-text{font-size:12.5px;line-height:1.45;font-style:italic;color:var(--text);}
 
@@ -2068,6 +2115,8 @@ body.fx-sun .pf-card{
 .mv-saids .mv-said.is-mine{border-left-color:var(--accent);}
 .mv-saids .mv-said .mv-said-head{color:var(--good);}
 .mv-saids .mv-said.is-mine .mv-said-head{color:var(--accent);}
+.mv-saids .mv-said.is-five,
+.mv-saids .mv-said.is-five.is-mine{border-left-color:var(--gold);}
 
 /* ============================================================
    Fantasy: the draft board and the three post-draft screens.
@@ -2078,15 +2127,52 @@ body.fx-sun .pf-card{
 .ff-mode[hidden]{display:none;}
 #ffModes .ghost-btn.is-on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600;}
 
-/* Board on the left, draft state on the right; the right column drops
-   under the board once there is no room for two. */
-.ff-draft{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:var(--gap);min-height:0;}
-.fdb-col{display:flex;flex-direction:column;min-width:0;min-height:0;}
-.fdb-side{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;scrollbar-width:thin;}
-@media (max-width:1080px){
-  .ff-draft{grid-template-columns:1fr;}
-  .fdb-side{overflow:visible;}
+/* Every team's roster shape across the top, your own targets and picks down
+   the left, the board in the middle, draft state on the right. The side
+   columns drop under the board once there is no room for three. */
+.ff-draft{
+  display:grid;
+  grid-template-columns:260px minmax(0,1fr) 300px;
+  grid-template-rows:auto minmax(0,1fr);
+  gap:var(--gap);min-height:0;
 }
+.fdb-top{grid-column:1/-1;min-width:0;}
+.fdb-left,.fdb-side{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;scrollbar-width:thin;}
+.fdb-col{display:flex;flex-direction:column;min-width:0;min-height:0;}
+@media (max-width:1400px){
+  .ff-draft{grid-template-columns:240px minmax(0,1fr);}
+  .fdb-side{grid-column:1/-1;overflow:visible;}
+}
+@media (max-width:1080px){
+  .ff-draft{grid-template-columns:1fr;grid-template-rows:auto;}
+  .fdb-left,.fdb-side{grid-column:auto;overflow:visible;}
+}
+
+/* ---- who has drafted what ----
+   One tile per seat, four counts each. Scrolls sideways rather than
+   wrapping, so the row keeps its height in a sixteen-team league. */
+.ff-counts{
+  display:flex;gap:6px;overflow-x:auto;scrollbar-width:thin;
+  padding-bottom:4px;
+}
+.ff-cteam{
+  flex:0 0 auto;min-width:96px;
+  border:1px solid var(--edge);border-radius:var(--r);
+  padding:6px 8px;background:color-mix(in srgb,var(--panel) 88%,transparent);
+}
+.ff-cteam.is-me{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,transparent);}
+.ff-cteam.is-clock{box-shadow:inset 0 0 0 1px var(--accent);}
+.ff-cname{
+  display:flex;justify-content:space-between;gap:6px;align-items:baseline;
+  font-size:11px;font-weight:600;margin-bottom:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ff-cname i{font-style:normal;color:var(--muted);font-size:10px;font-family:var(--mono);}
+.ff-cpos{display:flex;gap:5px;font-family:var(--mono);font-size:10px;letter-spacing:.04em;}
+.ff-cpos b{display:flex;gap:2px;font-weight:500;color:var(--muted);}
+.ff-cpos b u{text-decoration:none;color:var(--text);font-weight:700;}
+.ff-cpos b.zero{opacity:.4;}
+.ff-cpos b.zero u{color:var(--muted);font-weight:500;}
 
 /* ---- filters ---- */
 .ff-filters{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-bottom:8px;}
@@ -2306,3 +2392,222 @@ body.fx-sun .pf-card{
 .ffb-hit b{font-size:13px;font-weight:500;}
 .ffb-hit span{font-size:11px;color:var(--muted);}
 .ffb-hit .warn{color:var(--accent);font-style:normal;}
+
+/* ============================================================
+   Menu — the meal planner.
+
+   Four screens share one tab and one scroll frame (#menuBody). The plan
+   screen is the only one with a fixed shape: the fortnight takes the
+   room it needs and the suggestion rail takes a fixed slice at the
+   bottom, so the grid never pushes the rail off a 1080-tall screen.
+   ============================================================ */
+
+.mv-body{padding-bottom:6px;}
+
+.mv-plan{display:flex;flex-direction:column;gap:10px;min-height:0;height:100%;}
+.mv-plan-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.mv-spacer{flex:1;}
+.mv-people{
+  display:flex;align-items:center;gap:6px;
+  font-size:11px;color:var(--muted);font-family:var(--mono);
+  text-transform:uppercase;letter-spacing:.08em;
+}
+.mv-people input{
+  width:52px;background:var(--panel-2);border:1px solid var(--edge);
+  color:var(--text);border-radius:6px;padding:4px 6px;font-family:var(--mono);
+}
+
+/* ---- the fortnight ---- */
+.mv-grid{
+  flex:1 1 auto;min-height:0;
+  display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:6px;
+}
+.mv-day{
+  background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);
+  padding:6px;display:flex;flex-direction:column;gap:4px;min-height:0;overflow:hidden;
+}
+.mv-day.is-today{border-color:var(--accent);}
+.mv-day-head{display:flex;align-items:baseline;gap:5px;}
+.mv-dow{
+  font-family:var(--mono);font-size:9px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--muted);
+}
+.mv-num{font-family:var(--display);font-size:15px;font-weight:700;line-height:1;}
+.mv-kcal{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--accent);}
+
+.mv-slot{
+  flex:1 1 0;min-height:0;display:flex;gap:4px;align-items:flex-start;
+  border-radius:6px;padding:2px 3px;cursor:pointer;
+  border:1px solid transparent;
+  transition:background .18s var(--ease),border-color .18s var(--ease);
+}
+.mv-slot:hover{background:var(--panel-2);}
+.mv-slot.is-sel{border-color:var(--accent);background:var(--panel-2);}
+.mv-slot-tag{
+  font-family:var(--mono);font-size:9px;color:var(--muted);
+  width:9px;flex:0 0 auto;padding-top:2px;
+}
+.mv-slot-meals{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden;}
+.mv-slot-empty{font-size:11px;color:color-mix(in srgb,var(--muted) 50%,transparent);}
+.mv-meal{
+  display:block;width:100%;text-align:left;
+  background:color-mix(in srgb,var(--accent) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);
+  color:var(--text);border-radius:5px;padding:2px 5px;
+  font:inherit;font-size:11px;line-height:1.25;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.mv-meal:hover{border-color:var(--accent);}
+.mv-meal.is-cooked{
+  background:color-mix(in srgb,var(--good) 14%,transparent);
+  border-color:color-mix(in srgb,var(--good) 34%,transparent);
+  text-decoration:line-through;text-decoration-color:var(--muted);
+}
+
+/* ---- the suggestion rail ----
+   A fixed slice at the bottom of the plan screen. It scrolls sideways,
+   never down: this is a strip to skim, and a second row of cards would
+   push the calendar out of the window. */
+.mv-rail{
+  flex:0 0 auto;
+  border-top:1px solid var(--edge);padding-top:8px;
+  display:flex;flex-direction:column;gap:4px;
+}
+.mv-rail-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.mv-target{font-size:12px;color:var(--muted);}
+.mv-target b{color:var(--text);font-weight:600;}
+.mv-rail .empty{margin:0;}
+.mv-rail-strip{
+  display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
+  padding-bottom:6px;scrollbar-width:thin;
+}
+.mv-rail-strip .rc{flex:0 0 152px;}
+
+/* ---- a recipe card ---- */
+.rc{
+  background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);
+  overflow:hidden;cursor:pointer;display:flex;flex-direction:column;
+  transition:border-color .18s var(--ease),transform .18s var(--ease);
+}
+.rc:hover,.rc:focus-visible{border-color:var(--accent);transform:translateY(-2px);outline:none;}
+.rc-img{width:100%;height:86px;object-fit:cover;display:block;background:var(--panel-2);}
+.rc-noimg{display:flex;align-items:center;justify-content:center;font-size:26px;}
+.rc-body{padding:6px 8px 8px;display:flex;flex-direction:column;gap:4px;flex:1;}
+.rc-title{
+  margin:0;font-family:var(--display);font-size:12.5px;font-weight:500;line-height:1.25;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.rc-meta{
+  margin:0;font-size:10px;color:var(--muted);font-family:var(--mono);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.rc-chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:auto;}
+.rc-chips .chip{
+  font-size:9px;padding:1px 5px;max-width:100%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ---- fridge ---- */
+.mv-fridge{display:flex;flex-direction:column;gap:12px;}
+.mv-add{display:flex;flex-direction:column;gap:6px;}
+.mv-add textarea{
+  width:100%;background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);
+  color:var(--text);font:inherit;font-size:13px;padding:8px 10px;resize:vertical;
+}
+.mv-add textarea:focus{outline:none;border-color:var(--accent);}
+.mv-add-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.mv-add-tools select,.mv-filters select{
+  background:var(--panel-2);border:1px solid var(--edge);color:var(--text);
+  border-radius:6px;padding:5px 8px;font:inherit;font-size:12px;
+}
+
+.mv-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start;}
+.mv-col{background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);padding:10px 12px;}
+.mv-col h4{
+  margin:0 0 8px;font-family:var(--display);font-size:12px;font-weight:500;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;gap:6px;
+}
+.mv-items{display:flex;flex-direction:column;gap:3px;}
+.mv-item{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 6px;border-radius:6px;background:var(--panel-2);font-size:13px;
+}
+.mv-item.is-committed{border-left:2px solid var(--accent);}
+.mv-item-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mv-item-qty{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.mv-item-x{
+  background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:15px;line-height:1;padding:0 2px;
+}
+.mv-item-x:hover{color:var(--bad);}
+
+/* ---- recipes ---- */
+.mv-recipes{display:flex;flex-direction:column;gap:8px;}
+.mv-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.mv-filters .td-input{min-width:240px;flex:1;}
+.mv-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:10px;}
+.mv-more{display:flex;justify-content:center;padding:6px 0 12px;}
+
+/* ---- grocery ---- */
+.mv-grocery{display:flex;flex-direction:column;gap:12px;}
+.mv-aisle{background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);padding:10px 14px;}
+.mv-aisle h4{
+  margin:0 0 8px;font-family:var(--display);font-size:12px;font-weight:500;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--accent);
+}
+.mv-buy{
+  display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;
+  border-bottom:1px solid color-mix(in srgb,var(--edge) 60%,transparent);
+}
+.mv-buy:last-child{border-bottom:none;}
+.mv-buy-name{flex:0 0 auto;font-size:13.5px;text-transform:capitalize;}
+.mv-buy-for{
+  flex:1;min-width:0;text-align:right;font-size:11px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mv-buy.is-bought .mv-buy-name{text-decoration:line-through;color:var(--muted);}
+
+/* ---- the recipe popup ---- */
+.rd{display:flex;flex-direction:column;gap:14px;}
+.rd-head{display:flex;gap:16px;align-items:flex-start;}
+.rd-head img{width:190px;height:140px;object-fit:cover;border-radius:var(--r);flex:0 0 auto;}
+.rd-head h2{margin:0 0 4px;font-family:var(--display);font-size:21px;}
+.rd-meta{margin:0 0 6px;font-size:12px;color:var(--muted);font-family:var(--mono);}
+.rd-macros{margin:0 0 10px;font-size:13px;}
+.rd-macros b{color:var(--accent);font-family:var(--mono);}
+.rd-actions{
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;
+  color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;
+}
+.rd-actions select,.rd-actions input{
+  background:var(--panel-2);border:1px solid var(--edge);color:var(--text);
+  border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;text-transform:none;
+}
+.rd-actions input{width:56px;}
+.rd-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:22px;}
+.rd-split h3{
+  margin:0 0 8px;font-family:var(--display);font-size:12px;font-weight:500;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;gap:8px;
+}
+.rd-ing{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;}
+.rd-ing li{
+  font-size:13px;padding:3px 8px;border-radius:5px;background:var(--panel-2);
+  border-left:2px solid transparent;
+}
+/* Three states, three colours: in the kitchen, not in the kitchen, and
+   assumed to be in the cupboard already. */
+.rd-ing li.is-have{border-left-color:var(--good);}
+.rd-ing li.is-missing{border-left-color:var(--bad);}
+.rd-ing li.is-staple{color:var(--muted);}
+.rd-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:7px;}
+.rd-steps li{font-size:13.5px;line-height:1.5;}
+.rd-steps li.empty{list-style:none;margin-left:-20px;}
+.mv-cook{display:flex;flex-direction:column;gap:3px;margin:10px 0;max-height:40vh;overflow-y:auto;}
+
+@media (max-width:1200px){
+  .rd-split{grid-template-columns:1fr;}
+  .rd-head img{width:130px;height:100px;}
+  .mv-cols{grid-template-columns:1fr;}
+}

@@ -553,6 +553,16 @@ const Stocks = (() => {
   }
   const inView = h => sharesOf(h) > 0;
 
+  /* ---- symbol filter ----
+     Click a bubble to pin that holding; click more to pin more. An empty
+     set means "no filter", which is not the same as "nothing selected" —
+     the windows above then read the whole account, exactly as before.
+     The scatter deliberately keeps drawing every holding in the account
+     even while pinned, because that is the only place a new pin can be
+     added from. */
+  const picked = new Set();
+  const inFilter = h => inView(h) && (!picked.size || picked.has(h.symbol));
+
   /* ---- maths ---- */
   /* Best available price, in order of freshness. The CSV fallbacks matter
      for the graph: Finnhub's free tier has no quote for mutual funds or
@@ -567,7 +577,7 @@ const Stocks = (() => {
   }
 
   function windowStats(win){
-    const hold = Store.get('holdings',[]).filter(inView);
+    const hold = Store.get('holdings',[]).filter(inFilter);
     let nowVal = 0, thenVal = 0;
     const movers = [];
     const missing = [];
@@ -692,11 +702,14 @@ const Stocks = (() => {
     const gutX = i => 46 + ((i % 2) ? GUT * 0.62 : GUT * 0.28);
 
     const bubble = (p, cx, cy, cls) => `
-      <g class="plot-pt ${cls}" data-sym="${esc(p.symbol)}"
+      <g class="plot-pt ${cls}${picked.has(p.symbol) ? ' is-picked'
+            : picked.size ? ' is-mute' : ''}" data-sym="${esc(p.symbol)}"
          data-pct="${p.pct.toFixed(2)}" data-ret="${p.ret == null ? '' : p.ret.toFixed(2)}"
          data-name="${esc(p.name)}" tabindex="0" role="listitem"
+         aria-pressed="${picked.has(p.symbol)}"
          aria-label="${esc(p.symbol)}, ${p.pct.toFixed(1)} percent of portfolio${
-           p.ret == null ? ', no return data' : `, return ${p.ret.toFixed(2)} percent`}">
+           p.ret == null ? ', no return data' : `, return ${p.ret.toFixed(2)} percent`}${
+           picked.has(p.symbol) ? ', filtering' : ''}">
         <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r(p.pct).toFixed(1)}"></circle>
         ${p.pct >= maxW * 0.28 ? `<text class="plot-lab" x="${cx.toFixed(1)}"
               y="${(cy + 3.5).toFixed(1)}" text-anchor="middle">${esc(p.symbol)}</text>` : ''}
@@ -765,6 +778,23 @@ const Stocks = (() => {
     wrap.addEventListener('mouseleave', hide);
   }
 
+  /* Toggle a holding in and out of the filter by clicking its bubble.
+     The whole <g> is focusable already for the tooltip, so keyboard users
+     get the same toggle off Enter or Space. */
+  function wirePicking(wrap){
+    const toggle = sym => {
+      if(!sym) return;
+      picked.has(sym) ? picked.delete(sym) : picked.add(sym);
+      render();
+    };
+    wrap.querySelectorAll('.plot-pt').forEach(g => {
+      g.addEventListener('click', () => toggle(g.dataset.sym));
+      g.addEventListener('keydown', e => {
+        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(g.dataset.sym); }
+      });
+    });
+  }
+
   function niceStep(span){
     const raw = span / 6;
     const mag = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-6))));
@@ -774,7 +804,12 @@ const Stocks = (() => {
 
   function render(){
     const all = Store.get('holdings',[]);
-    const hold = all.filter(inView);
+    /* A pin only means anything while its holding is still on screen —
+       switching accounts can take one away, and a pin nobody can see would
+       filter the windows down to nothing with no chip to undo it. */
+    for(const sym of [...picked])
+      if(!all.some(h => h.symbol === sym && inView(h))) picked.delete(sym);
+    const hold = all.filter(inFilter);
     if(!all.length) return;
 
     renderAccountTabs();
@@ -825,6 +860,13 @@ const Stocks = (() => {
 
     const label = WINDOWS.find(w => w.id === plotWin)?.label || '';
     const rows = weights(plotWin);
+    const pinBar = picked.size ? `
+      <div class="pf-pins">
+        <span class="mv-label">Filtered to</span>
+        ${[...picked].map(sym => `<button class="pin" data-drop="${esc(sym)}"
+            title="Remove ${esc(sym)} from the filter">${esc(sym)}<i aria-hidden="true">×</i></button>`).join('')}
+        <button class="pin is-clear" data-drop-all>Clear all</button>
+      </div>` : '';
     const plotted = rows.filter(p => p.val > 0).length;
 
     /* A holding with no price has no weight, so the scatter has nowhere to
@@ -840,6 +882,7 @@ const Stocks = (() => {
       </div>` : '';
 
     body.innerHTML = `
+      ${pinBar}
       <div class="pf-grid">${cards}</div>
       <div class="plot-head">
         <h3 class="pf-h3">Weight against return — ${esc(label.toLowerCase())}</h3>
@@ -850,7 +893,9 @@ const Stocks = (() => {
         <div class="plot-tip" hidden></div>
       </div>
       ${unpricedStrip}
-      <p class="pf-foot">${hold.length} holdings${account ? ` in ${esc(account)}` : ' across all accounts'}
+      <p class="pf-foot">${picked.size
+          ? `${hold.length} of ${all.filter(inView).length} holdings — filtered`
+          : `${hold.length} holdings`}${account ? ` in ${esc(account)}` : ' across all accounts'}
         · ${plotted} plotted${unpriced.length ? ` · ${unpriced.length} unpriced` : ''} · quotes ${stampText()}${hasHistory ? ' · history current' : ''}
         · exact percentages, deliberately fuzzy dollars</p>`;
 
@@ -859,8 +904,15 @@ const Stocks = (() => {
       render();
     });
 
+    body.querySelectorAll('[data-drop]').forEach(b => b.onclick = () => {
+      picked.delete(b.dataset.drop);
+      render();
+    });
+    const clear = body.querySelector('[data-drop-all]');
+    if(clear) clear.onclick = () => { picked.clear(); render(); };
+
     const wrap = body.querySelector('.plot-wrap');
-    if(wrap) wireTooltip(wrap);
+    if(wrap){ wireTooltip(wrap); wirePicking(wrap); }
 
     if(stamp){
       stamp.textContent = stampText();
@@ -882,6 +934,7 @@ const Stocks = (() => {
     el.innerHTML = tab(null,'All') + names.map(n => tab(n, shortName(n))).join('');
     el.querySelectorAll('[data-acct]').forEach(b => b.onclick = () => {
       account = b.dataset.acct || null;
+      picked.clear();
       render();
     });
   }

@@ -1,6 +1,6 @@
 # Control Deck
 
-A personal dashboard: weather, calendar, mail, portfolio, fantasy football, followed teams, upcoming movies, a to-do list and a sticky-note board — on one page that themes itself based on the weather and on whether your teams are playing.
+A personal dashboard: weather, calendar, mail, portfolio, fantasy football, followed teams, upcoming movies, a two-week meal planner, a to-do list and a sticky-note board — on one page that themes itself based on the weather and on whether your teams are playing.
 
 Plain HTML, CSS and JavaScript. No build step, no framework, no server. It runs on GitHub Pages for free.
 
@@ -32,11 +32,17 @@ js/moviesview.js        the Movies tab
 js/gamecard.js          game previews, standings, player logs, game stats
 js/sportsview.js        the Sports tab
 js/calendarview.js      the two-week grid and the focus strip
+js/food.js              ingredients: parsing, aliases, staples, macros
+js/recipes.js           the recipe backlog, link import, matching
+js/pantry.js            what is in the fridge, freezer and pantry
+js/menu.js              the meal plan, day macros, the grocery list
+js/menuview.js          the Menu tab's four screens
 js/notes.js             to-do list + sticky notes
 js/ticker.js            the two bottom crawls
 js/app.js               boot, clock, settings drawer, refresh timers
-proxy/worker.js         optional proxy: private ESPN leagues, Letterboxd, ADP
+proxy/worker.js         optional proxy: private ESPN leagues, Letterboxd, ADP, recipe pages
 tools/build-season.js   bakes the NFL data files the Fantasy tab reads
+tools/build-recipes.js  bakes the recipe backlog the Menu tab reads
 data/                   the baked output; regenerated, not hand-edited
 sample-holdings.csv     example portfolio file
 ```
@@ -91,7 +97,7 @@ The tile refreshes at **6am, noon, 3pm, 6pm and 10pm** local time, and shows whe
 
 ## The layout
 
-A slim header holds the tab bar, a weather pill (glyph + temperature, click to refresh), the clock, a weather button that opens the full forecast, and a settings cog. Six tabs:
+A slim header holds the tab bar, a weather pill (glyph + temperature, click to refresh), the clock, a weather button that opens the full forecast, and a settings cog. Eight tabs:
 
 Every tab is designed to fit a 1920x1080 screen with **no page scrolling**. The layout is a max-width lock rather than fixed pixels, so a smaller screen degrades gracefully instead of clipping. Panels whose contents are genuinely unbounded — a full season of fixtures, every note, a standings table — scroll inside their own frame rather than pushing the page.
 
@@ -165,6 +171,66 @@ until release. Films already in cinemas carry no chip — a row of identical lab
 art.
 
 See **Step 8** for the Letterboxd setup.
+
+### Menu
+
+Two people, one fridge, a fortnight of dinners. Four screens behind one tab.
+
+**Plan** is a two-week grid, three slots a day (breakfast, lunch, dinner — ignore the two you don't use). Each day shows its calorie total *per person*. Click a slot to select it, then click any card in the rail below to drop that recipe into it. Click a planned meal for its own menu: open the recipe, mark it cooked, or take it off the plan.
+
+The rail under the grid is the point of the whole screen. It has three settings:
+
+- **Reuses your week** — the entire backlog re-sorted by how much each recipe shares with the meals *already on this fortnight*, so the bunch of cilantro you bought for Tuesday gets used again on Thursday. Sharing is weighted by how unusual the ingredient is: a recipe that also wants lemongrass scores far higher than one that also wants butter, because otherwise every suggestion is just "other things made with butter, garlic and lemon", which is most of cooking.
+- **Cook tonight** — nothing to buy. Every non-staple ingredient is already in the kitchen.
+- **1–2 away** — one or two ingredients short, with the missing ones printed on each card.
+
+**Fridge** is what you actually have, split across fridge, freezer and pantry. Paste a whole shop into the box, one thing per line — `2 lbs chicken thighs`, `bag of spinach`, `half a jar of salsa` — and it parses each line into a quantity and an item. Anything spoken for by a planned meal is marked *planned* and struck with an accent bar.
+
+**Recipes** is the backlog: search titles and ingredients, filter to what you can make today or what you're within two ingredients of, narrow by cuisine or by time, sort by quickest, most protein or fewest calories. **+ Add by link** takes any recipe URL (see below).
+
+**Grocery** is everything the plan needs that the kitchen hasn't got, grouped by aisle, each line showing which meals asked for it. Tick things off as you shop, then **Put ticked away in the kitchen** moves them into the fridge in one go — so the shopping trip ends with the fridge already up to date.
+
+#### Planned, cooked, gone
+
+Planning a meal does not empty the fridge. Cooking it does.
+
+In between, an ingredient is **committed**: it still shows in the fridge, the grocery list stops asking you to buy it, and a second recipe later in the week knows it is spoken for. When you hit **Cooked it**, a dialog lists everything that meal used and lets you untick whatever survived — half an onion is still an onion. Only the ticked things leave the kitchen.
+
+That distinction is the difference between a plan you can trust and a list that quietly spends the same chicken twice.
+
+#### What the matcher does and does not do
+
+Matching is on **presence, not amount**. A recipe wanting 400 g of chicken and a fridge holding "some chicken" cannot be reconciled honestly, and a planner that hides a stir fry because you're 40 g short is a planner nobody opens twice. So the fridge answers *do we have this*, the grocery list answers *what don't we have*, and the quantity is there for you to read.
+
+Both sides normalise to the same key, so `2 lbs boneless skinless chicken thighs` in the fridge answers `500 g / 1 lb chicken mince` in a recipe. **Staples** — salt, oil, flour, the spice rack, stock — are assumed to be in the cupboard: they never reach the grocery list and never count towards "how many ingredients am I missing". A recipe needing salt, oil and chicken is one ingredient away, not three.
+
+A base ingredient does not stand in for a product made from it: rice does not cover rice vinegar, butter does not cover peanut butter, garlic does not cover chili garlic sauce. Getting that wrong is what makes a "can make today" filter untrue.
+
+#### Macros
+
+Every card and every day shows calories, protein, carbs and fat. Where the source publishes its own nutrition block — about two thirds of the backlog — that is what you see, marked *as published*. Where it doesn't, the numbers are estimated from the ingredient list against a table of per-100 g values, and the card says so along with how many of its ingredients it could actually price (`estimated from 9/11 ingredients`). An ingredient the table has never heard of is reported as unknown rather than counted as zero — a day that reads 1,400 kcal because it silently skipped the cream is worse than no number at all.
+
+Day totals divide by **how many people eat here** (Settings → Menu, or the box on the Plan screen).
+
+#### The backlog
+
+`data/recipes.json` ships with the repo — about 3,900 recipes, no key and no network call at run time. Rebuild or extend it with:
+
+```bash
+node tools/build-recipes.js --limit 4000
+```
+
+It draws on two things. [TheMealDB](https://www.themealdb.com), a free unauthenticated JSON API, contributes a few hundred with photos. The rest come from recipe blogs that publish **schema.org Recipe as JSON-LD** in the page — the same structured data they publish for Google's recipe cards — found through each site's own sitemap, one request at a time per host with a real User-Agent and a quarter-second between them. Sites that block automated readers (the Dotdash group: Allrecipes, Serious Eats, Simply Recipes) are deliberately not in the list; if one of the others starts refusing, drop it from `SOURCES` rather than working around it.
+
+Every fetched page is cached in `tools/.recipe-cache.json` (gitignored), so a second run is incremental. The cache keeps each ingredient line exactly as published and **re-parses it on every run**, which means improving `js/food.js` — a new alias, a descriptor it didn't know — improves the whole backlog without re-fetching four thousand pages.
+
+The output is split in two. `data/recipes.json` (3 MB) is the index: title, image, macros, times, and the normalised ingredient keys — everything the four screens filter, search and match against, so all of it has to be in memory. `data/steps/NNN.json` holds the method and the ingredient lines as written, 400 recipes to a shard, fetched only when you open a card. Together they'd be nine megabytes to parse before drawing a single thumbnail.
+
+#### Adding a recipe by link
+
+**Recipes → + Add by link**, paste a URL. It reads the same JSON-LD the build script does, so anything with a Google recipe card works. Hand-added recipes live in this browser's storage, sort above the backlog, and can be deleted from their own card.
+
+GitHub Pages cannot fetch another site's page directly — the browser blocks it — so this needs the **scrape proxy** in Settings → Menu. Point it at the same Cloudflare Worker as Fantasy and Letterboxd and redeploy; it now forwards `/recipe?url=…`, narrowly: GET only, http(s) only, no private or loopback hosts, HTML only, response capped at 2 MB, and none of the ESPN cookies ever travel with it. Without a proxy set, only the handful of sites that send CORS headers will import, and the error says so.
 
 ### To Do
 
@@ -677,6 +743,14 @@ Then open `http://localhost:8000`. Opening `index.html` by double-clicking won't
   in test-user mode also expires its grant every 7 days**, and no amount of silent renewal can get around
   that — the only fix is publishing the consent screen in the Google Cloud console. If you are still being
   asked to reconnect roughly weekly, that is which of the two you are hitting.
+- **The Menu tab matches on presence, not quantity.** A fridge holding "some chicken" cannot honestly be
+  reconciled with a recipe wanting 400 g of it, so the matcher never tries. It answers *do we have this*.
+- **Recipes come from sites that publish structured data.** Anything that doesn't ship a schema.org Recipe
+  block is invisible to both the build script and **+ Add by link**, and the importer says so rather than
+  guessing at the page's HTML. Sites that block automated readers are left out of `SOURCES` on purpose.
+- **Estimated macros are estimates.** About a third of the backlog publishes no nutrition, and for those the
+  numbers come from a table of common ingredients — good for a working total, not for anything medical. The
+  card always says which of the two you're looking at, and how much of the recipe it could actually price.
 - **The Letterboxd watchlist is scraped, not queried.** There is no API to use. The parse reads the
   metadata attributes on Letterboxd's poster grid and falls back through two older markup shapes, but a big
   enough redesign on their end will still break it — in which case the Movies tab keeps showing the cached

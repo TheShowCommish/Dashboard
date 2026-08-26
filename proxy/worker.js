@@ -16,10 +16,11 @@
  *      wrangler secret put ALLOW_ORIGIN (e.g. https://yourname.github.io)
  *   5. Put the worker URL in the dashboard's Settings → Fantasy → Proxy URL.
  *
- * It also forwards two things that have nothing to do with ESPN cookies and
- * everything to do with CORS: Letterboxd pages, and Fantasy Football
- * Calculator's mock-draft ADP feed. Each gets its own branch so the ESPN
- * cookies are never attached to a third-party request.
+ * It also forwards three things that have nothing to do with ESPN cookies
+ * and everything to do with CORS: Letterboxd pages, Fantasy Football
+ * Calculator's mock-draft ADP feed, and a single recipe page for the Menu
+ * tab. Each gets its own branch so the ESPN cookies are never attached to
+ * a third-party request.
  */
 
 export default {
@@ -71,6 +72,53 @@ export default {
           'Content-Type': 'text/plain; charset=utf-8',
           // Letterboxd is not a live feed; an hour of cache spares them the load.
           'Cache-Control': 'public, max-age=3600'
+        }
+      });
+    }
+
+    // ---- Recipe pages ----
+    // The Menu tab's "+ Add by link" reads the schema.org JSON-LD that
+    // recipe sites already publish for search engines. The browser cannot
+    // fetch those pages from GitHub Pages — no CORS header — so this
+    // forwards one page as text.
+    //
+    // Deliberately narrow so this does not become an open proxy: GET
+    // only, http(s) only, no private or loopback hosts, response capped,
+    // and no cookie of ours ever travels with it.
+    if (url.pathname === '/recipe') {
+      const target = url.searchParams.get('url') || '';
+      let want;
+      try { want = new URL(target); }
+      catch { return new Response('Not a URL.', { status: 400, headers: cors }); }
+
+      if (!/^https?:$/.test(want.protocol))
+        return new Response('Only http and https.', { status: 400, headers: cors });
+
+      // No reaching back into a private network through this worker.
+      if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.|\[|172\.(1[6-9]|2\d|3[01])\.)/i.test(want.hostname))
+        return new Response('That host is not reachable from here.', { status: 400, headers: cors });
+
+      const page = await fetch(want.toString(), {
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml',
+          'User-Agent': 'control-deck (personal meal planner)'
+        },
+        redirect: 'follow'
+      });
+
+      const type = page.headers.get('content-type') || '';
+      if (!/text\/html|application\/xhtml/i.test(type))
+        return new Response('That link is not a web page.', { status: 400, headers: cors });
+
+      // A recipe page is a few hundred KB; anything past 2 MB is not one.
+      const text = (await page.text()).slice(0, 2_000_000);
+
+      return new Response(text, {
+        status: page.status,
+        headers: {
+          ...cors,
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400'
         }
       });
     }

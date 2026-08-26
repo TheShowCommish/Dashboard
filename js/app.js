@@ -47,6 +47,7 @@ const App = (() => {
       if(name === 'notes')     StickyNotes.renderArchive();
       if(name === 'fantasy')   Fantasy.load();
       if(name === 'todo')      TodoList.render();
+      if(name === 'menu')      MenuView.load();
     }catch(e){ console.error(`Tab "${name}" refresh failed:`, e); }
   }
 
@@ -68,6 +69,7 @@ const App = (() => {
     k_tmdb:'keys.tmdb', k_gclient:'keys.gclient',
     k_wxUrl:'weather.url',
     k_lbUser:'movies.lbUser', k_lbProxy:'movies.lbProxy', k_omdb:'keys.omdb',
+    k_mvPeople:'menu.people', k_mvServings:'menu.servings', k_mvProxy:'menu.proxy',
     k_ffLeague:'fantasy.league', k_ffSeason:'fantasy.season',
     k_ffTeam:'fantasy.team', k_ffProxy:'fantasy.proxy',
     k_themeMode:'theme.mode', k_themePick:'theme.pick'
@@ -272,6 +274,8 @@ const App = (() => {
       });
     });
 
+    step('menu', () => { if(window.MenuView) MenuView.boot(); });
+
     step('todo', () => {
       TodoList.boot();
       on('todoAdd','click', () => TodoList.addFromInput());
@@ -291,7 +295,8 @@ const App = (() => {
     });
 
     const MODALS = ['teamModal','movieModal','dayModal','standModal',
-                    'playerModal','gameModal','wxModal','ffPlayerModal','ffBoardModal'];
+                    'playerModal','gameModal','wxModal','ffPlayerModal','ffBoardModal',
+                    'recipeModal'];
 
     const closeModals = () => MODALS.forEach(id => {
       const el = document.getElementById(id);
