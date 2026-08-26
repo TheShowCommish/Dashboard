@@ -824,9 +824,12 @@ const Kiosk = (() => {
      ratings have come back for the film that was picked. */
   function adMovies(host, opts){
     const all = movieChoices();
-    /* Settings can name one, which is the only way to check a particular
-       film's stickers without waiting for it to come round. */
-    const choice = (opts && opts.film && all.find(c => c.key === opts.film)) || pickMovie(all);
+    /* A caller can name the film outright — the AD button on a film's
+       popup, or a diary entry on the Movies tab. It may well be a film
+       that is on none of the three shelves (an old favourite, something
+       out of range), so a title is enough to build an AD from and the
+       enrich pass fills in the rest. */
+    const choice = namedMovie(opts, all) || pickMovie(all);
     if(!choice){
       host.innerHTML = `<p class="ad-empty ad-big">No films to preview.</p>`;
       return;
@@ -836,6 +839,31 @@ const Kiosk = (() => {
     film.saids = reviewsOf(film);
     host.innerHTML = adMovieHtml(film, null);
     enrichMovie(host, film);
+  }
+
+  /* The film a caller asked for by name, if they asked for one. A title
+     already on a shelf is used as-is so it keeps its poster and its
+     credits; anything else becomes a film of its own. */
+  function namedMovie(opts, all){
+    if(!opts) return null;
+    if(opts.film){
+      const hit = all.find(c => c.key === opts.film);
+      if(hit) return hit;
+    }
+    if(!opts.title) return null;
+
+    const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const year = opts.year ? String(opts.year) : '';
+    const known = all.find(c => norm(c.film.title) === norm(opts.title) &&
+      (!year || !c.film.year || String(c.film.year) === year));
+    if(known) return known;
+
+    return {key:'', group:'picked', label:opts.title, film:{
+      id:opts.tmdbId || null, slug:opts.slug || '', title:opts.title,
+      date:'', year:year, poster:opts.poster || '', overview:'',
+      cast:[], director:'', genres:[], tmdbScore:null, imdb:'',
+      upcoming:false, source:'picked'
+    }};
   }
 
   /* Every diary entry anyone has written about this film — mine and the
@@ -912,8 +940,8 @@ const Kiosk = (() => {
   function saidsHtml(saids){
     const rows = (saids || []).slice(0, 5);
     if(!rows.length) return '';
-    const LOVE = window.Letterboxd ? Letterboxd.LOVE : 4.5;
-    const HATE = window.Letterboxd ? Letterboxd.HATE : 2.5;
+    const LOVE = window.Letterboxd ? Letterboxd.LOVE : 4.1;
+    const HATE = window.Letterboxd ? Letterboxd.HATE : 2.9;
     return `<div class="ad-saids">${rows.map(r => `
       <blockquote class="ad-said${r.rated >= LOVE ? ' is-gold' : ''}${
         r.rated != null && r.rated <= HATE ? ' is-poop' : ''}">
@@ -962,8 +990,8 @@ const Kiosk = (() => {
        Every reviewer gets their own sticker rather than only the loudest
        one — three friends calling a film a masterpiece is three medals,
        and collapsing that to one threw away the whole point. */
-    const LOVE = window.Letterboxd ? Letterboxd.LOVE : 4.5;
-    const HATE = window.Letterboxd ? Letterboxd.HATE : 2.5;
+    const LOVE = window.Letterboxd ? Letterboxd.LOVE : 4.1;
+    const HATE = window.Letterboxd ? Letterboxd.HATE : 2.9;
     const rated = (f.saids || []).filter(r => r.rated != null);
     const voices = rates?.lb != null
       ? [...rated, {who:'Letterboxd', rated:rates.lb, crowd:true}]
@@ -973,7 +1001,9 @@ const Kiosk = (() => {
     const loathed = voices.filter(r => r.rated <= HATE);
 
     const source = f.upcoming ? ''
-      : f.source === 'talked' ? ' · Just watched' : ' · Watchlist';
+      : f.source === 'talked' ? ' · Just watched'
+      : f.source === 'picked' ? ''
+      : ' · Watchlist';
 
     return `
       <div class="ad-movie${loved.length ? ' is-gold' : ''}">

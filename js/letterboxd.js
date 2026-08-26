@@ -432,13 +432,13 @@ const Letterboxd = (() => {
 
   /* ---- what the network made of a film ----
      Two facts a poster can carry: did anybody love it, did anybody hate
-     it. 4.5 and 5 are the top of the scale, 2.5 and below is the bottom,
+     it. 4.1 and up is the top of the scale, 2.9 and under is the bottom,
      and the middle gets no decoration because most films live there.
 
      The extremes, not the average: one friend calling a film a masterpiece
      is the interesting fact, and averaging it away with three shrugs is
      how a wall display ends up saying nothing. */
-  const LOVE = 4.5, HATE = 2.5;
+  const LOVE = 4.1, HATE = 2.9;
 
   /* The two stickers those thresholds earn. Unicode has no gold-bar
      glyph, so the first-place medal stands in for one — swapping it for

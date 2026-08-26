@@ -115,30 +115,10 @@ const App = (() => {
     sel.onchange = () => { Store.set('theme.gamedayTest', sel.value); recheckTheme(); };
   }
 
-  /* Every film the movie AD could be about, so one in particular can be
-     put on screen. The list is Kiosk's own — picking from anywhere else
-     would let Settings offer a film the AD cannot actually build. */
-  function renderPreviewFilms(){
-    const sel = document.getElementById('k_previewFilm');
-    if(!sel || !window.Kiosk) return;
-    const cur = sel.value;
-    const GROUPS = {talked:'Recently watched', soon:'Out soon', watch:'Watchlist'};
-    const all = Kiosk.movieChoices();
-    sel.innerHTML = '<option value="">Random — let the AD choose</option>' +
-      Object.keys(GROUPS).map(g => {
-        const rows = all.filter(c => c.group === g);
-        if(!rows.length) return '';
-        return `<optgroup label="${esc(GROUPS[g])}">` + rows.map(c =>
-          `<option value="${esc(c.key)}"${c.key === cur ? ' selected' : ''}>${
-            esc(c.label)}</option>`).join('') + '</optgroup>';
-      }).join('');
-  }
-
   function openDrawer(){
     renderKioskShow();
     renderGamedayTest();
     renderPreviewTeams();
-    renderPreviewFilms();
     const pick = document.getElementById('k_themePick');
     pick.innerHTML = Themes.all.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
     for(const [el,path] of Object.entries(FIELDS))
@@ -278,14 +258,7 @@ const App = (() => {
       drawer.addEventListener('click', e => {
         const b = e.target.closest('[data-preview]');
         if(!b) return;
-        let opts = b.dataset.team ? {team: b.dataset.team} : undefined;
-        /* The movie AD takes a film the same way the sports AD takes a
-           team, except the choice is a dropdown rather than a button per
-           film — a watchlist is hundreds long. */
-        if(b.dataset.preview === 'movies'){
-          const film = document.getElementById('k_previewFilm')?.value;
-          if(film) opts = {film};
-        }
+        const opts = b.dataset.team ? {team: b.dataset.team} : undefined;
         closeDrawer();
         if(window.Kiosk) Kiosk.previewAd(b.dataset.preview, opts);
       });

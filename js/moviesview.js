@@ -134,10 +134,12 @@ const MoviesView = (() => {
       <h3 class="pf-h3">Recently watched <span class="pf-h3-n">${feed.length}</span>
         <span class="plot-key">yours and your network</span></h3>
       <div class="mv-diary-list">${seen.map(f => `
-        <a class="mv-seen-row${f.mine ? ' is-mine' : ''}${
+        <button class="mv-seen-row${f.mine ? ' is-mine' : ''}${
              f.rated >= Letterboxd.LOVE ? ' is-five' : ''}${
              f.rated != null && f.rated <= Letterboxd.HATE ? ' is-poop' : ''}"
-           href="${esc(f.link)}" target="_blank" rel="noopener">
+           data-ad-title="${esc(f.title)}" data-ad-year="${esc(String(f.year || ''))}"
+           data-ad-slug="${esc(f.slug || '')}" data-ad-poster="${esc(f.poster || '')}"
+           title="Show ${esc(f.title)} as an AD">
           ${f.poster
             ? `<img class="mv-seen-art" src="${esc(f.poster)}" alt="" loading="lazy">`
             : '<span class="mv-seen-art mv-noart">🎬</span>'}
@@ -156,7 +158,7 @@ const MoviesView = (() => {
             </span>
             ${f.review ? `<span class="mv-seen-review">${esc(f.review)}</span>` : ''}
           </span>
-        </a>`).join('')}</div>
+        </button>`).join('')}</div>
     </aside>`;
   }
 
@@ -214,6 +216,17 @@ const MoviesView = (() => {
       if(id && window.Movies && Movies.byId(id)) return Movies.open(id);
       if(id && window.Movies) return Movies.openTmdb(id);
       if(b.dataset.url) window.open(b.dataset.url, '_blank', 'noopener');
+    });
+
+    /* A diary entry is a film somebody watched, and the interesting thing
+       to do with it on a wall is put it up big — not open letterboxd.com
+       in a browser tab nobody is sitting in front of. */
+    body.querySelectorAll('[data-ad-title]').forEach(b => b.onclick = () => {
+      if(!window.Kiosk) return;
+      Kiosk.previewAd('movies', {
+        title: b.dataset.adTitle, year: b.dataset.adYear,
+        slug: b.dataset.adSlug, poster: b.dataset.adPoster
+      });
     });
 
     decorateCrowd();

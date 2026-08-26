@@ -346,9 +346,22 @@ const Movies = (() => {
           ${f.cast.length ? `<p class="mv-line"><i>Cast</i> ${esc(f.cast.join(', '))}</p>` : ''}
           ${saidHtml(f)}
           <p class="mv-overview">${esc(f.overview) || 'No synopsis available yet.'}</p>
+          <button class="ghost-btn sm mv-ad-btn" data-ad-film>Show as AD</button>
         </div>
       </div>`;
     modal.hidden = false;
+
+    /* Straight to the full-screen version of this film. The popup closes
+       first — an AD covers the whole screen and a modal left open under
+       it would be waiting there on the way back. */
+    const adBtn = mBody.querySelector('[data-ad-film]');
+    if(adBtn) adBtn.onclick = () => {
+      close();
+      if(window.Kiosk) Kiosk.previewAd('movies', {
+        title:f.title, year:(f.date || '').slice(0,4), tmdbId:f.id,
+        poster:f.poster ? `https://image.tmdb.org/t/p/w500${f.poster}` : ''
+      });
+    };
 
     /* The two outside scores arrive later than the card does. */
     fillRates(f);

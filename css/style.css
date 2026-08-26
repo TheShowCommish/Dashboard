@@ -782,6 +782,7 @@ fieldset label input,fieldset label select{margin-top:4px;}
 .modal-card.xwide{max-width:920px;width:100%;max-height:86vh;overflow-y:auto;}
 .modal-card.wide{max-width:560px;width:100%;max-height:86vh;overflow-y:auto;}
 .mv-detail{display:flex;gap:16px;align-items:flex-start;}
+.mv-ad-btn{margin-top:12px;}
 .mv-detail-art{width:140px;border-radius:8px;flex-shrink:0;}
 .mv-detail h2{margin:0 0 6px;font-family:var(--display);font-size:19px;}
 .mv-detail .mv-line{white-space:normal;margin:0 0 5px;font-size:12px;}
@@ -1171,6 +1172,9 @@ body{
 }
 .ad-poster.ad-noart{display:grid;place-items:center;font-size:120px;}
 .ad-poster-wrap{position:relative;}
+/* Room at the top of the poster for the row of medals to sit over the
+   art rather than over the title beside it. */
+.ad-movie.is-gold .ad-poster-wrap{padding-top:26px;}
 
 /* ---- a film one of my friends loved ----
    4.5 or 5 from anyone I follow turns the whole screen gold: from across
@@ -1203,12 +1207,24 @@ body{
 
    Inside the poster's edges at the top: the AD body clips, and a sticker
    above that line is a sticker nobody sees. */
-.ad-marks{
-  position:absolute;top:12px;z-index:3;
-  display:flex;flex-direction:column;gap:10px;
+.ad-marks{position:absolute;z-index:3;display:flex;}
+
+/* The medals run ACROSS the top of the poster: four friends who loved a
+   film read as a row of medals over the art, which is a banner, where a
+   column down the side was a list. Wrapping rather than shrinking — a
+   second row is better than four medals nobody can make out. */
+.ad-marks.is-gold{
+  top:6px;left:0;right:0;
+  flex-flow:row wrap;justify-content:center;align-items:flex-start;
+  gap:0 4px;pointer-events:none;
 }
-.ad-marks.is-gold{left:-30px;align-items:flex-start;}
-.ad-marks.is-poop{right:-30px;align-items:flex-end;}
+
+/* The other verdict keeps the right-hand edge, so the two can never be
+   confused for one another at a glance. */
+.ad-marks.is-poop{
+  top:12px;right:-30px;
+  flex-direction:column;align-items:flex-end;gap:10px;
+}
 
 /* 80px, a quarter up from 64px. */
 .ad-mark{
@@ -1216,7 +1232,10 @@ body{
   font-size:80px;line-height:1;
   filter:drop-shadow(0 6px 10px rgba(0,0,0,.55));
 }
-.ad-marks.is-gold .ad-mark{transform:rotate(-11deg);}
+.ad-marks.is-gold .ad-mark{font-size:64px;}
+.ad-marks.is-gold .ad-mark:nth-child(odd){transform:rotate(-7deg);}
+.ad-marks.is-gold .ad-mark:nth-child(even){transform:rotate(7deg);}
+.ad-marks.is-gold .ad-mark i{font-size:15px;}
 .ad-marks.is-poop .ad-mark{transform:rotate(11deg);}
 .ad-mark i{
   font-style:normal;font-family:var(--mono);font-size:17px;font-weight:700;
@@ -1781,7 +1800,13 @@ body.fx-snow .wx-now-card{
   transition:border-color .15s var(--ease);
 }
 .mv-seen-row:hover{border-color:var(--accent);}
-.mv-seen-row{position:relative;}
+/* A button, because it opens the AD rather than navigating anywhere.
+   The element changed; the row must not. */
+.mv-seen-row{
+  position:relative;
+  width:100%;font:inherit;text-align:left;cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+}
 .mv-seen-row .mv-mark{font-size:21px;}
 .mv-seen-row .mv-mark.is-poop{top:-7px;right:-5px;}
 .mv-seen-row .mv-mark.is-gold{top:-7px;left:-7px;}
@@ -2168,21 +2193,24 @@ body.fx-sun .pf-card{
 .gb svg{height:20px;width:auto;display:block;}
 
 /* ---- what someone said about the film ---- */
+/* What people actually wrote is the reason this AD is worth a screen, so
+   it is sized to be read from across a room rather than tucked under the
+   synopsis. */
 .ad-said{
-  margin:6px 0 4px;padding:12px 18px;border-left:4px solid var(--accent);
-  background:color-mix(in srgb,var(--panel-2) 40%,transparent);border-radius:0 12px 12px 0;
-  display:flex;flex-direction:column;gap:5px;
+  margin:8px 0 6px;padding:16px 24px;border-left:5px solid var(--accent);
+  background:color-mix(in srgb,var(--panel-2) 40%,transparent);border-radius:0 14px 14px 0;
+  display:flex;flex-direction:column;gap:7px;
 }
 .ad-said-head{
-  font-family:var(--mono);font-size:15px;letter-spacing:.12em;text-transform:uppercase;
+  font-family:var(--mono);font-size:19px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--accent);
 }
-.ad-said-head em{font-style:normal;color:var(--text);letter-spacing:0;margin-left:6px;}
-.ad-said-text{font-size:24px;line-height:1.35;font-style:italic;}
+.ad-said-head em{font-style:normal;color:var(--text);letter-spacing:0;margin-left:8px;font-size:23px;}
+.ad-said-text{font-size:31px;line-height:1.32;font-style:italic;}
 
 /* Every review, not just the loudest one — a film four people saw is
    four quotes, and they are the reason this AD is worth a screen. */
-.ad-saids{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
+.ad-saids{display:flex;flex-direction:column;gap:13px;margin-top:18px;}
 .ad-saids .ad-said{margin:0;}
 .ad-said.is-gold{
   border-left-color:var(--gold);
