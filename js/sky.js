@@ -141,7 +141,11 @@ const Sky = (() => {
   function drawPiles(){
     fx2.fillStyle = 'rgba(255,255,255,.94)';
     for(const p of piles){
-      if(p.d < 8) p.d += 0.012;                // settles over about ten minutes
+      /* A twentieth of the old rate. At 0.012 a frame the deck was under
+         full snow inside fifteen seconds, which read as a wipe rather
+         than as weather; this fills in over about four minutes at 60fps,
+         so the drifts are something you notice having happened. */
+      if(p.d < 8) p.d += 0.0006;
       if(p.d < .5) continue;
 
       /* Inset by the corner radius: past that point the surface is curving
