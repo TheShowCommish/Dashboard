@@ -430,6 +430,51 @@ const Letterboxd = (() => {
     return reviewsFor(title, year, slug)[0] || null;
   }
 
+  /* ---- what the network made of a film ----
+     Two facts a poster can carry: did anybody love it, did anybody hate
+     it. 4.5 and 5 are the top of the scale, 2.5 and below is the bottom,
+     and the middle gets no decoration because most films live there.
+
+     The extremes, not the average: one friend calling a film a masterpiece
+     is the interesting fact, and averaging it away with three shrugs is
+     how a wall display ends up saying nothing. */
+  const LOVE = 4.5, HATE = 2.5;
+
+  function verdict(title, year, slug){
+    const rows = reviewsFor(title, year, slug).filter(f => f.rated != null);
+    if(!rows.length) return null;
+    const best  = rows.reduce((a,b) => b.rated > a.rated ? b : a);
+    const worst = rows.reduce((a,b) => b.rated < a.rated ? b : a);
+    return {
+      rows,
+      love:  best.rated  >= LOVE ? best  : null,
+      hate:  worst.rated <= HATE ? worst : null
+    };
+  }
+
+  /* One row per film somebody has logged lately, newest first. A rewatch
+     is two diary entries but only one film, so the second is dropped —
+     this is a list of films to talk about, not of viewings. */
+  function talkedAbout(limit = 30){
+    const out = [], seen = new Set();
+    for(const f of feedList()){
+      const k = slugify(f.title);
+      if(!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push(f);
+      if(out.length >= limit) break;
+    }
+    return out;
+  }
+
+  /* Mine and theirs in one list, newest first — what the Movies tab
+     renders down its left-hand column. */
+  function feedList(){
+    return [...diary, ...network]
+      .filter(f => f.title)
+      .sort((a,b) => new Date(b.watchedAt) - new Date(a.watchedAt));
+  }
+
   /* ---- one film's Letterboxd average ----
      The film page carries the site-wide average in a twitter:data2 meta
      tag ("3.61 out of 5"). Cached forever per slug: it moves in the third
@@ -526,16 +571,13 @@ const Letterboxd = (() => {
 
   return {
     load, ingestCsv, decorated, rating, ratingFor, filmSlug, loadNetwork,
-    reviewFor, reviewsFor,
+    reviewFor, reviewsFor, verdict, talkedAbout,
+    /* The two ends of the scale, so every screen decorates on the same
+       numbers rather than each picking its own. */
+    LOVE, HATE,
     get diary(){ return diary; },
     get network(){ return network; },
-    /* Mine and theirs in one list, newest first — what the Movies tab
-       actually renders down its left-hand column. */
-    get feed(){
-      return [...diary, ...network]
-        .filter(f => f.title)
-        .sort((a,b) => new Date(b.watchedAt) - new Date(a.watchedAt));
-    },
+    get feed(){ return feedList(); },
     get count(){ return watchlist.length; },
     get error(){ return lastError; },
     get hasProxy(){ return !!proxy(); },

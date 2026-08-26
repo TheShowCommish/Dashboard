@@ -220,6 +220,35 @@ const Movies = (() => {
     }
   }
 
+  /* ---- find a film we only know the name of ----
+     The diary and the network hand back a title and a year and nothing
+     else. TMDB's search turns that into an id, which is what every other
+     lookup here needs. Cached per title forever, misses included, so a
+     film nobody can find is not searched for on every rotation. */
+  const searchCache = () => Store.get('movies.search', {});
+
+  async function find(title, year){
+    if(!title || !key()) return null;
+    const k = `${title}|${year || ''}`.toLowerCase();
+    const cache = searchCache();
+    if(k in cache) return cache[k];
+
+    try{
+      const d = guard(await getJSON('https://api.themoviedb.org/3/search/movie' +
+        `?language=en-US&query=${encodeURIComponent(title)}` +
+        (year ? `&year=${encodeURIComponent(year)}` : '') +
+        `&api_key=${key()}`));
+      const hit = (d.results || [])[0] || null;
+      const out = hit ? hit.id : null;
+      cache[k] = out;
+      Store.set('movies.search', cache);
+      return out;
+    }catch(e){
+      console.error('Film search failed for', title, e.message);
+      return null;
+    }
+  }
+
   /* ---- outside ratings (OMDb) ----
      TMDB publishes its own average and nothing else. Rotten Tomatoes comes
      from OMDb, which is free but needs its own key — with no key the AD
@@ -263,12 +292,12 @@ const Movies = (() => {
     if(!said.length) return '';
 
     /* Letterboxd rates in halves and so does this: rounding 4.5 up to
-       five stars misreports what someone actually gave a film. */
+       five stars misreports what someone actually gave a film. Only the
+       stars given are drawn — the empty ones were padding. */
     const stars = n => {
       if(n == null) return '';
       const full = Math.floor(n), half = n - full >= .5;
-      return '★'.repeat(full) + (half ? '½' : '') +
-             '☆'.repeat(Math.max(0, 5 - full - (half ? 1 : 0)));
+      return '★'.repeat(full) + (half ? '½' : '');
     };
     const when = f2 => f2.watchedAt && !Number.isNaN(+new Date(f2.watchedAt))
       ? new Date(f2.watchedAt).toLocaleDateString(undefined,{month:'short', day:'numeric'})
@@ -278,7 +307,9 @@ const Movies = (() => {
       <span class="mv-saids-head">Letterboxd${
         said.length > 1 ? ` <i>${said.length}</i>` : ''}</span>
       ${said.map(r => `
-        <blockquote class="mv-said${r.mine ? ' is-mine' : ''}${r.rated >= 5 ? ' is-five' : ''}">
+        <blockquote class="mv-said${r.mine ? ' is-mine' : ''}${
+            r.rated >= Letterboxd.LOVE ? ' is-five' : ''}${
+            r.rated != null && r.rated <= Letterboxd.HATE ? ' is-poop' : ''}">
           <span class="mv-said-head">${esc(r.who || 'you')}${
             r.rated != null ? ` <em>${stars(r.rated)}</em>` : ''}${
             when(r) ? ` <i>${esc(when(r))}</i>` : ''}</span>
@@ -353,7 +384,7 @@ const Movies = (() => {
   const close = () => { modal.hidden = true; };
 
   return {
-    load, close, open, openTmdb, detail, ratings,
+    load, close, open, openTmdb, detail, ratings, find,
     /* [{id, title, date}] for the calendar — every release in range, not
        just the enriched ones, so a pill appears for the full window. */
     get releases(){ return listed.map(f => ({id:f.id, title:f.title, date:f.date})); },

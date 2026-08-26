@@ -11,6 +11,8 @@
   --text:#E4E9F0;
   --muted:#7D8A9C;
   --accent:#F2B705;
+  /* Top marks. Distinct from --accent, which a theme may repaint. */
+  --gold:#F5C542;
   --accent-ink:#0E1116;
   --good:#4CC9A7;
   --bad:#E5484D;
@@ -753,6 +755,10 @@ fieldset label input,fieldset label select{margin-top:4px;}
   transition:border-color .15s var(--ease), transform .15s var(--ease);
 }
 .mv-card:hover,.mv-card:focus-visible{border-color:var(--accent);transform:translateY(-2px);}
+.mv-card.is-five{
+  border-color:var(--gold);
+  box-shadow:0 0 0 1px var(--gold), 0 0 14px color-mix(in srgb,var(--gold) 35%,transparent);
+}
 .mv-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .mv-poster{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:var(--panel);}
 .mv-noart{display:grid;place-items:center;font-size:34px;}
@@ -1058,7 +1064,6 @@ body{
 
 /* A five-star film — the top of the scale, and rare enough to be worth
    spotting from across the column. */
-:root{--gold:#F5C542;}
 .mv-seen-row.is-five,
 .mv-said.is-five{
   background:linear-gradient(180deg,
@@ -1157,6 +1162,7 @@ body{
 .ad-game-meta{display:flex;flex-direction:column;gap:12px;}
 
 .ad-movie{
+  position:relative;
   display:grid;grid-template-columns:auto 1fr;gap:56px;flex:1;min-height:0;align-items:start;
 }
 .ad-poster{
@@ -1164,6 +1170,57 @@ body{
   border:1px solid var(--edge);background:var(--panel-2);
 }
 .ad-poster.ad-noart{display:grid;place-items:center;font-size:120px;}
+.ad-poster-wrap{position:relative;}
+
+/* ---- a film one of my friends loved ----
+   4.5 or 5 from anyone I follow turns the whole screen gold: from across
+   a room the colour is the message, and the bar says whose opinion it
+   was. Padded rather than full-bleed so the AD's own margins still read. */
+.ad-movie.is-gold{
+  padding:34px 40px 30px;border-radius:20px;
+  background:
+    radial-gradient(120% 90% at 0% 0%,
+      color-mix(in srgb,var(--gold) 26%,transparent), transparent 62%),
+    linear-gradient(150deg,
+      color-mix(in srgb,var(--gold) 17%,transparent),
+      color-mix(in srgb,var(--gold) 5%,transparent));
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--gold) 55%,transparent) inset,
+             0 0 90px color-mix(in srgb,var(--gold) 18%,transparent);
+}
+.ad-movie.is-gold .ad-poster{
+  border-color:var(--gold);
+  box-shadow:0 0 0 3px var(--gold), 0 18px 50px rgba(0,0,0,.55);
+}
+.ad-movie.is-gold .ad-h1{color:var(--gold);}
+
+/* Top corner, over the gold, in the corner nearest the poster — the name
+   is the point, so it is the loudest thing in the bar. */
+/* Inside the panel, not hanging off it: the AD body clips, so a bar
+   above the top edge is a bar nobody sees. */
+.ad-gold-bar{
+  position:absolute;top:8px;left:22px;z-index:3;
+  padding:9px 22px;border-radius:99px;
+  background:var(--gold);color:#141005;
+  font-family:var(--mono);font-size:20px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+  box-shadow:0 6px 22px rgba(0,0,0,.45);
+}
+
+/* ---- and a film one of them wrote off ----
+   Stuck on the poster at an angle, with the name of whoever gave it 2.5
+   or less: an unattributed sticker is an opinion from nowhere. */
+.ad-poop{
+  position:absolute;top:12px;right:-30px;z-index:3;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  font-size:64px;line-height:1;transform:rotate(11deg);
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.55));
+}
+.ad-poop i{
+  font-style:normal;font-family:var(--mono);font-size:15px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 10px;border-radius:99px;
+  background:#3b2a12;color:#f0dcb4;border:1px solid color-mix(in srgb,var(--gold) 40%,transparent);
+}
 .ad-movie-info{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:hidden;}
 .ad-overview{
   font-family:var(--body);font-size:22px;line-height:1.5;color:var(--text);
@@ -1234,6 +1291,22 @@ body.kiosk-on #adOverlay.is-on ~ *{}
   border:1px solid var(--edge);transition:transform .18s var(--ease),border-color .18s var(--ease);
 }
 .mv-card:hover .mv-poster{transform:translateY(-3px);border-color:var(--accent);}
+
+/* ---- what the network made of it, on the poster itself ----
+   A gold frame for a film somebody rated 4.5 or 5, a sticker for one
+   somebody rated 2.5 or less. The crawling rails carry no card chrome —
+   the poster IS the card there — so the frame goes on the art. */
+.mv-card.is-five .mv-poster{
+  border-color:var(--gold);
+  box-shadow:0 0 0 2px var(--gold), 0 0 16px color-mix(in srgb,var(--gold) 45%,transparent);
+}
+.mv-card.is-five{background:transparent;}
+.mv-poop{
+  position:absolute;top:-6px;right:-6px;z-index:3;
+  font-size:20px;line-height:1;pointer-events:none;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));
+  transform:rotate(12deg);
+}
 .mv-genre{
   font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.04em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -1696,6 +1769,8 @@ body.fx-snow .wx-now-card{
   transition:border-color .15s var(--ease);
 }
 .mv-seen-row:hover{border-color:var(--accent);}
+.mv-seen-row{position:relative;}
+.mv-seen-row .mv-poop{top:-7px;right:-5px;font-size:17px;}
 .mv-seen-art{width:52px;aspect-ratio:2/3;object-fit:cover;border-radius:6px;background:var(--panel-2);}
 span.mv-seen-art{display:grid;place-items:center;font-size:20px;}
 .mv-seen-body{display:flex;flex-direction:column;gap:3px;min-width:0;}
@@ -2090,6 +2165,20 @@ body.fx-sun .pf-card{
 }
 .ad-said-head em{font-style:normal;color:var(--text);letter-spacing:0;margin-left:6px;}
 .ad-said-text{font-size:24px;line-height:1.35;font-style:italic;}
+
+/* Every review, not just the loudest one — a film four people saw is
+   four quotes, and they are the reason this AD is worth a screen. */
+.ad-saids{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
+.ad-saids .ad-said{margin:0;}
+.ad-said.is-gold{
+  border-left-color:var(--gold);
+  background:color-mix(in srgb,var(--gold) 12%,transparent);
+}
+.ad-said.is-gold .ad-said-head{color:var(--gold);}
+.ad-said.is-poop{border-left-color:#8a6a3a;}
+.ad-said.is-poop .ad-said-head{color:#c8a370;}
+.ad-said.is-poop .ad-said-head::after{content:' \1F4A9';}
+.ad-movie.is-gold .ad-said{background:color-mix(in srgb,var(--ink) 45%,transparent);}
 
 .mv-said{
   margin:0 0 10px;padding:8px 11px;border-left:3px solid var(--accent);

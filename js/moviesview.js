@@ -29,9 +29,18 @@ const MoviesView = (() => {
       ? `<img class="mv-poster" src="${esc(f.poster)}" alt="" loading="lazy">`
       : '<div class="mv-poster mv-noart">🎬</div>';
     const genres = (f.genres || []).join(' · ');
-    return `<button class="mv-card" data-film="${esc(f.tmdbId || '')}"
-                    data-url="${esc(f.url || '')}" title="${esc(f.title)}">
+    /* What the people I follow made of it, if any of them have seen it —
+       the same gold frame and the same sticker the AD uses, so a poster
+       means the same thing wherever it turns up. */
+    const v = window.Letterboxd ? Letterboxd.verdict(f.title, f.year, f.slug) : null;
+    return `<button class="mv-card${v?.love ? ' is-five' : ''}${v?.hate ? ' is-poop' : ''}"
+                    data-film="${esc(f.tmdbId || '')}"
+                    data-url="${esc(f.url || '')}" title="${esc(f.title)}${
+                      v?.love ? ` — ${v.love.who || 'you'} gave it ${v.love.rated}` : ''}${
+                      v?.hate ? ` — ${v.hate.who || 'you'} gave it ${v.hate.rated}` : ''}">
       ${art}
+      ${v?.hate ? `<span class="mv-poop" title="${esc(v.hate.who || 'you')} gave it ${
+        v.hate.rated}">💩</span>` : ''}
       ${badge ? `<span class="mv-chip${badge.warn ? ' warn' : ''}">${esc(badge.text)}</span>` : ''}
       <span class="mv-info">
         <span class="mv-title">${esc(f.title)}</span>
@@ -89,6 +98,7 @@ const MoviesView = (() => {
     return block('Popular movies out now', films.map(f => ({
       title: f.title,
       year: (f.date || '').slice(0,4),
+      slug: '',
       poster: f.poster ? `https://image.tmdb.org/t/p/w342${f.poster}` : '',
       tmdbId: f.id, score: f.score, genres: f.genres
     })), {cap:20, note:'in cinemas this week, most popular first'});
@@ -120,10 +130,16 @@ const MoviesView = (() => {
       <h3 class="pf-h3">Recently watched <span class="pf-h3-n">${feed.length}</span>
         <span class="plot-key">yours and your network</span></h3>
       <div class="mv-diary-list">${seen.map(f => `
-        <a class="mv-seen-row${f.mine ? ' is-mine' : ''}${f.rated >= 5 ? ' is-five' : ''}" href="${esc(f.link)}" target="_blank" rel="noopener">
+        <a class="mv-seen-row${f.mine ? ' is-mine' : ''}${
+             f.rated >= Letterboxd.LOVE ? ' is-five' : ''}${
+             f.rated != null && f.rated <= Letterboxd.HATE ? ' is-poop' : ''}"
+           href="${esc(f.link)}" target="_blank" rel="noopener">
           ${f.poster
             ? `<img class="mv-seen-art" src="${esc(f.poster)}" alt="" loading="lazy">`
             : '<span class="mv-seen-art mv-noart">🎬</span>'}
+          ${f.rated != null && f.rated <= Letterboxd.HATE
+            ? `<span class="mv-poop" title="${esc(f.who || 'you')} gave it ${f.rated}">💩</span>`
+            : ''}
           <span class="mv-seen-body">
             <span class="mv-seen-title">${esc(f.title)}${f.year ? ` <i>${f.year}</i>` : ''}</span>
             <span class="mv-seen-meta">
@@ -197,14 +213,14 @@ const MoviesView = (() => {
   }
 
   const STAR = '★';
-  const HOLLOW = '☆';
 
   /* Letterboxd rates in halves, so a rounded whole star misreports what
-     someone actually gave a film: 4.5 is not five. */
+     someone actually gave a film: 4.5 is not five. Only the stars given
+     are drawn — the hollow remainder was padding, and at this size it
+     read as part of the score. */
   function stars(n){
     const full = Math.floor(n), half = n - full >= .5;
-    return STAR.repeat(full) + (half ? '½' : '') +
-           HOLLOW.repeat(Math.max(0, 5 - full - (half ? 1 : 0)));
+    return STAR.repeat(full) + (half ? '½' : '');
   }
 
   return { render };

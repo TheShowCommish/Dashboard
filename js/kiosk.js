@@ -360,6 +360,9 @@ const Kiosk = (() => {
      defaults to "show it". A false return burns the slot — see startAd. */
   const AD_CONTENT_CHECKS = {
     calendar: () => !!calendarWindow(),
+    /* Nothing on the watchlist, nothing out soon and nobody watching
+       anything: the movie AD would be a blank screen. */
+    movies:   () => movieChoices().length > 0,
     /* No reading yet means no forecast to put on a full screen. */
     weather:  () => !!(window.Weather && Weather.current)
   };
@@ -738,74 +741,123 @@ const Kiosk = (() => {
       </div>`;
   }
 
-  /* 80% next-two-weeks upcoming, 20% Letterboxd watchlist. Pick fresh each
-     AD so a long uptime cycles through the shelf.
-
-     Painted twice: once from whatever is already cached so the screen is
-     never empty, then again once the synopsis and the outside ratings have
-     been fetched for the film that was picked. */
-  function adMovies(host){
+  /* ---- what the movie AD can be about ----
+     Three sources, one flat list:
+       talked — somebody I follow has just logged it
+       soon   — out in the next fortnight
+       watch  — sitting on the Letterboxd watchlist
+     Built as one function because Settings needs the same list the
+     rotation picks from: a film that cannot be chosen deliberately is a
+     film that cannot be checked before it goes on a wall. */
+  function movieChoices(){
     const now = Date.now();
-    const soon = ((window.Movies ? Movies.upcoming : []) || [])
-      .filter(f => f.date && (new Date(f.date + 'T12:00:00').getTime() - now) < 14*864e5 &&
-                              new Date(f.date + 'T12:00:00').getTime() > now - 864e5);
-    const watch = (window.Letterboxd ? Letterboxd.decorated() : []) || [];
+    const out = [], seen = new Set();
+    const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-    const pool = (Math.random() < 0.2 && watch.length) ? 'watch'
-               : soon.length ? 'soon' : (watch.length ? 'watch' : null);
+    /* A film appears once. The first group to claim it wins, and the
+       groups are added in the order they are worth showing — a watchlist
+       film a friend saw last night is news, not a watchlist film. */
+    const push = (group, film) => {
+      const k = `${norm(film.title)}|${film.year || ''}`;
+      if(!film.title || seen.has(k)) return;
+      seen.add(k);
+      out.push({key:`${group}:${k}`, group, label:film.title +
+        (film.year ? ` (${film.year})` : ''), film:{...film, source:group}});
+    };
 
-    if(!pool){
+    if(window.Letterboxd){
+      for(const r of Letterboxd.talkedAbout(30))
+        push('talked', {
+          id:null, slug:r.slug || '', title:r.title, date:'', year:r.year || '',
+          poster:r.poster || '', overview:'', cast:[], director:'', genres:[],
+          tmdbScore:null, imdb:'', upcoming:false
+        });
+    }
+
+    for(const f of ((window.Movies ? Movies.upcoming : []) || [])){
+      if(!f.date) continue;
+      const t = new Date(f.date + 'T12:00:00').getTime();
+      if(t - now >= 14*864e5 || t <= now - 864e5) continue;
+      const full = window.Movies ? Movies.byId(f.id) : null;
+      push('soon', {
+        id:f.id, slug:'', title:f.title, date:f.date || '',
+        year:(f.date || '').slice(0,4),
+        poster:f.poster ? `https://image.tmdb.org/t/p/w500${f.poster}`
+                        : (full?.poster ? `https://image.tmdb.org/t/p/w500${full.poster}` : ''),
+        overview:full?.overview || '', cast:full?.cast || [], director:full?.director || '',
+        genres:full?.genres || f.genres || [], tmdbScore:full?.score ?? f.score ?? null,
+        imdb:full?.imdb || '', upcoming:true
+      });
+    }
+
+    for(const f of ((window.Letterboxd ? Letterboxd.decorated() : []) || []))
+      push('watch', {
+        id:f.tmdbId || null, slug:f.slug || '', title:f.title, date:'',
+        year:f.year || '', poster:f.poster || '', overview:f.overview || '',
+        cast:[], director:'', genres:f.genres || [], tmdbScore:f.score ?? null,
+        imdb:'', upcoming:false
+      });
+
+    return out;
+  }
+
+  /* Which group a pass draws from. Something a friend just watched beats
+     a release date, which beats the undifferentiated pile — but every
+     group keeps a real share so a long uptime cycles the shelf. The
+     weights are renormalised over whichever groups have anything in them,
+     so an empty diary simply hands its share to the others. */
+  const MOVIE_MIX = {talked:.45, soon:.35, watch:.20};
+
+  function pickMovie(all){
+    const groups = Object.keys(MOVIE_MIX).filter(g => all.some(c => c.group === g));
+    if(!groups.length) return null;
+    const total = groups.reduce((n,g) => n + MOVIE_MIX[g], 0);
+    let r = Math.random() * total;
+    let group = groups[groups.length - 1];
+    for(const g of groups){ r -= MOVIE_MIX[g]; if(r <= 0){ group = g; break; } }
+    const pool = all.filter(c => c.group === group);
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  /* Painted twice: once from whatever is already cached so the screen is
+     never empty, then again once the synopsis, the credits and the outside
+     ratings have come back for the film that was picked. */
+  function adMovies(host, opts){
+    const all = movieChoices();
+    /* Settings can name one, which is the only way to check a particular
+       film's stickers without waiting for it to come round. */
+    const choice = (opts && opts.film && all.find(c => c.key === opts.film)) || pickMovie(all);
+    if(!choice){
       host.innerHTML = `<p class="ad-empty ad-big">No films to preview.</p>`;
       return;
     }
 
-    let film;
-    if(pool === 'soon'){
-      const pick = soon[Math.floor(Math.random() * soon.length)];
-      const full = window.Movies ? Movies.byId(pick.id) : null;
-      film = {
-        id: pick.id,
-        slug: '',
-        title: pick.title,
-        date: pick.date || '',
-        year: (pick.date || '').slice(0,4),
-        poster: pick.poster ? `https://image.tmdb.org/t/p/w500${pick.poster}`
-                            : (full?.poster ? `https://image.tmdb.org/t/p/w500${full.poster}` : ''),
-        overview: full?.overview || '',
-        cast: full?.cast || [],
-        director: full?.director || '',
-        genres: full?.genres || pick.genres || [],
-        tmdbScore: full?.score ?? pick.score ?? null,
-        imdb: full?.imdb || '',
-        upcoming: true
-      };
-    } else {
-      const pick = watch[Math.floor(Math.random() * watch.length)];
-      film = {
-        id: pick.tmdbId || null,
-        slug: pick.slug || '',
-        title: pick.title,
-        date: '',
-        year: pick.year || '',
-        poster: pick.poster || '',
-        overview: pick.overview || '',
-        cast: [], director: '',
-        genres: pick.genres || [],
-        tmdbScore: pick.score ?? null,
-        imdb: '',
-        upcoming: false
-      };
-    }
-
+    const film = {...choice.film};
+    film.saids = reviewsOf(film);
     host.innerHTML = adMovieHtml(film, null);
     enrichMovie(host, film);
   }
 
-  /* Everything the first paint could not know: the synopsis for a film past
-     the detail cap, and the two outside scores. */
+  /* Every diary entry anyone has written about this film — mine and the
+     network's. The AD has room for all of them, and a film four people
+     have seen IS the interesting one. */
+  function reviewsOf(film){
+    if(!window.Letterboxd) return [];
+    return Letterboxd.reviewsFor(film.title, film.year, film.slug);
+  }
+
+  /* Everything the first paint could not know: a TMDB id for a film only
+     the diary knew about, the synopsis and credits behind it, and the two
+     outside scores. */
   async function enrichMovie(host, film){
     try{
-      if(film.id && !film.overview && window.Movies){
+      /* A film the network watched comes with a title and nothing else.
+         One search turns that into the id every other lookup needs —
+         without it the AD has no director, no plot and no RT score. */
+      if(!film.id && window.Movies)
+        film.id = await Movies.find(film.title, film.year);
+
+      if(film.id && window.Movies && (!film.overview || !film.director)){
         const full = await Movies.detail(film.id);
         if(full){
           film.overview = full.overview || film.overview;
@@ -813,6 +865,7 @@ const Kiosk = (() => {
           film.cast     = full.cast?.length ? full.cast : film.cast;
           film.genres   = full.genres?.length ? full.genres : film.genres;
           film.imdb     = full.imdb || film.imdb;
+          film.year     = film.year || (full.date || '').slice(0,4);
           film.tmdbScore = film.tmdbScore ?? full.score ?? null;
           if(!film.poster && full.poster) film.poster = `https://image.tmdb.org/t/p/w500${full.poster}`;
           if(host.isConnected) host.innerHTML = adMovieHtml(film, null);
@@ -821,16 +874,11 @@ const Kiosk = (() => {
 
       const rates = {rt:'', lb:null, tmdb:film.tmdbScore};
 
-      /* Someone's own words about the film beat any synopsis, so if the
-         diary or the network has written about it, that goes on screen. */
-      if(window.Letterboxd)
-        film.said = Letterboxd.reviewFor(film.title, film.year, film.slug);
+      film.saids = reviewsOf(film);
 
       /* Letterboxd knows the film by slug; a watchlist pick already has one,
          a TMDB pick gets the title slugified and both spellings tried. */
       if(window.Letterboxd){
-        /* A watchlist pick already knows its slug and can be asked
-           directly; anything else goes through the year check. */
         rates.lb = film.slug
           ? await Letterboxd.rating(film.slug)
           : await Letterboxd.ratingFor(film.title, film.year);
@@ -847,23 +895,32 @@ const Kiosk = (() => {
     }
   }
 
-  /* A diary entry, quoted: who said it, what they gave it, and the words
-     if there were any. */
-  function saidHtml(said){
-    if(!said) return '';
-    /* Letterboxd rates in halves and so does this: rounding 4.5 up to
-       five stars misreports what someone actually gave a film. */
-    const stars = said.rated != null ? (() => {
-      const full = Math.floor(said.rated);
-      const half = said.rated - full >= .5;
-      return '★'.repeat(full) + (half ? '½' : '') +
-             '☆'.repeat(Math.max(0, 5 - full - (half ? 1 : 0)));
-    })() : '';
-    return `<blockquote class="ad-said">
-      <span class="ad-said-head">${esc(said.who || 'you')}${
-        stars ? ` <em>${stars}</em>` : ''}</span>
-      ${said.review ? `<span class="ad-said-text">${esc(said.review)}</span>` : ''}
-    </blockquote>`;
+  /* Letterboxd rates in halves and so does this: rounding 4.5 up to five
+     stars misreports what someone gave a film. Only the stars given are
+     drawn — the hollow remainder read as part of the score. */
+  function starsOf(n){
+    if(n == null) return '';
+    const full = Math.floor(n), half = n - full >= .5;
+    return '★'.repeat(full) + (half ? '½' : '');
+  }
+
+  const whoOf = r => r.who || (window.Letterboxd && Letterboxd.username) || 'you';
+
+  /* Everyone who has written about the film, quoted: who said it, what
+     they gave it, and the words if there were any. The loved and the
+     loathed are marked so each quote agrees with the sticker above it. */
+  function saidsHtml(saids){
+    const rows = (saids || []).slice(0, 5);
+    if(!rows.length) return '';
+    const LOVE = window.Letterboxd ? Letterboxd.LOVE : 4.5;
+    const HATE = window.Letterboxd ? Letterboxd.HATE : 2.5;
+    return `<div class="ad-saids">${rows.map(r => `
+      <blockquote class="ad-said${r.rated >= LOVE ? ' is-gold' : ''}${
+        r.rated != null && r.rated <= HATE ? ' is-poop' : ''}">
+        <span class="ad-said-head">${esc(whoOf(r))}${
+          r.rated != null ? ` <em>${starsOf(r.rated)}</em>` : ''}</span>
+        ${r.review ? `<span class="ad-said-text">${esc(r.review)}</span>` : ''}
+      </blockquote>`).join('')}</div>`;
   }
 
   function adMovieHtml(f, rates){
@@ -884,16 +941,34 @@ const Kiosk = (() => {
     const rate = (label, val) => `
       <span class="ad-rate"><i>${label}</i><b>${val || '&mdash;'}</b></span>`;
 
+    /* The two ends of what my friends made of it. The screen turns gold
+       for a 4.5 or a 5, and a film somebody wrote off at 2.5 or under
+       gets their name on a sticker. */
+    const rated = (f.saids || []).filter(r => r.rated != null);
+    const LOVE = window.Letterboxd ? Letterboxd.LOVE : 4.5;
+    const HATE = window.Letterboxd ? Letterboxd.HATE : 2.5;
+    const best  = rated.length ? rated.reduce((a,b) => b.rated > a.rated ? b : a) : null;
+    const worst = rated.length ? rated.reduce((a,b) => b.rated < a.rated ? b : a) : null;
+    const love = best  && best.rated  >= LOVE ? best  : null;
+    const hate = worst && worst.rated <= HATE ? worst : null;
+
+    const source = f.upcoming ? ''
+      : f.source === 'talked' ? ' · Just watched' : ' · Watchlist';
+
     return `
-      <div class="ad-movie">
-        ${f.poster
-          ? `<img class="ad-poster" src="${esc(f.poster)}" alt="">`
-          : `<div class="ad-poster ad-noart">🎬</div>`}
+      <div class="ad-movie${love ? ' is-gold' : ''}">
+        ${love ? `<div class="ad-gold-bar">${esc(whoOf(love))} gave it ${
+          esc(starsOf(love.rated))}</div>` : ''}
+        <div class="ad-poster-wrap">
+          ${f.poster
+            ? `<img class="ad-poster" src="${esc(f.poster)}" alt="">`
+            : `<div class="ad-poster ad-noart">🎬</div>`}
+          ${hate ? `<span class="ad-poop">💩<i>${esc(whoOf(hate))}</i></span>` : ''}
+        </div>
         <div class="ad-movie-info">
           <h1 class="ad-h1">${esc(f.title)}</h1>
           <p class="ad-sub">${esc(String(f.year || ''))}${
-            f.genres?.length ? ` · ${esc(f.genres.join(', '))}` : ''}${
-            f.upcoming ? '' : ' · Watchlist'}</p>
+            f.genres?.length ? ` · ${esc(f.genres.join(', '))}` : ''}${source}</p>
           ${f.upcoming && relDate
             ? `<p class="ad-release"><b>${esc(countdown)}</b> · ${esc(relDate)}</p>` : ''}
           <div class="ad-rates">
@@ -903,8 +978,8 @@ const Kiosk = (() => {
           </div>
           ${f.director ? `<p class="ad-line"><i>Directed by</i> ${esc(f.director)}</p>` : ''}
           ${f.cast?.length ? `<p class="ad-line"><i>Starring</i> ${esc(f.cast.join(', '))}</p>` : ''}
-          ${saidHtml(f.said)}
           <p class="ad-overview">${esc(f.overview) || 'No synopsis published for this film yet.'}</p>
+          ${saidsHtml(f.saids)}
         </div>
       </div>`;
   }
@@ -1020,7 +1095,7 @@ const Kiosk = (() => {
     updateToggleUi();
   }
 
-  return { boot, start, stop, toggle, previewAd, closePreview,
+  return { boot, start, stop, toggle, previewAd, closePreview, movieChoices,
            /* Settings renders its switches from this. */
            get rotation(){ return ROTATION.map(r => ({...r, on: shown(r.name)})); },
            get enabled(){ return enabled; },
