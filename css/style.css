@@ -3099,3 +3099,65 @@ body.shop .mv-error{margin-bottom:12px;}
   border-radius:6px;padding:10px 11px;font:inherit;font-size:16px;
 }
 .shop-auth-row input:focus{outline:none;border-color:var(--accent);}
+
+
+/* ============================================================
+   The sign-in gate (js/gate.js).
+
+   Fixed and opaque rather than a translucent scrim: what is behind it
+   on the deck is a half-booted dashboard, and letting that show through
+   would advertise the shape of the data to whoever is not signed in.
+
+   Sized for a thumb first. The card is the same on the wall display as
+   on a phone — a sign-in box is the one screen that never needs to fill
+   a television.
+   ============================================================ */
+html.is-gated,
+html.is-gated body{overflow:hidden;}
+/* The deck pads the body for the status rail; the gate is a full-bleed
+   overlay and must not inherit that offset. */
+#gate{
+  position:fixed;inset:0;z-index:9000;
+  background:var(--ink);
+  display:flex;align-items:center;justify-content:center;
+  padding:24px calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom))
+          calc(24px + env(safe-area-inset-left));
+}
+#gate[hidden]{display:none;}
+
+.gate-card{
+  width:100%;max-width:360px;
+  display:flex;flex-direction:column;gap:12px;
+  background:var(--panel);
+  border:1px solid var(--edge);
+  border-radius:var(--r);
+  padding:26px 22px;
+}
+.gate-card h1{
+  margin:0;font-family:var(--display);font-size:22px;font-weight:700;
+  letter-spacing:.02em;color:var(--text);
+}
+.gate-why{margin:0;font-size:13px;line-height:1.5;color:var(--muted);}
+
+/* 16px is not a style choice: iOS Safari zooms the whole page in on any
+   focused input smaller than that, and the zoom does not come back. */
+.gate-card input{
+  width:100%;font:inherit;font-size:16px;
+  padding:13px 14px;
+  background:var(--panel-2);
+  border:1px solid var(--edge);border-radius:8px;
+  color:var(--text);
+}
+.gate-card input:focus{outline:none;border-color:var(--accent);}
+
+.gate-go{
+  font:inherit;font-weight:600;font-size:15px;
+  padding:13px 14px;min-height:46px;      /* a comfortable tap target */
+  background:var(--accent);color:var(--accent-ink);
+  border:1px solid var(--accent);border-radius:8px;
+  cursor:pointer;
+}
+.gate-go:disabled{opacity:.55;cursor:default;}
+
+.gate-note{margin:0;font-size:12.5px;line-height:1.45;color:var(--muted);min-height:1.2em;}
+.gate-note.is-bad{color:var(--bad);}

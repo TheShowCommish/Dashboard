@@ -436,6 +436,10 @@ const Cloud = (() => {
 
   return {
     boot, signIn, signOut, markDirty, pushEverything,
+    /* Exported for gate.js, which has to consume the emailed link BEFORE
+       it can ask whether anyone is signed in — boot() reads the fragment
+       too, but by then the gate has already decided what to paint. */
+    catchCallback,
     sync: () => cycle(true),
     onStatus(fn){ watchers.add(fn); fn(status); return () => watchers.delete(fn); },
     get status(){ return {...status, pending: queue().size}; },

@@ -52,16 +52,21 @@ jobs:
       - name: Stamp the cache-bust version
         run: |
           v="${GITHUB_SHA::7}"
-          before=$(grep -c '?v=dev' index.html || true)
-          # A file that no longer says ?v=dev has been hand-edited back to
-          # a fixed version, and would pin every browser to it forever.
-          # Better to fail the deploy than to publish that quietly.
-          if [ "$before" -eq 0 ]; then
-            echo "::error::No ?v=dev found in index.html — the cache-bust stamp would be a no-op."
-            exit 1
-          fi
-          sed -i "s/?v=dev/?v=$v/g" index.html
-          echo "Stamped $before asset urls with ?v=$v"
+          # Every page, not just the deck. grocery.html loads the same
+          # modules and was going out unstamped, so a phone kept serving
+          # yesterday's shop.js from cache against today's css.
+          for f in index.html grocery.html; do
+            before=$(grep -c '?v=dev' "$f" || true)
+            # A file that no longer says ?v=dev has been hand-edited back
+            # to a fixed version, and would pin every browser to it
+            # forever. Better to fail the deploy than publish that quietly.
+            if [ "$before" -eq 0 ]; then
+              echo "::error::No ?v=dev found in $f — the cache-bust stamp would be a no-op."
+              exit 1
+            fi
+            sed -i "s/?v=dev/?v=$v/g" "$f"
+            echo "Stamped $before asset urls in $f with ?v=$v"
+          done
 
       - uses: actions/upload-pages-artifact@v3
         with:

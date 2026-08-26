@@ -44,6 +44,9 @@
       <span id="clockTime">--:--</span>
       <span id="clockDate">—</span>
     </div>
+    <!-- ?stay=1 so a phone that asked for the deck is not routed back to
+         the list on the next load. See gate.js. -->
+    <a class="ghost-btn sm" href="grocery.html?stay=1" title="The grocery list on its own">LIST</a>
     <button id="kioskToggle" class="ghost-btn sm" title="Start rotation">AUTO</button>
     <button id="btnSettings" class="icon-btn" aria-label="Open settings" title="Settings">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
@@ -457,6 +460,7 @@
 <script src="js/store.js?v=dev"></script>
 <script src="js/sync-config.js?v=dev"></script>
 <script src="js/cloud.js?v=dev"></script>
+<script src="js/gate.js?v=dev"></script>
 <script src="js/themes.js?v=dev"></script>
 <script src="js/sky.js?v=dev"></script>
 <script src="js/weather.js?v=dev"></script>

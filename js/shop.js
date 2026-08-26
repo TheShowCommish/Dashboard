@@ -225,5 +225,5 @@ function esc(s){
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-document.addEventListener('DOMContentLoaded', () => Shop.boot());
+Gate.ready(() => Shop.boot());
 window.Shop = Shop;

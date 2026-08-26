@@ -434,4 +434,7 @@ const App = (() => {
   return { boot, recheckTheme, refreshAll, showTab };
 })();
 
-document.addEventListener('DOMContentLoaded', App.boot);
+/* Through the gate rather than straight off DOMContentLoaded: a deck
+   that painted itself and then had a sign-in box dropped over it would
+   still have spent a boot fetching data it is not allowed to show. */
+Gate.ready(App.boot);
